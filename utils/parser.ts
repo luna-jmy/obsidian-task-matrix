@@ -18,9 +18,6 @@ const REVERSE_PRIORITY_MAP: Record<Priority, string> = {
   [Priority.Lowest]: '⏬',
 };
 
-/**
- * Normalizes a date string or object to a simple YYYY-MM-DD number for safe comparison
- */
 function getDateValue(d?: string | Date): number {
   if (!d) return 0;
   const date = typeof d === 'string' ? new Date(d) : d;
@@ -81,25 +78,26 @@ export function parseObsidianTask(line: string): ObsidianTask | null {
   const startDateValue = startDate ? getDateValue(startDate) : 0;
   const scheduledDateValue = scheduledDate ? getDateValue(scheduledDate) : 0;
 
-  // Eisenhower Logic: Urgent = Due date <= today + 3 days
-  const threeDaysLaterValue = getDateValue(new (class extends Date { constructor() { super(); this.setDate(this.getDate() + 3); } })());
+  const threeDaysLaterValue = getDateValue(new Date(new Date().setDate(new Date().getDate() + 3)));
   const isImportant = [Priority.Highest, Priority.High].includes(priority);
   const isUrgent = dueDateValue !== 0 && dueDateValue <= threeDaysLaterValue;
   
-  // GTD Logic Priority: Done > NextActions (Processed) > InProgress > Inbox
   let gtdState: GTDState = 'Inbox';
   const descLower = cleanDescription.toLowerCase();
 
   if (status === 'completed') {
     gtdState = 'Done';
   } else if (dependsOn || descLower.includes('#waiting') || descLower.includes('#delegated') || descLower.includes('#blocked')) {
-    // Processed/Waiting Quadrant (NextActions)
     gtdState = 'NextActions';
-  } else if ((startDateValue !== 0 && startDateValue <= todayValue) || (scheduledDateValue !== 0 && scheduledDateValue <= todayValue)) {
-    // InProgress Quadrant: Started or Scheduled today/past
+  } else if (
+    statusChar === '/' || 
+    descLower.includes('#started') || 
+    descLower.includes('#doing') || 
+    (startDateValue !== 0 && startDateValue <= todayValue) || 
+    (scheduledDateValue !== 0 && scheduledDateValue <= todayValue)
+  ) {
     gtdState = 'InProgress';
   } else {
-    // Inbox: Falling back to collection
     gtdState = 'Inbox';
   }
 

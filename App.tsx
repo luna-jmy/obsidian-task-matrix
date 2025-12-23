@@ -33,32 +33,44 @@ const App: React.FC = () => {
   const [exportTitle, setExportTitle] = useState('');
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
-  // Helper to determine if a task is REALLY blocked by a dependency
   const isActuallyBlocked = useCallback((task: ObsidianTask, allTasks: ObsidianTask[]) => {
     if (!task.dependsOn) return false;
-    // Check if there is an active (not completed) task with the targeted ID
     const dependency = allTasks.find(t => t.taskId === task.dependsOn);
-    if (!dependency) return false; // If dependency not found, assume it's unblocked or external
+    if (!dependency) return false;
     return dependency.status !== 'completed';
   }, []);
 
-  // Helper to get effective GTD state dynamically
   const getDynamicGTDState = useCallback((task: ObsidianTask, allTasks: ObsidianTask[]): GTDState => {
     if (task.status === 'completed') return 'Done';
     
-    // Check for blocked status
-    if (isActuallyBlocked(task, allTasks)) return 'NextActions';
+    const descLower = task.description.toLowerCase();
+    
+    // 1. 等待象限规则 (NextActions)
+    const hasWaitingTag = descLower.includes('#waiting') || descLower.includes('#delegated') || descLower.includes('#blocked');
+    if (isActuallyBlocked(task, allTasks) || hasWaitingTag) {
+      return 'NextActions';
+    }
 
-    // The rest of the logic follows dates/defaults
+    // 2. 执行中象限规则 (InProgress)
     const today = new Date();
     today.setHours(0,0,0,0);
     const start = task.startDate ? new Date(task.startDate) : null;
     const sched = task.scheduledDate ? new Date(task.scheduledDate) : null;
+    
+    // 检查状态字符 (需从 originalLine 提取)
+    const isStartedStatus = task.originalLine.includes('[/]');
+    const hasStartedTag = descLower.includes('#started') || descLower.includes('#doing');
 
-    if ((start && start <= today) || (sched && sched <= today)) {
+    if (
+      isStartedStatus || 
+      hasStartedTag || 
+      (start && start <= today) || 
+      (sched && sched <= today)
+    ) {
       return 'InProgress';
     }
     
+    // 3. 默认象限 (Inbox)
     return 'Inbox';
   }, [isActuallyBlocked]);
 
@@ -160,18 +172,8 @@ const App: React.FC = () => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('taskId');
     if (!taskId) return;
-
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const thresholdDate = new Date(today);
-    thresholdDate.setDate(today.getDate() + 3);
-    
-    const soonDate = new Date(today);
-    soonDate.setDate(today.getDate() + 2);
-    const urgentStr = soonDate.toISOString().split('T')[0];
 
     if (viewMode === 'eisenhower') {
       const { isUrgent, isImportant } = targetData;
@@ -179,24 +181,8 @@ const App: React.FC = () => {
         if (task.id === taskId) {
           const updatedPriority = isImportant ? Priority.High : Priority.None;
           let updatedDueDate = task.dueDate;
-          
-          if (isUrgent) {
-            const currentDue = task.dueDate ? new Date(task.dueDate) : null;
-            if (currentDue) currentDue.setHours(0,0,0,0);
-            const isOverdue = currentDue && currentDue < today;
-            if (!isOverdue) {
-              if (!currentDue || currentDue > thresholdDate) {
-                updatedDueDate = urgentStr;
-              }
-            }
-          } else {
-            const currentDue = task.dueDate ? new Date(task.dueDate) : null;
-            if (currentDue) currentDue.setHours(0,0,0,0);
-            if (currentDue && currentDue <= thresholdDate) {
-              updatedDueDate = undefined;
-            }
-          }
-
+          const today = new Date().toISOString().split('T')[0];
+          if (isUrgent && !task.dueDate) updatedDueDate = today;
           const updated = { ...task, priority: updatedPriority, dueDate: updatedDueDate };
           return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
         }
@@ -206,10 +192,7 @@ const App: React.FC = () => {
       const { gtdState } = targetData;
       if (gtdState === 'Done') {
         toggleTaskStatus(taskId);
-      } else if (gtdState === 'NextActions' || gtdState === 'InProgress' || gtdState === 'Inbox') {
-        // When dragging to specific state, we might need to change dates/dependencies
-        // Dragging to NextActions in this dynamic setup is tricky since it's driven by dependsOn
-        // For simplicity, we open the editor to let user manually adjust
+      } else {
         handleOpenEdit(targetTask);
       }
     }
@@ -260,7 +243,6 @@ const App: React.FC = () => {
   }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask]);
 
   const GTDMatrix = useMemo(() => {
-    // Dynamic grouping using helper
     const inbox = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'Inbox');
     const waiting = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'NextActions');
     const inProgress = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'InProgress');
@@ -288,8 +270,8 @@ const App: React.FC = () => {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
         <Quadrant title="收集箱 (Inbox)" desc="未处理的任务 / 默认分类" tasks={inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
-        <Quadrant title="已授权/等待" desc="Waiting / Blocked by other tasks" tasks={waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
-        <Quadrant title="执行中" desc="Started / Scheduled (Date <= Today)" tasks={inProgress} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
+        <Quadrant title="已授权/等待" desc="Waiting / Blocked by tags or dependencies" tasks={waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
+        <Quadrant title="执行中" desc="Started / Scheduled / Date <= Today" tasks={inProgress} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
         <Quadrant title="已完成" desc="已勾选完成的任务" tasks={done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
       </div>
     );
@@ -389,7 +371,7 @@ ${content}`;
         )}
       </main>
 
-      {/* Task Edit/Create Modal - LIGHT THEME */}
+      {/* Task Edit/Create Modal */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white text-slate-700 rounded-3xl shadow-2xl w-full max-w-[550px] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in duration-200">
@@ -473,7 +455,6 @@ ${content}`;
                 </div>
               </div>
 
-              {/* Workflow Enhancement: Next Action */}
               <div className="pt-2 flex items-center gap-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
                 <input 
                   type="checkbox" 
@@ -507,7 +488,7 @@ ${content}`;
         </div>
       )}
 
-      {/* Import Modal */}
+      {/* Import/Export Modals */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in zoom-in duration-300">
@@ -516,7 +497,6 @@ ${content}`;
               <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl transition-all">&times;</button>
             </div>
             <div className="p-8">
-              <p className="text-sm text-slate-500 mb-5 font-medium leading-relaxed">Paste your Markdown tasks list below. Each task should start with <code>- [ ]</code>, <code>- [x]</code>, or <code>- [-]</code>.</p>
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
@@ -532,7 +512,6 @@ ${content}`;
         </div>
       )}
 
-      {/* Export Modal */}
       {isExportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in zoom-in duration-300">
@@ -549,7 +528,7 @@ ${content}`;
             </div>
             <div className="p-6 bg-slate-50 border-t flex justify-end gap-3">
               <button 
-                onClick={() => { navigator.clipboard.writeText(exportText); alert('Export copied! Paste this back into your Obsidian vault.'); }}
+                onClick={() => { navigator.clipboard.writeText(exportText); alert('Export copied!'); }}
                 className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all"
               >
                 Copy Content
