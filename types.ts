@@ -32,4 +32,4 @@ export interface ObsidianTask {
   gtdState: GTDState;
 }
 
-export type ViewMode = 'eisenhower' | 'gtd';
+export type ViewMode = 'eisenhower' | 'gtd' | 'list';

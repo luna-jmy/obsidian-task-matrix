@@ -38,6 +38,21 @@ source:
 keywords:
 ---`;
 
+const PRIORITY_ORDER = {
+  [Priority.Highest]: 5,
+  [Priority.High]: 4,
+  [Priority.Medium]: 3,
+  [Priority.None]: 2,
+  [Priority.Low]: 1,
+  [Priority.Lowest]: 0,
+};
+
+const STATUS_ORDER = {
+  'open': 0,
+  'completed': 1,
+  'cancelled': 2
+};
+
 const generateShortId = () => Math.random().toString(36).substr(2, 6);
 
 const App: React.FC = () => {
@@ -55,6 +70,11 @@ const App: React.FC = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+  
+  // List View State
+  const [listSortBy, setListSortBy] = useState<string>('manual');
+  const [listSortDir, setListSortDir] = useState<'asc' | 'desc'>('desc');
+  const [listFilterStatus, setListFilterStatus] = useState<string>('all');
   
   const [inputText, setInputText] = useState('');
   const [yamlHeader, setYamlHeader] = useState(DEFAULT_YAML_TEMPLATE(new Date().toISOString().split('T')[0]));
@@ -85,7 +105,7 @@ const App: React.FC = () => {
     return 'Inbox';
   }, []);
 
-  // Filter tasks
+  // Filter tasks for matrix views
   const e_q1 = useMemo(() => tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open'), [tasks]);
   const e_q2 = useMemo(() => tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open'), [tasks]);
   const e_q3 = useMemo(() => tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open'), [tasks]);
@@ -95,6 +115,39 @@ const App: React.FC = () => {
   const g_waiting = useMemo(() => tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'NextActions'), [tasks, getDynamicGTDState]);
   const g_doing = useMemo(() => tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'InProgress'), [tasks, getDynamicGTDState]);
   const g_done = useMemo(() => tasks.filter(t => t.status === 'completed'), [tasks]);
+
+  // List View Computed Data
+  const sortedAndFilteredTasks = useMemo(() => {
+    let filtered = tasks;
+    if (listFilterStatus === 'open') filtered = tasks.filter(t => t.status === 'open');
+    if (listFilterStatus === 'completed') filtered = tasks.filter(t => t.status === 'completed');
+    if (listFilterStatus === 'cancelled') filtered = tasks.filter(t => t.status === 'cancelled');
+
+    if (listSortBy === 'manual') return filtered;
+
+    return [...filtered].sort((a, b) => {
+      let result = 0;
+      if (listSortBy === 'dueDate') {
+        const valA = a.dueDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        const valB = b.dueDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        result = valA.localeCompare(valB);
+      } else if (listSortBy === 'priority') {
+        result = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      } else if (listSortBy === 'startDate') {
+        const valA = a.startDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        const valB = b.startDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        result = valA.localeCompare(valB);
+      } else if (listSortBy === 'scheduledDate') {
+        const valA = a.scheduledDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        const valB = b.scheduledDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
+        result = valA.localeCompare(valB);
+      } else if (listSortBy === 'status') {
+        result = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+      }
+
+      return listSortDir === 'asc' ? result : -result;
+    });
+  }, [tasks, listSortBy, listSortDir, listFilterStatus]);
 
   const generateMarkdownBody = useCallback(() => {
     if (viewMode === 'gtd') {
@@ -114,7 +167,7 @@ const App: React.FC = () => {
 
       const content = sections.map(s => `### ${s.title}\n${s.tasks.map(stringifyTask).join('\n')}`).join('\n\n');
       return `# GTD Flow\n\n${table}${content}`;
-    } else {
+    } else if (viewMode === 'eisenhower') {
       const table = `|                   |              |
 | ----------------- | ------------ |
 | ![[#重要且紧急 🔴]] | ![[#重要不紧急 🟢]] |
@@ -131,8 +184,11 @@ const App: React.FC = () => {
 
       const content = sections.map(s => `### ${s.title}\n${s.tasks.map(stringifyTask).join('\n')}`).join('\n\n');
       return `# Eisenhower Matrix\n\n${table}${content}`;
+    } else {
+      // List View Export
+      return `# Task List\n\n${sortedAndFilteredTasks.map(stringifyTask).join('\n')}`;
     }
-  }, [viewMode, g_inbox, g_waiting, g_doing, g_done, e_q1, e_q2, e_q3, e_q4]);
+  }, [viewMode, g_inbox, g_waiting, g_doing, g_done, e_q1, e_q2, e_q3, e_q4, sortedAndFilteredTasks]);
 
   const handleDownloadMD = () => {
     const body = generateMarkdownBody();
@@ -141,7 +197,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${viewMode === 'gtd' ? 'gtd-flow' : 'matrix'}-${new Date().toISOString().split('T')[0]}.md`;
+    a.download = `${viewMode === 'gtd' ? 'gtd-flow' : viewMode === 'eisenhower' ? 'matrix' : 'list'}-${new Date().toISOString().split('T')[0]}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -169,32 +225,39 @@ const App: React.FC = () => {
     if (!taskId) return;
     const todayStr = new Date().toISOString().split('T')[0];
     
+    // Manual Reorder Logic for List View
+    if (viewMode === 'list' && listSortBy === 'manual') {
+      const dropTaskId = targetData.taskId;
+      if (taskId === dropTaskId) return;
+
+      setTasks(prev => {
+        const newTasks = [...prev];
+        const draggedIdx = newTasks.findIndex(t => t.id === taskId);
+        const targetIdx = newTasks.findIndex(t => t.id === dropTaskId);
+        const [removed] = newTasks.splice(draggedIdx, 1);
+        newTasks.splice(targetIdx, 0, removed);
+        return newTasks;
+      });
+      return;
+    }
+
     setTasks(prev => prev.map(task => {
       if (task.id === taskId) {
         let updated: ObsidianTask = { ...task };
         
         if (viewMode === 'eisenhower') {
           const { isUrgent, isImportant } = targetData;
-          
-          // 1. 重要性逻辑 (重要象限强制设为 High Priority)
           if (isImportant) {
             updated.priority = Priority.High;
           } else {
             updated.priority = Priority.None;
           }
-          
-          // 2. 紧急性逻辑 (拖动到不紧急象限自动清除 Due Date)
           if (isUrgent) {
-            // 如果目前没有截止日期但拖到了紧急区，默认设为今天
-            if (!task.dueDate) {
-              updated.dueDate = todayStr;
-            }
+            if (!task.dueDate) updated.dueDate = todayStr;
           } else {
-            // 拖入“不紧急”象限（Q2/Q4）清空 Due Date
             updated.dueDate = undefined;
           }
-        } else {
-          // GTD 视图下的逻辑保持不变
+        } else if (viewMode === 'gtd') {
           const { gtdState } = targetData;
           if (gtdState === 'Done') {
             updated.status = 'completed';
@@ -211,7 +274,6 @@ const App: React.FC = () => {
           }
         }
         
-        // 重新序列化并解析以同步派生属性
         const line = stringifyTask(updated);
         return parseObsidianTask(line) || updated;
       }
@@ -315,6 +377,14 @@ const App: React.FC = () => {
     setTasks(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const handleListSortChange = (newSortBy: string) => {
+    setListSortBy(newSortBy);
+    // If it's a date field, default to Descending
+    if (['dueDate', 'startDate', 'scheduledDate'].includes(newSortBy)) {
+      setListSortDir('desc');
+    }
+  };
+
   const Quadrant = ({ title, desc, tasks: qTasks, color, data, state }: any) => (
     <div 
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
@@ -343,9 +413,10 @@ const App: React.FC = () => {
           <div><h1 className="text-xl font-bold text-slate-900 leading-tight">Obsidian Matrix</h1><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">TASKS DASHBOARD</p></div>
         </div>
         
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button onClick={() => setViewMode('eisenhower')} className={`px-6 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-wider ${viewMode === 'eisenhower' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500'}`}>EISENHOWER</button>
-          <button onClick={() => setViewMode('gtd')} className={`px-6 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-wider ${viewMode === 'gtd' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500'}`}>GTD FLOW</button>
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
+          <button onClick={() => setViewMode('eisenhower')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-wider whitespace-nowrap ${viewMode === 'eisenhower' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500'}`}>EISENHOWER</button>
+          <button onClick={() => setViewMode('gtd')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-wider whitespace-nowrap ${viewMode === 'gtd' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500'}`}>GTD FLOW</button>
+          <button onClick={() => setViewMode('list')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-wider whitespace-nowrap ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500'}`}>LIST VIEW</button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -366,12 +437,87 @@ const App: React.FC = () => {
               <Quadrant title="不重要但紧急 🟡" desc="Normal Priority + Due <= 3 days" tasks={e_q3} color="bg-amber-50 border-amber-200 text-amber-900" data={{isUrgent: true, isImportant: false}} />
               <Quadrant title="不重要不紧急 ⚪" desc="Normal Priority + No Due / Due > 3" tasks={e_q4} color="bg-slate-50 border-slate-200 text-slate-600" data={{isUrgent: false, isImportant: false}} />
             </div>
-          ) : (
+          ) : viewMode === 'gtd' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
               <Quadrant title="收集箱 (Inbox)" desc="未处理的任务" tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
               <Quadrant title="已处理/授权" desc="Waiting / Blocked" tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
               <Quadrant title="执行中" desc="Started / Scheduled Today" tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
               <Quadrant title="已完成" desc="Completed tasks" tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
+            </div>
+          ) : (
+            /* List View */
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filter:</label>
+                  <select 
+                    value={listFilterStatus} 
+                    onChange={e => setListFilterStatus(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="open">Not Done</option>
+                    <option value="completed">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sort by:</label>
+                  <select 
+                    value={listSortBy} 
+                    onChange={e => handleListSortChange(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="manual">Manual (Drag to Order)</option>
+                    <option value="dueDate">Due Date</option>
+                    <option value="priority">Priority</option>
+                    <option value="startDate">Start Date</option>
+                    <option value="scheduledDate">Scheduled Date</option>
+                    <option value="status">Status</option>
+                  </select>
+                </div>
+                
+                {listSortBy !== 'manual' && (
+                  <button 
+                    onClick={() => setListSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    {listSortDir === 'asc' ? 'Ascending ↑' : 'Descending ↓'}
+                  </button>
+                )}
+
+                <div className="ml-auto text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">
+                  Showing {sortedAndFilteredTasks.length} tasks
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-2 min-h-[500px]">
+                  {sortedAndFilteredTasks.map((t) => (
+                    <div 
+                      key={t.id}
+                      onDragOver={(e) => {
+                        if (listSortBy === 'manual') {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }
+                      }}
+                      onDrop={(e) => handleDrop(e, { taskId: t.id })}
+                      className="relative"
+                    >
+                      <TaskCard 
+                        task={t} 
+                        onToggleStatus={toggleTaskStatus} 
+                        onEdit={handleOpenEdit} 
+                        onDelete={handleDeleteTask} 
+                      />
+                    </div>
+                  ))}
+                  {sortedAndFilteredTasks.length === 0 && (
+                    <div className="py-20 text-center text-slate-400 font-medium">No tasks match the current filters.</div>
+                  )}
+                </div>
+              </div>
             </div>
           )
         ) : (
@@ -420,6 +566,7 @@ const App: React.FC = () => {
                   <select value={taskForm.status} onChange={e => setTaskForm({...taskForm, status: e.target.value as any})} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none h-10">
                     <option value="open">Todo [ ]</option>
                     <option value="completed">Done [x]</option>
+                    <option value="cancelled">Cancelled [-]</option>
                   </select>
                 </div>
               </div>
@@ -477,7 +624,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Export Modal with Separate YAML Section */}
+      {/* Export Modal */}
       {isExportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col border border-slate-200">
@@ -487,7 +634,6 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 space-y-6 max-h-[75vh]">
-              {/* YAML Editor Section */}
               <div>
                 <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2">YAML Configuration (Editable)</label>
                 <textarea 
@@ -497,15 +643,13 @@ const App: React.FC = () => {
                 />
               </div>
 
-              {/* Task Content Section */}
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Markdown Preview (Table & List)</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Markdown Preview</label>
                 <textarea 
                   readOnly 
                   value={generateMarkdownBody()} 
                   className="w-full h-64 p-4 border border-slate-200 rounded-xl bg-slate-50 font-mono text-[10px] text-slate-500 outline-none" 
                 />
-                <p className="mt-2 text-[10px] text-slate-400 italic">This content below the title will be copied to clipboard.</p>
               </div>
             </div>
 
