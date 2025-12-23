@@ -33,6 +33,35 @@ const App: React.FC = () => {
   const [exportTitle, setExportTitle] = useState('');
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
+  // Helper to determine if a task is REALLY blocked by a dependency
+  const isActuallyBlocked = useCallback((task: ObsidianTask, allTasks: ObsidianTask[]) => {
+    if (!task.dependsOn) return false;
+    // Check if there is an active (not completed) task with the targeted ID
+    const dependency = allTasks.find(t => t.taskId === task.dependsOn);
+    if (!dependency) return false; // If dependency not found, assume it's unblocked or external
+    return dependency.status !== 'completed';
+  }, []);
+
+  // Helper to get effective GTD state dynamically
+  const getDynamicGTDState = useCallback((task: ObsidianTask, allTasks: ObsidianTask[]): GTDState => {
+    if (task.status === 'completed') return 'Done';
+    
+    // Check for blocked status
+    if (isActuallyBlocked(task, allTasks)) return 'NextActions';
+
+    // The rest of the logic follows dates/defaults
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const start = task.startDate ? new Date(task.startDate) : null;
+    const sched = task.scheduledDate ? new Date(task.scheduledDate) : null;
+
+    if ((start && start <= today) || (sched && sched <= today)) {
+      return 'InProgress';
+    }
+    
+    return 'Inbox';
+  }, [isActuallyBlocked]);
+
   const handleImport = () => {
     const lines = inputText.split('\n');
     const parsed = lines
@@ -88,29 +117,14 @@ const App: React.FC = () => {
     };
 
     if (editingTaskId) {
-      setTasks(prev => {
-        const updatedTasks = prev.map(t => {
-          if (t.id === editingTaskId) {
-            const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
-            const parsed = parseObsidianTask(line);
-            return parsed || { ...t, ...taskData };
-          }
-          return t;
-        });
-
-        // Trigger dependency clearing if newly completed
-        const original = prev.find(t => t.id === editingTaskId);
-        if (original && original.status === 'open' && taskData.status === 'completed' && taskData.taskId) {
-          return updatedTasks.map(t => {
-            if (t.dependsOn === taskData.taskId) {
-              const cleared = { ...t, dependsOn: undefined };
-              return parseObsidianTask(stringifyTask(cleared as ObsidianTask)) || cleared;
-            }
-            return t;
-          });
+      setTasks(prev => prev.map(t => {
+        if (t.id === editingTaskId) {
+          const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
+          const parsed = parseObsidianTask(line);
+          return parsed || { ...t, ...taskData };
         }
-        return updatedTasks;
-      });
+        return t;
+      }));
     } else {
       const line = stringifyTask({ id: Math.random().toString(), ...taskData } as any);
       const newTask = parseObsidianTask(line)!;
@@ -132,33 +146,14 @@ const App: React.FC = () => {
   };
 
   const toggleTaskStatus = useCallback((id: string) => {
-    setTasks(prev => {
-      const targetTask = prev.find(t => t.id === id);
-      if (!targetTask) return prev;
-
-      const nextStatus = targetTask.status === 'open' ? 'completed' : 'open';
-      const updatedList = prev.map(t => {
-        if (t.id === id) {
-          const updated = { ...t, status: nextStatus };
-          return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
-        }
-        return t;
-      });
-
-      // Dependency clearing logic
-      if (nextStatus === 'completed' && targetTask.taskId) {
-        return updatedList.map(t => {
-          if (t.dependsOn === targetTask.taskId) {
-            const cleared = { ...t, dependsOn: undefined };
-            // Re-parse ensures it moves to correct GTD quadrant automatically
-            return parseObsidianTask(stringifyTask(cleared as ObsidianTask)) || cleared;
-          }
-          return t;
-        });
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        const nextStatus = t.status === 'open' ? 'completed' : 'open';
+        const updated = { ...t, status: nextStatus };
+        return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
       }
-
-      return updatedList;
-    });
+      return t;
+    }));
   }, []);
 
   const handleDrop = (e: React.DragEvent, targetData: any) => {
@@ -211,18 +206,11 @@ const App: React.FC = () => {
       const { gtdState } = targetData;
       if (gtdState === 'Done') {
         toggleTaskStatus(taskId);
-      } else if (gtdState === 'NextActions') {
+      } else if (gtdState === 'NextActions' || gtdState === 'InProgress' || gtdState === 'Inbox') {
+        // When dragging to specific state, we might need to change dates/dependencies
+        // Dragging to NextActions in this dynamic setup is tricky since it's driven by dependsOn
+        // For simplicity, we open the editor to let user manually adjust
         handleOpenEdit(targetTask);
-      } else if (gtdState === 'InProgress') {
-        handleOpenEdit(targetTask);
-      } else {
-        setTasks(prev => prev.map(task => {
-          if (task.id === taskId) {
-            const updated = { ...task, startDate: undefined, scheduledDate: undefined, dependsOn: undefined };
-            return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
-          }
-          return task;
-        }));
       }
     }
   };
@@ -272,9 +260,10 @@ const App: React.FC = () => {
   }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask]);
 
   const GTDMatrix = useMemo(() => {
-    const inbox = tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open');
-    const processed = tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open');
-    const inProgress = tasks.filter(t => t.gtdState === 'InProgress' && t.status === 'open');
+    // Dynamic grouping using helper
+    const inbox = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'Inbox');
+    const waiting = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'NextActions');
+    const inProgress = tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'InProgress');
     const done = tasks.filter(t => t.status === 'completed');
 
     const Quadrant = ({ title, desc, tasks: qTasks, color, state }: any) => (
@@ -299,12 +288,12 @@ const App: React.FC = () => {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
         <Quadrant title="收集箱 (Inbox)" desc="未处理的任务 / 默认分类" tasks={inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
-        <Quadrant title="已授权/等待" desc="Waiting / Dependencies / Blocked" tasks={processed} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
+        <Quadrant title="已授权/等待" desc="Waiting / Blocked by other tasks" tasks={waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
         <Quadrant title="执行中" desc="Started / Scheduled (Date <= Today)" tasks={inProgress} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
         <Quadrant title="已完成" desc="已勾选完成的任务" tasks={done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
       </div>
     );
-  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask]);
+  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask, getDynamicGTDState]);
 
   const generateMarkdown = () => {
     const genMdQuad = (title: string, taskList: ObsidianTask[]) => {
@@ -325,9 +314,9 @@ const App: React.FC = () => {
       mdList += genMdQuad("不重要不紧急 ⚪", tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open'));
     } else {
       tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#收集箱 (Inbox)]] | ![[#已授权/等待]] |\n| ![[#执行中]] | ![[#已完成]] |\n| | |\n\n`;
-      mdList += genMdQuad("收集箱 (Inbox)", tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open'));
-      mdList += genMdQuad("已授权/等待", tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open'));
-      mdList += genMdQuad("执行中", tasks.filter(t => t.gtdState === 'InProgress' && t.status === 'open'));
+      mdList += genMdQuad("收集箱 (Inbox)", tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'Inbox'));
+      mdList += genMdQuad("已授权/等待", tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'NextActions'));
+      mdList += genMdQuad("执行中", tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'InProgress'));
       mdList += genMdQuad("已完成", tasks.filter(t => t.status === 'completed'));
     }
     return (tableHeader + mdList).trim();
