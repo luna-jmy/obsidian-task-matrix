@@ -61,16 +61,10 @@ const App: React.FC = () => {
   }, []);
 
   const handleDeleteTask = useCallback((id: string) => {
-    // Using simple confirm to prevent accidental deletes
-    if (window.confirm('Confirm delete?')) {
+    if (window.confirm('Are you sure you want to delete this task?')) {
       setTasks(prev => prev.filter(t => t.id !== id));
-      // If we are editing this task, close the modal
-      if (editingTaskId === id) {
-        setIsTaskModalOpen(false);
-        setEditingTaskId(null);
-      }
     }
-  }, [editingTaskId]);
+  }, []);
 
   const handleTaskSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,8 +89,6 @@ const App: React.FC = () => {
       if (t.id === (editingTaskId || '')) {
         const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
         const parsed = parseObsidianTask(line);
-        // Important: Preserve the internal ID to keep React keys stable
-        if (parsed) parsed.id = t.id;
         return parsed || { ...t, ...taskData };
       }
       return t;
@@ -118,10 +110,7 @@ const App: React.FC = () => {
       if (t.id === id) {
         const nextStatus = t.status === 'open' ? 'completed' : 'open';
         const updated = { ...t, status: nextStatus };
-        const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
-        // Important: Preserve the internal ID
-        if (parsed) parsed.id = t.id;
-        return parsed || updated;
+        return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
       }
       return t;
     }));
@@ -155,6 +144,7 @@ const App: React.FC = () => {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
             
+            // Check if task is already overdue
             const isOverdue = currentDue && currentDue < today;
             
             if (!isOverdue) {
@@ -162,6 +152,7 @@ const App: React.FC = () => {
                 updatedDueDate = urgentStr;
               }
             }
+            // If overdue, we keep updatedDueDate as task.dueDate (no change)
           } else {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
@@ -171,9 +162,7 @@ const App: React.FC = () => {
           }
 
           const updated = { ...task, priority: updatedPriority, dueDate: updatedDueDate };
-          const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
-          if (parsed) parsed.id = task.id; // Preserve ID
-          return parsed || updated;
+          return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
         }
         return task;
       }));
@@ -191,9 +180,7 @@ const App: React.FC = () => {
         setTasks(prev => prev.map(task => {
           if (task.id === taskId) {
             const updated = { ...task, startDate: undefined, scheduledDate: undefined, dependsOn: undefined };
-            const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
-            if (parsed) parsed.id = task.id; // Preserve ID
-            return parsed || updated;
+            return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
           }
           return task;
         }));
@@ -464,9 +451,6 @@ ${content}`;
               </div>
 
               <div className="pt-6 flex gap-3">
-                {editingTaskId && (
-                  <button type="button" onClick={() => { if(window.confirm('Delete this task?')) { handleDeleteTask(editingTaskId); } }} className="px-6 py-3.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded-xl text-sm font-bold transition-all">Delete</button>
-                )}
                 <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-indigo-900/20">{editingTaskId ? 'Save Task' : 'Add to List'}</button>
                 <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-8 py-3.5 bg-[#2a2a2a] hover:bg-[#333333] text-[#999999] rounded-xl text-sm font-bold transition-all">Cancel</button>
               </div>
