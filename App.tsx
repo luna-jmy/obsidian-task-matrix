@@ -168,19 +168,33 @@ const App: React.FC = () => {
     const taskId = e.dataTransfer.getData('taskId');
     if (!taskId) return;
     const todayStr = new Date().toISOString().split('T')[0];
+    
     setTasks(prev => prev.map(task => {
       if (task.id === taskId) {
-        // Fix: Explicitly type 'updated' as ObsidianTask to prevent property widening of 'status' to string
         let updated: ObsidianTask = { ...task };
+        
         if (viewMode === 'eisenhower') {
           const { isUrgent, isImportant } = targetData;
-          updated.priority = isImportant ? Priority.High : Priority.None;
-          if (isUrgent && !task.dueDate) {
-            updated.dueDate = todayStr;
-          } else if (!isUrgent && task.dueDate === todayStr) {
+          
+          // 1. 重要性逻辑 (重要象限强制设为 High Priority)
+          if (isImportant) {
+            updated.priority = Priority.High;
+          } else {
+            updated.priority = Priority.None;
+          }
+          
+          // 2. 紧急性逻辑 (拖动到不紧急象限自动清除 Due Date)
+          if (isUrgent) {
+            // 如果目前没有截止日期但拖到了紧急区，默认设为今天
+            if (!task.dueDate) {
+              updated.dueDate = todayStr;
+            }
+          } else {
+            // 拖入“不紧急”象限（Q2/Q4）清空 Due Date
             updated.dueDate = undefined;
           }
         } else {
+          // GTD 视图下的逻辑保持不变
           const { gtdState } = targetData;
           if (gtdState === 'Done') {
             updated.status = 'completed';
@@ -196,6 +210,8 @@ const App: React.FC = () => {
             updated.description = task.description.replace(/#(waiting|delegated|blocked|next|doing|active)\b/gi, '').trim();
           }
         }
+        
+        // 重新序列化并解析以同步派生属性
         const line = stringifyTask(updated);
         return parseObsidianTask(line) || updated;
       }
@@ -284,7 +300,6 @@ const App: React.FC = () => {
     setTasks(prev => prev.map(t => {
       if (t.id === id) {
         const nextStatus = t.status === 'open' ? 'completed' : 'open';
-        // Fix: Explicitly type 'updated' as ObsidianTask to prevent type widening
         const updated: ObsidianTask = { 
           ...t, 
           status: nextStatus, 
