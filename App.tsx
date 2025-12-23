@@ -60,6 +60,18 @@ const App: React.FC = () => {
     setIsTaskModalOpen(true);
   }, []);
 
+  const handleDeleteTask = useCallback((id: string) => {
+    // Using simple confirm to prevent accidental deletes
+    if (window.confirm('Confirm delete?')) {
+      setTasks(prev => prev.filter(t => t.id !== id));
+      // If we are editing this task, close the modal
+      if (editingTaskId === id) {
+        setIsTaskModalOpen(false);
+        setEditingTaskId(null);
+      }
+    }
+  }, [editingTaskId]);
+
   const handleTaskSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.description.trim()) return;
@@ -83,6 +95,8 @@ const App: React.FC = () => {
       if (t.id === (editingTaskId || '')) {
         const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
         const parsed = parseObsidianTask(line);
+        // Important: Preserve the internal ID to keep React keys stable
+        if (parsed) parsed.id = t.id;
         return parsed || { ...t, ...taskData };
       }
       return t;
@@ -104,7 +118,10 @@ const App: React.FC = () => {
       if (t.id === id) {
         const nextStatus = t.status === 'open' ? 'completed' : 'open';
         const updated = { ...t, status: nextStatus };
-        return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
+        const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
+        // Important: Preserve the internal ID
+        if (parsed) parsed.id = t.id;
+        return parsed || updated;
       }
       return t;
     }));
@@ -138,7 +155,6 @@ const App: React.FC = () => {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
             
-            // Check if task is already overdue
             const isOverdue = currentDue && currentDue < today;
             
             if (!isOverdue) {
@@ -146,7 +162,6 @@ const App: React.FC = () => {
                 updatedDueDate = urgentStr;
               }
             }
-            // If overdue, we keep updatedDueDate as task.dueDate (no change)
           } else {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
@@ -156,7 +171,9 @@ const App: React.FC = () => {
           }
 
           const updated = { ...task, priority: updatedPriority, dueDate: updatedDueDate };
-          return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
+          const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
+          if (parsed) parsed.id = task.id; // Preserve ID
+          return parsed || updated;
         }
         return task;
       }));
@@ -174,7 +191,9 @@ const App: React.FC = () => {
         setTasks(prev => prev.map(task => {
           if (task.id === taskId) {
             const updated = { ...task, startDate: undefined, scheduledDate: undefined, dependsOn: undefined };
-            return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
+            const parsed = parseObsidianTask(stringifyTask(updated as ObsidianTask));
+            if (parsed) parsed.id = task.id; // Preserve ID
+            return parsed || updated;
           }
           return task;
         }));
@@ -210,7 +229,7 @@ const App: React.FC = () => {
           <p className="text-[10px] opacity-60 uppercase tracking-widest">{desc}</p>
         </div>
         <div className="flex-1 overflow-y-auto pr-1">
-          {sortTasks(qTasks).map(t => <TaskCard key={t.id} task={t} onToggleStatus={toggleTaskStatus} onEdit={handleOpenEdit} />)}
+          {sortTasks(qTasks).map(t => <TaskCard key={t.id} task={t} onToggleStatus={toggleTaskStatus} onEdit={handleOpenEdit} onDelete={handleDeleteTask} />)}
           {qTasks.length === 0 && <div className="h-24 flex items-center justify-center border border-dashed rounded-lg opacity-30 text-xs font-medium">拖拽至此</div>}
         </div>
       </div>
@@ -224,7 +243,7 @@ const App: React.FC = () => {
         <Quadrant title="不重要不紧急 ⚪" desc="Normal Priority + No Due / Due > 3" tasks={q4} color="bg-slate-50 border-slate-200 text-slate-600" data={{isUrgent: false, isImportant: false}} />
       </div>
     );
-  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit]);
+  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask]);
 
   const GTDMatrix = useMemo(() => {
     const inbox = tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open');
@@ -245,7 +264,7 @@ const App: React.FC = () => {
           <p className="text-[10px] opacity-60 uppercase tracking-widest">{desc}</p>
         </div>
         <div className="flex-1 overflow-y-auto pr-1">
-          {sortTasks(qTasks).map(t => <TaskCard key={t.id} task={t} onToggleStatus={toggleTaskStatus} onEdit={handleOpenEdit} />)}
+          {sortTasks(qTasks).map(t => <TaskCard key={t.id} task={t} onToggleStatus={toggleTaskStatus} onEdit={handleOpenEdit} onDelete={handleDeleteTask} />)}
           {qTasks.length === 0 && <div className="h-24 flex items-center justify-center border border-dashed rounded-lg opacity-30 text-xs font-medium">拖拽至此</div>}
         </div>
       </div>
@@ -259,60 +278,71 @@ const App: React.FC = () => {
         <Quadrant title="已完成" desc="已勾选完成的任务" tasks={done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
       </div>
     );
-  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit]);
+  }, [tasks, toggleTaskStatus, viewMode, handleOpenEdit, handleDeleteTask]);
 
-  const handleExportDashboard = () => {
-    const containerStyle = `display: grid !important; grid-template-columns: 1fr 1fr !important; grid-gap: 16px !important; width: 100% !important;`;
-    const getQuadStyle = (rgba: string) => `border: 1px solid rgba(${rgba}, 0.3) !important; background-color: rgba(${rgba}, 0.05) !important; border-radius: 8px !important; padding: 12px !important;`;
-    
-    const genQuad = (title: string, taskList: ObsidianTask[], rgba: string) => {
-      const sorted = sortTasks(taskList);
-      const tasksMd = sorted.map(t => stringifyTask(t)).join('\n');
-      return `<div style="${getQuadStyle(rgba)}">\n\n### ${title}\n${tasksMd || '*No tasks*'}\n\n</div>`;
-    };
-
-    let html = `<div style="${containerStyle}">\n`;
-    if (viewMode === 'eisenhower') {
-      html += genQuad("重要且紧急", tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open'), "225, 29, 72");
-      html += genQuad("重要不紧急", tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open'), "16, 185, 129");
-      html += genQuad("不重要但紧急", tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open'), "245, 158, 11");
-      html += genQuad("不重要不紧急", tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open'), "107, 114, 128");
-    } else {
-      html += genQuad("收集箱", tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open'), "14, 165, 233");
-      html += genQuad("已处理/授权", tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open'), "147, 51, 234");
-      html += genQuad("执行中", tasks.filter(t => t.gtdState === 'InProgress' && t.status === 'open'), "20, 184, 166");
-      html += genQuad("已完成", tasks.filter(t => t.status === 'completed'), "100, 116, 139");
-    }
-    html += `\n</div>`;
-
-    setExportTitle('Export Matrix View (HTML Dashboard)');
-    setExportText(html);
-    setIsExportModalOpen(true);
-  };
-
-  const handleExportTasks = () => {
+  const generateMarkdown = () => {
     const genMdQuad = (title: string, taskList: ObsidianTask[]) => {
       if (taskList.length === 0) return '';
       const sorted = sortTasks(taskList);
       const tasksMd = sorted.map(t => stringifyTask(t)).join('\n');
-      return `## ${title}\n${tasksMd}\n\n`;
+      return `### ${title}\n${tasksMd}\n\n`;
     };
 
     let mdList = '';
+    let tableHeader = '';
+
     if (viewMode === 'eisenhower') {
+      tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#重要且紧急 🔴]] | ![[#重要不紧急 🟢]] |\n| ![[#不重要但紧急 🟡]] | ![[#不重要不紧急 ⚪]] |\n| | |\n\n`;
+
       mdList += genMdQuad("重要且紧急 🔴", tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("重要不紧急 🟢", tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("不重要但紧急 🟡", tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("不重要不紧急 ⚪", tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open'));
     } else {
+      tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#收集箱 (Inbox)]] | ![[#已处理/授权]] |\n| ![[#执行中]] | ![[#已完成]] |\n| | |\n\n`;
+
       mdList += genMdQuad("收集箱 (Inbox)", tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open'));
       mdList += genMdQuad("已处理/授权", tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open'));
       mdList += genMdQuad("执行中", tasks.filter(t => t.gtdState === 'InProgress' && t.status === 'open'));
       mdList += genMdQuad("已完成", tasks.filter(t => t.status === 'completed'));
     }
+    
+    return (tableHeader + mdList).trim();
+  };
 
+  const handleExportTasks = () => {
     setExportTitle('Export Obsidian Tasks (Grouped Markdown List)');
-    setExportText(mdList.trim());
+    setExportText(generateMarkdown());
+    setIsExportModalOpen(true);
+  };
+
+  const handleExportNote = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const content = generateMarkdown();
+    const title = viewMode === 'eisenhower' ? 'Eisenhower Matrix' : 'GTD Flow';
+    
+    const noteContent = `---
+cssclasses:
+  - matrix
+obsidianUIMode: preview
+created: ${today}
+aliases:
+area:
+type: task
+status: active
+due_date:
+priority: 3
+tags:
+source:
+keywords:
+---
+
+# ${title}
+
+${content}`;
+
+    setExportTitle('Export Full Note (YAML + Content)');
+    setExportText(noteContent);
     setIsExportModalOpen(true);
   };
 
@@ -331,7 +361,7 @@ const App: React.FC = () => {
           <button onClick={() => { setTaskForm(INITIAL_TASK_FORM); setEditingTaskId(null); setIsTaskModalOpen(true); }} className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">+ Add Task</button>
           <button onClick={() => setIsImportModalOpen(true)} className="px-4 py-2 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all">Import MD</button>
           <button onClick={handleExportTasks} className="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-all">Export Tasks</button>
-          <button onClick={handleExportDashboard} className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-900 transition-all">Export HTML</button>
+          <button onClick={handleExportNote} className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-900 transition-all">Export Note</button>
         </div>
       </header>
 
@@ -434,6 +464,9 @@ const App: React.FC = () => {
               </div>
 
               <div className="pt-6 flex gap-3">
+                {editingTaskId && (
+                  <button type="button" onClick={() => { if(window.confirm('Delete this task?')) { handleDeleteTask(editingTaskId); } }} className="px-6 py-3.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded-xl text-sm font-bold transition-all">Delete</button>
+                )}
                 <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-indigo-900/20">{editingTaskId ? 'Save Task' : 'Add to List'}</button>
                 <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-8 py-3.5 bg-[#2a2a2a] hover:bg-[#333333] text-[#999999] rounded-xl text-sm font-bold transition-all">Cancel</button>
               </div>
