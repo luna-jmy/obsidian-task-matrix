@@ -85,18 +85,20 @@ export function parseObsidianTask(line: string): ObsidianTask | null {
   let gtdState: GTDState = 'Inbox';
   const descLower = cleanDescription.toLowerCase();
 
+  // GTD Priority Rule: Done > Waiting > NextActions > Inbox
   if (status === 'completed') {
     gtdState = 'Done';
   } else if (dependsOn || descLower.includes('#waiting') || descLower.includes('#delegated') || descLower.includes('#blocked')) {
-    gtdState = 'NextActions';
+    gtdState = 'NextActions'; // In our UI "NextActions" is "Waiting/Delegated"
   } else if (
     statusChar === '/' || 
-    descLower.includes('#started') || 
+    descLower.includes('#next') || 
     descLower.includes('#doing') || 
+    descLower.includes('#active') || 
     (startDateValue !== 0 && startDateValue <= todayValue) || 
     (scheduledDateValue !== 0 && scheduledDateValue <= todayValue)
   ) {
-    gtdState = 'InProgress';
+    gtdState = 'InProgress'; // In our UI "InProgress" is "Next Actions"
   } else {
     gtdState = 'Inbox';
   }
