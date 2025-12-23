@@ -153,15 +153,15 @@ const App: React.FC = () => {
     if (viewMode === 'gtd') {
       const table = `|                   |              |
 | ----------------- | ------------ |
-| ![[#收集箱 (Inbox)]] | ![[#已处理/授权]] |
-| ![[#执行中]]         | ![[#已完成]]    |
+| ![[#收集箱 (Inbox)]] | ![[#执行中]]     |
+| ![[#已处理/授权]]    | ![[#已完成]]    |
 |                   |              |
 
 `;
       const sections = [
         { title: '收集箱 (Inbox)', tasks: g_inbox },
-        { title: '已处理/授权', tasks: g_waiting },
         { title: '执行中', tasks: g_doing },
+        { title: '已处理/授权', tasks: g_waiting },
         { title: '已完成', tasks: g_done }
       ];
 
@@ -440,8 +440,8 @@ const App: React.FC = () => {
           ) : viewMode === 'gtd' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
               <Quadrant title="收集箱 (Inbox)" desc="未处理的任务" tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
-              <Quadrant title="已处理/授权" desc="Waiting / Blocked" tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
               <Quadrant title="执行中" desc="Started / Scheduled Today" tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
+              <Quadrant title="已处理/授权" desc="Waiting / Blocked" tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
               <Quadrant title="已完成" desc="Completed tasks" tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
             </div>
           ) : (
