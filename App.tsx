@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo } from 'react';
 import { ObsidianTask, ViewMode, Priority, GTDState } from './types';
 import { parseObsidianTask, stringifyTask } from './utils/parser';
@@ -15,7 +16,8 @@ const INITIAL_TASK_FORM = {
   cancelledDate: '',
   status: 'open' as 'open' | 'completed' | 'cancelled',
   taskId: '',
-  dependsOn: ''
+  dependsOn: '',
+  hasNextAction: false
 };
 
 const App: React.FC = () => {
@@ -55,21 +57,21 @@ const App: React.FC = () => {
       cancelledDate: task.cancelledDate || '',
       status: task.status,
       taskId: task.taskId || '',
-      dependsOn: task.dependsOn || ''
+      dependsOn: task.dependsOn || '',
+      hasNextAction: false
     });
     setIsTaskModalOpen(true);
   }, []);
 
   const handleDeleteTask = useCallback((id: string) => {
-    if (window.confirm('Are you sure you want to delete this task?')) {
-      setTasks(prev => prev.filter(t => t.id !== id));
-    }
+    setTasks(prev => prev.filter(t => t.id !== id));
   }, []);
 
   const handleTaskSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.description.trim()) return;
 
+    const currentTaskId = taskForm.taskId;
     const taskData = {
       description: taskForm.description,
       status: taskForm.status,
@@ -81,39 +83,82 @@ const App: React.FC = () => {
       createdDate: taskForm.createdDate || undefined,
       doneDate: taskForm.doneDate || undefined,
       cancelledDate: taskForm.cancelledDate || undefined,
-      taskId: taskForm.taskId || undefined,
+      taskId: currentTaskId || undefined,
       dependsOn: taskForm.dependsOn || undefined,
     };
 
-    setTasks(prev => prev.map(t => {
-      if (t.id === (editingTaskId || '')) {
-        const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
-        const parsed = parseObsidianTask(line);
-        return parsed || { ...t, ...taskData };
-      }
-      return t;
-    }));
+    if (editingTaskId) {
+      setTasks(prev => {
+        const updatedTasks = prev.map(t => {
+          if (t.id === editingTaskId) {
+            const line = stringifyTask({ ...t, ...taskData } as ObsidianTask);
+            const parsed = parseObsidianTask(line);
+            return parsed || { ...t, ...taskData };
+          }
+          return t;
+        });
 
-    if (!editingTaskId) {
+        // Trigger dependency clearing if newly completed
+        const original = prev.find(t => t.id === editingTaskId);
+        if (original && original.status === 'open' && taskData.status === 'completed' && taskData.taskId) {
+          return updatedTasks.map(t => {
+            if (t.dependsOn === taskData.taskId) {
+              const cleared = { ...t, dependsOn: undefined };
+              return parseObsidianTask(stringifyTask(cleared as ObsidianTask)) || cleared;
+            }
+            return t;
+          });
+        }
+        return updatedTasks;
+      });
+    } else {
       const line = stringifyTask({ id: Math.random().toString(), ...taskData } as any);
       const newTask = parseObsidianTask(line)!;
       setTasks(prev => [...prev, newTask]);
     }
 
-    setTaskForm(INITIAL_TASK_FORM);
-    setEditingTaskId(null);
-    setIsTaskModalOpen(false);
+    if (taskForm.hasNextAction) {
+      setTaskForm({
+        ...INITIAL_TASK_FORM,
+        dependsOn: currentTaskId || ''
+      });
+      setEditingTaskId(null);
+      setIsTaskModalOpen(true);
+    } else {
+      setTaskForm(INITIAL_TASK_FORM);
+      setEditingTaskId(null);
+      setIsTaskModalOpen(false);
+    }
   };
 
   const toggleTaskStatus = useCallback((id: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === id) {
-        const nextStatus = t.status === 'open' ? 'completed' : 'open';
-        const updated = { ...t, status: nextStatus };
-        return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
+    setTasks(prev => {
+      const targetTask = prev.find(t => t.id === id);
+      if (!targetTask) return prev;
+
+      const nextStatus = targetTask.status === 'open' ? 'completed' : 'open';
+      const updatedList = prev.map(t => {
+        if (t.id === id) {
+          const updated = { ...t, status: nextStatus };
+          return parseObsidianTask(stringifyTask(updated as ObsidianTask)) || updated;
+        }
+        return t;
+      });
+
+      // Dependency clearing logic
+      if (nextStatus === 'completed' && targetTask.taskId) {
+        return updatedList.map(t => {
+          if (t.dependsOn === targetTask.taskId) {
+            const cleared = { ...t, dependsOn: undefined };
+            // Re-parse ensures it moves to correct GTD quadrant automatically
+            return parseObsidianTask(stringifyTask(cleared as ObsidianTask)) || cleared;
+          }
+          return t;
+        });
       }
-      return t;
-    }));
+
+      return updatedList;
+    });
   }, []);
 
   const handleDrop = (e: React.DragEvent, targetData: any) => {
@@ -143,16 +188,12 @@ const App: React.FC = () => {
           if (isUrgent) {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
-            
-            // Check if task is already overdue
             const isOverdue = currentDue && currentDue < today;
-            
             if (!isOverdue) {
               if (!currentDue || currentDue > thresholdDate) {
                 updatedDueDate = urgentStr;
               }
             }
-            // If overdue, we keep updatedDueDate as task.dueDate (no change)
           } else {
             const currentDue = task.dueDate ? new Date(task.dueDate) : null;
             if (currentDue) currentDue.setHours(0,0,0,0);
@@ -171,10 +212,8 @@ const App: React.FC = () => {
       if (gtdState === 'Done') {
         toggleTaskStatus(taskId);
       } else if (gtdState === 'NextActions') {
-        alert("已处理/授权：请添加具有 ⛔ 依赖关系的任务或相关标签：#waiting #delegated #blocked）");
         handleOpenEdit(targetTask);
       } else if (gtdState === 'InProgress') {
-        alert("执行中：请添加开始日期 🛫 或计划日期 ⏳ ，日期需在今天或之前。");
         handleOpenEdit(targetTask);
       } else {
         setTasks(prev => prev.map(task => {
@@ -260,7 +299,7 @@ const App: React.FC = () => {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
         <Quadrant title="收集箱 (Inbox)" desc="未处理的任务 / 默认分类" tasks={inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
-        <Quadrant title="已处理/授权" desc="Waiting / Dependencies / Blocked" tasks={processed} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
+        <Quadrant title="已授权/等待" desc="Waiting / Dependencies / Blocked" tasks={processed} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
         <Quadrant title="执行中" desc="Started / Scheduled (Date <= Today)" tasks={inProgress} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
         <Quadrant title="已完成" desc="已勾选完成的任务" tasks={done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
       </div>
@@ -280,20 +319,17 @@ const App: React.FC = () => {
 
     if (viewMode === 'eisenhower') {
       tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#重要且紧急 🔴]] | ![[#重要不紧急 🟢]] |\n| ![[#不重要但紧急 🟡]] | ![[#不重要不紧急 ⚪]] |\n| | |\n\n`;
-
       mdList += genMdQuad("重要且紧急 🔴", tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("重要不紧急 🟢", tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("不重要但紧急 🟡", tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open'));
       mdList += genMdQuad("不重要不紧急 ⚪", tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open'));
     } else {
-      tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#收集箱 (Inbox)]] | ![[#已处理/授权]] |\n| ![[#执行中]] | ![[#已完成]] |\n| | |\n\n`;
-
+      tableHeader = `| | |\n| ----------------- | ------------ |\n| ![[#收集箱 (Inbox)]] | ![[#已授权/等待]] |\n| ![[#执行中]] | ![[#已完成]] |\n| | |\n\n`;
       mdList += genMdQuad("收集箱 (Inbox)", tasks.filter(t => t.gtdState === 'Inbox' && t.status === 'open'));
-      mdList += genMdQuad("已处理/授权", tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open'));
+      mdList += genMdQuad("已授权/等待", tasks.filter(t => t.gtdState === 'NextActions' && t.status === 'open'));
       mdList += genMdQuad("执行中", tasks.filter(t => t.gtdState === 'InProgress' && t.status === 'open'));
       mdList += genMdQuad("已完成", tasks.filter(t => t.status === 'completed'));
     }
-    
     return (tableHeader + mdList).trim();
   };
 
@@ -307,7 +343,6 @@ const App: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     const content = generateMarkdown();
     const title = viewMode === 'eisenhower' ? 'Eisenhower Matrix' : 'GTD Flow';
-    
     const noteContent = `---
 cssclasses:
   - matrix
@@ -327,7 +362,6 @@ keywords:
 # ${title}
 
 ${content}`;
-
     setExportTitle('Export Full Note (YAML + Content)');
     setExportText(noteContent);
     setIsExportModalOpen(true);
@@ -366,34 +400,34 @@ ${content}`;
         )}
       </main>
 
-      {/* Task Edit/Create Modal */}
+      {/* Task Edit/Create Modal - LIGHT THEME */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#1e1e1e] text-[#cccccc] rounded-2xl shadow-2xl w-full max-w-[550px] overflow-hidden flex flex-col border border-[#333333] animate-in zoom-in duration-200">
-            <div className="p-5 flex items-center justify-between border-b border-[#333333] bg-[#252525]">
-              <h3 className="text-base font-bold text-white tracking-tight">{editingTaskId ? 'Edit Obsidian Task' : 'Create New Task'}</h3>
-              <button onClick={() => setIsTaskModalOpen(false)} className="text-[#999999] hover:text-white text-2xl transition-colors">&times;</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white text-slate-700 rounded-3xl shadow-2xl w-full max-w-[550px] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in duration-200">
+            <div className="px-6 py-5 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">{editingTaskId ? 'Edit Task' : 'New Obsidian Task'}</h3>
+              <button onClick={() => setIsTaskModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-3xl leading-none transition-colors">&times;</button>
             </div>
             <form onSubmit={handleTaskSubmit} className="p-6 space-y-5 max-h-[85vh] overflow-y-auto">
               <div>
-                <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">Task Description</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Task Description</label>
                 <textarea
                   required
                   rows={3}
                   value={taskForm.description}
                   onChange={e => setTaskForm({...taskForm, description: e.target.value})}
-                  placeholder="Task content... (use #project for pinning)"
-                  className="w-full bg-[#2a2a2a] text-white px-4 py-3 rounded-xl border border-[#3e3e3e] focus:border-indigo-500 outline-none text-sm transition-all"
+                  placeholder="What needs to be done?"
+                  className="w-full bg-slate-50 text-slate-900 px-4 py-3 rounded-2xl border border-slate-200 focus:border-indigo-500 focus:bg-white outline-none text-sm transition-all shadow-inner"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">Priority</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Priority</label>
                   <select 
                     value={taskForm.priority}
                     onChange={e => setTaskForm({...taskForm, priority: e.target.value as Priority})}
-                    className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 appearance-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-700 h-10 appearance-none focus:border-indigo-500 focus:bg-white"
                   >
                     <option value={Priority.None}>No Priority (Normal)</option>
                     <option value={Priority.Highest}>🔺 Highest</option>
@@ -404,11 +438,11 @@ ${content}`;
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">Status</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status</label>
                   <select 
                     value={taskForm.status}
                     onChange={e => setTaskForm({...taskForm, status: e.target.value as any})}
-                    className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 appearance-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-700 h-10 appearance-none focus:border-indigo-500 focus:bg-white"
                   >
                     <option value="open">Todo [ ]</option>
                     <option value="completed">Done [x]</option>
@@ -419,40 +453,65 @@ ${content}`;
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">📅 Due Date</label>
-                  <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500 color-scheme-dark" style={{colorScheme: 'dark'}}/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">📅 Due Date</label>
+                  <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">🛫 Start Date</label>
-                  <input type="date" value={taskForm.startDate} onChange={e => setTaskForm({...taskForm, startDate: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500 color-scheme-dark" style={{colorScheme: 'dark'}}/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🛫 Start Date</label>
+                  <input type="date" value={taskForm.startDate} onChange={e => setTaskForm({...taskForm, startDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">⏳ Scheduled</label>
-                  <input type="date" value={taskForm.scheduledDate} onChange={e => setTaskForm({...taskForm, scheduledDate: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500 color-scheme-dark" style={{colorScheme: 'dark'}}/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">⏳ Scheduled</label>
+                  <input type="date" value={taskForm.scheduledDate} onChange={e => setTaskForm({...taskForm, scheduledDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">🔁 Recurrence</label>
-                  <input type="text" placeholder="every day" value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500"/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🔁 Recurrence</label>
+                  <input type="text" placeholder="every day" value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">🆔 Task ID</label>
-                  <input type="text" value={taskForm.taskId} onChange={e => setTaskForm({...taskForm, taskId: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500"/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🆔 Task ID</label>
+                  <input type="text" placeholder="e.g. action-1" value={taskForm.taskId} onChange={e => setTaskForm({...taskForm, taskId: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-[#666666] uppercase tracking-widest mb-2">⛔ Dependency (ID)</label>
-                  <input type="text" value={taskForm.dependsOn} onChange={e => setTaskForm({...taskForm, dependsOn: e.target.value})} className="w-full bg-[#2a2a2a] border border-[#3e3e3e] rounded-xl px-3 py-2 text-xs outline-none text-white h-10 focus:border-indigo-500"/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">⛔ Dependency (ID)</label>
+                  <input type="text" placeholder="ID of parent task" value={taskForm.dependsOn} onChange={e => setTaskForm({...taskForm, dependsOn: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none text-slate-900 h-10 focus:border-indigo-500 focus:bg-white"/>
                 </div>
+              </div>
+
+              {/* Workflow Enhancement: Next Action */}
+              <div className="pt-2 flex items-center gap-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                <input 
+                  type="checkbox" 
+                  id="hasNextAction"
+                  checked={taskForm.hasNextAction}
+                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    let newId = taskForm.taskId;
+                    if (checked && !newId) {
+                      newId = Math.random().toString(36).substr(2, 6);
+                    }
+                    setTaskForm({...taskForm, hasNextAction: checked, taskId: newId});
+                  }}
+                />
+                <label htmlFor="hasNextAction" className="text-sm font-bold text-indigo-900 cursor-pointer select-none">
+                  Has Next Action? <span className="text-[10px] block font-normal opacity-60">Automatically create dependent task after saving</span>
+                </label>
               </div>
 
               <div className="pt-6 flex gap-3">
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-indigo-900/20">{editingTaskId ? 'Save Task' : 'Add to List'}</button>
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-8 py-3.5 bg-[#2a2a2a] hover:bg-[#333333] text-[#999999] rounded-xl text-sm font-bold transition-all">Cancel</button>
+                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl text-sm transition-all shadow-xl shadow-indigo-200">
+                  {editingTaskId ? 'Save Changes' : 'Create Task'}
+                </button>
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-sm font-bold transition-all">
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
