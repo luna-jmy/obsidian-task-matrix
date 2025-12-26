@@ -20,7 +20,8 @@ const INITIAL_TASK_FORM = {
   status: 'open' as 'open' | 'completed' | 'cancelled',
   taskId: '',
   dependsOn: '',
-  hasNextAction: false
+  hasNextAction: false,
+  isProject: false
 };
 
 const DEFAULT_YAML_TEMPLATE = (date: string) => `---
@@ -76,6 +77,9 @@ const App: React.FC = () => {
   const [listSortBy, setListSortBy] = useState<string>('manual');
   const [listSortDir, setListSortDir] = useState<'asc' | 'desc'>('desc');
   const [listFilterStatus, setListFilterStatus] = useState<string>('all');
+  // Multi-criteria sorting: array of { field: string, direction: 'asc' | 'desc' }
+  const [listSortCriteria, setListSortCriteria] = useState<Array<{ field: string; direction: 'asc' | 'desc' }>>([]);
+  const [isMultiSortMode, setIsMultiSortMode] = useState(false);
 
   const [inputText, setInputText] = useState('');
   const [yamlHeader, setYamlHeader] = useState(DEFAULT_YAML_TEMPLATE(new Date().toISOString().split('T')[0]));
@@ -143,31 +147,41 @@ const App: React.FC = () => {
     if (listFilterStatus === 'completed') filtered = tasks.filter(t => t.status === 'completed');
     if (listFilterStatus === 'cancelled') filtered = tasks.filter(t => t.status === 'cancelled');
 
-    if (listSortBy === 'manual') return filtered;
+    if (listSortBy === 'manual' && !isMultiSortMode) return filtered;
+
+    // Use multi-criteria sort if enabled, otherwise use single sort
+    const sortCriteria = isMultiSortMode && listSortCriteria.length > 0 ? listSortCriteria : [{ field: listSortBy, direction: listSortDir }];
 
     return [...filtered].sort((a, b) => {
-      let result = 0;
-      if (listSortBy === 'dueDate') {
-        const valA = a.dueDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        const valB = b.dueDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        result = valA.localeCompare(valB);
-      } else if (listSortBy === 'priority') {
-        result = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-      } else if (listSortBy === 'startDate') {
-        const valA = a.startDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        const valB = b.startDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        result = valA.localeCompare(valB);
-      } else if (listSortBy === 'scheduledDate') {
-        const valA = a.scheduledDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        const valB = b.scheduledDate || (listSortDir === 'asc' ? '9999-99-99' : '0000-00-00');
-        result = valA.localeCompare(valB);
-      } else if (listSortBy === 'status') {
-        result = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
-      }
+      for (const criterion of sortCriteria) {
+        if (criterion.field === 'manual') continue;
 
-      return listSortDir === 'asc' ? result : -result;
+        let result = 0;
+        if (criterion.field === 'dueDate') {
+          const valA = a.dueDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          const valB = b.dueDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          result = valA.localeCompare(valB);
+        } else if (criterion.field === 'priority') {
+          result = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        } else if (criterion.field === 'startDate') {
+          const valA = a.startDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          const valB = b.startDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          result = valA.localeCompare(valB);
+        } else if (criterion.field === 'scheduledDate') {
+          const valA = a.scheduledDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          const valB = b.scheduledDate || (criterion.direction === 'asc' ? '9999-99-99' : '0000-00-00');
+          result = valA.localeCompare(valB);
+        } else if (criterion.field === 'status') {
+          result = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        }
+
+        if (result !== 0) {
+          return criterion.direction === 'asc' ? result : -result;
+        }
+      }
+      return 0;
     });
-  }, [tasks, listSortBy, listSortDir, listFilterStatus]);
+  }, [tasks, listSortBy, listSortDir, listFilterStatus, listSortCriteria, isMultiSortMode]);
 
   const generateMarkdownBody = useCallback(() => {
     if (viewMode === 'gtd') {
@@ -279,13 +293,32 @@ const App: React.FC = () => {
           }
         } else if (viewMode === 'gtd') {
           const { gtdState } = targetData;
+          // Check if task is blocked (has unfinished dependency)
+          const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
+          const hasWaitingTag = task.description.toLowerCase().includes('#waiting') || task.description.toLowerCase().includes('#delegated') || task.description.toLowerCase().includes('#blocked');
+
+          // If task is blocked and in Waiting/Delegated, prevent dragging out
+          if (hasUnfinishedDependency && getDynamicGTDState(task, tasks) === 'NextActions' && gtdState !== 'NextActions' && gtdState !== 'Done') {
+            return task; // Don't allow moving blocked tasks out of waiting area
+          }
+
           if (gtdState === 'Done') {
             updated.status = 'completed';
             updated.doneDate = todayStr;
-          } else if (gtdState === 'InProgress' || gtdState === 'NextActions') {
-            setTimeout(() => handleOpenEdit(task), 0);
-            return task;
+          } else if (gtdState === 'InProgress') {
+            // Drag to "In Progress": Set start date to today
+            updated.status = 'open';
+            updated.startDate = todayStr;
+            // Remove waiting/delegated/blocked tags when moving out of waiting state
+            updated.description = task.description.replace(/#(waiting|delegated|blocked)\b/gi, '').trim();
+          } else if (gtdState === 'NextActions') {
+            // Drag to "Waiting/Delegated": Add #waiting tag
+            updated.status = 'open';
+            if (!hasWaitingTag) {
+              updated.description = task.description + ' #waiting';
+            }
           } else if (gtdState === 'Inbox') {
+            // Drag to "Inbox": Remove start date, scheduled date, dependency, and related tags
             updated.status = 'open';
             updated.startDate = undefined;
             updated.scheduledDate = undefined;
@@ -316,7 +349,8 @@ const App: React.FC = () => {
       status: task.status,
       taskId: task.taskId || '',
       dependsOn: task.dependsOn || '',
-      hasNextAction: false
+      hasNextAction: false,
+      isProject: task.description.toLowerCase().includes('#project')
     });
     setIsTaskModalOpen(true);
   }, []);
@@ -328,8 +362,18 @@ const App: React.FC = () => {
     if (taskForm.hasNextAction && !finalTaskId) {
       finalTaskId = generateShortId();
     }
+
+    // Handle #project tag
+    let description = taskForm.description.trim();
+    const hasProjectTag = description.toLowerCase().includes('#project');
+    if (taskForm.isProject && !hasProjectTag) {
+      description += ' #project';
+    } else if (!taskForm.isProject && hasProjectTag) {
+      description = description.replace(/#project/gi, '').trim();
+    }
+
     const taskData = {
-      description: taskForm.description,
+      description: description,
       status: taskForm.status,
       dueDate: taskForm.dueDate || undefined,
       startDate: taskForm.startDate || undefined,
@@ -398,32 +442,86 @@ const App: React.FC = () => {
   }, []);
 
   const handleListSortChange = (newSortBy: string) => {
-    setListSortBy(newSortBy);
-    // If it's a date field, default to Descending
-    if (['dueDate', 'startDate', 'scheduledDate'].includes(newSortBy)) {
-      setListSortDir('desc');
+    if (isMultiSortMode) {
+      // In multi-sort mode, add or update the criterion
+      const existingIndex = listSortCriteria.findIndex(c => c.field === newSortBy);
+      if (existingIndex >= 0) {
+        // Toggle direction if already exists
+        setListSortCriteria(prev => prev.map((c, i) =>
+          i === existingIndex ? { ...c, direction: c.direction === 'asc' ? 'desc' : 'asc' } : c
+        ));
+      } else {
+        // Add new criterion
+        const defaultDir = ['dueDate', 'startDate', 'scheduledDate'].includes(newSortBy) ? 'desc' : 'asc';
+        setListSortCriteria(prev => [...prev, { field: newSortBy, direction: defaultDir as 'asc' | 'desc' }]);
+      }
+    } else {
+      setListSortBy(newSortBy);
+      // If it's a date field, default to Descending
+      if (['dueDate', 'startDate', 'scheduledDate'].includes(newSortBy)) {
+        setListSortDir('desc');
+      }
     }
   };
 
-  const Quadrant = ({ title, desc, tasks: qTasks, color, data, state }: any) => (
-    <div
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-      onDrop={(e) => handleDrop(e, data || { gtdState: state })}
-      className={`flex flex-col h-full min-h-[350px] border-2 border-dashed rounded-xl p-4 transition-all ${color} hover:border-solid`}
-    >
-      <div className="mb-4">
-        <h3 className="text-lg font-bold flex items-center justify-between">
-          {title} <span className="text-xs bg-white/50 px-2 rounded-full border border-current">{qTasks.length}</span>
-        </h3>
-        <p className="text-[10px] opacity-60 uppercase tracking-widest">{desc}</p>
+  const handleRemoveSortCriterion = (field: string) => {
+    setListSortCriteria(prev => prev.filter(c => c.field !== field));
+  };
+
+  const handleToggleSortDirection = (field: string) => {
+    setListSortCriteria(prev => prev.map(c =>
+      c.field === field ? { ...c, direction: c.direction === 'asc' ? 'desc' : 'asc' } : c
+    ));
+  };
+
+  const handleClearAllSortCriteria = () => {
+    setListSortCriteria([]);
+    setIsMultiSortMode(false);
+  };
+
+  const handleEnableMultiSort = () => {
+    setIsMultiSortMode(true);
+    if (listSortCriteria.length === 0 && listSortBy !== 'manual') {
+      setListSortCriteria([{ field: listSortBy, direction: listSortDir }]);
+    }
+  };
+
+  const Quadrant = ({ title, desc, tasks: qTasks, color, data, state, isGTD = false }: any) => {
+    // Helper to check if a task should have drag disabled (blocked task in waiting area)
+    const isTaskDragDisabled = (task: ObsidianTask) => {
+      if (!isGTD) return false;
+      const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
+      return hasUnfinishedDependency && getDynamicGTDState(task, tasks) === 'NextActions';
+    };
+
+    return (
+      <div
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+        onDrop={(e) => handleDrop(e, data || { gtdState: state })}
+        className={`flex flex-col h-full min-h-[350px] border-2 border-dashed rounded-xl p-4 transition-all ${color} hover:border-solid`}
+      >
+        <div className="mb-4">
+          <h3 className="text-lg font-bold flex items-center justify-between">
+            {title} <span className="text-xs bg-white/50 px-2 rounded-full border border-current">{qTasks.length}</span>
+          </h3>
+          <p className="text-[10px] opacity-60 uppercase tracking-widest">{desc}</p>
+        </div>
+        <div className="flex-1 overflow-y-auto pr-1">
+          {[...qTasks].sort((a, b) => (a.description.toLowerCase().includes('#project') ? -1 : 1)).map(t_node => (
+            <TaskCard
+              key={t_node.id}
+              language={language}
+              task={t_node}
+              onToggleStatus={toggleTaskStatus}
+              onEdit={handleOpenEdit}
+              onDelete={handleDeleteTask}
+              isDragDisabled={isTaskDragDisabled(t_node)}
+            />
+          ))}
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto pr-1">
-        {[...qTasks].sort((a, b) => (a.description.toLowerCase().includes('#project') ? -1 : 1)).map(t_node => (
-          <TaskCard key={t_node.id} language={language} task={t_node} onToggleStatus={toggleTaskStatus} onEdit={handleOpenEdit} onDelete={handleDeleteTask} />
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans">
@@ -467,10 +565,10 @@ const App: React.FC = () => {
             </div>
           ) : viewMode === 'gtd' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-              <Quadrant title={t('quadrant.g_inbox.title')} desc={t('quadrant.g_inbox.desc')} tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" />
-              <Quadrant title={t('quadrant.g_doing.title')} desc={t('quadrant.g_doing.desc')} tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" />
-              <Quadrant title={t('quadrant.g_waiting.title')} desc={t('quadrant.g_waiting.desc')} tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" />
-              <Quadrant title={t('quadrant.g_done.title')} desc={t('quadrant.g_done.desc')} tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" />
+              <Quadrant title={t('quadrant.g_inbox.title')} desc={t('quadrant.g_inbox.desc')} tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" isGTD={true} />
+              <Quadrant title={t('quadrant.g_doing.title')} desc={t('quadrant.g_doing.desc')} tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" isGTD={true} />
+              <Quadrant title={t('quadrant.g_waiting.title')} desc={t('quadrant.g_waiting.desc')} tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" isGTD={true} />
+              <Quadrant title={t('quadrant.g_done.title')} desc={t('quadrant.g_done.desc')} tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" isGTD={true} />
             </div>
           ) : (
             /* List View */
@@ -489,29 +587,103 @@ const App: React.FC = () => {
                     <option value="cancelled">{t('list.cancelled')}</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('list.sort_by')}</label>
-                  <select
-                    value={listSortBy}
-                    onChange={e => handleListSortChange(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="manual">{t('list.manual')}</option>
-                    <option value="dueDate">{t('list.due_date')}</option>
-                    <option value="priority">{t('list.priority')}</option>
-                    <option value="startDate">{t('list.start_date')}</option>
-                    <option value="scheduledDate">{t('list.scheduled_date')}</option>
-                    <option value="status">{t('list.status')}</option>
-                  </select>
-                </div>
 
-                {listSortBy !== 'manual' && (
-                  <button
-                    onClick={() => setListSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
-                  >
-                    {listSortDir === 'asc' ? t('list.ascending') : t('list.descending')}
-                  </button>
+                {/* Multi-sort mode toggle */}
+                {!isMultiSortMode ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('list.sort_by')}</label>
+                      <select
+                        value={listSortBy}
+                        onChange={e => handleListSortChange(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="manual">{t('list.manual')}</option>
+                        <option value="dueDate">{t('list.due_date')}</option>
+                        <option value="priority">{t('list.priority')}</option>
+                        <option value="startDate">{t('list.start_date')}</option>
+                        <option value="scheduledDate">{t('list.scheduled_date')}</option>
+                        <option value="status">{t('list.status')}</option>
+                      </select>
+                    </div>
+
+                    {listSortBy !== 'manual' && (
+                      <button
+                        onClick={() => setListSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                      >
+                        {listSortDir === 'asc' ? t('list.ascending') : t('list.descending')}
+                      </button>
+                    )}
+
+                    {listSortBy !== 'manual' && (
+                      <button
+                        onClick={handleEnableMultiSort}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                        title={isMultiSortMode ? 'Multi-sort enabled' : 'Enable multi-sort'}
+                      >
+                        + Multi-sort
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  /* Multi-sort mode UI */
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Multi-sort</label>
+                      <select
+                        value=""
+                        onChange={e => handleListSortChange(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="" disabled>Add criteria...</option>
+                        <option value="dueDate">{t('list.due_date')}</option>
+                        <option value="priority">{t('list.priority')}</option>
+                        <option value="startDate">{t('list.start_date')}</option>
+                        <option value="scheduledDate">{t('list.scheduled_date')}</option>
+                        <option value="status">{t('list.status')}</option>
+                      </select>
+                    </div>
+
+                    {/* Active sort criteria */}
+                    {listSortCriteria.map((criterion, index) => (
+                      <div
+                        key={criterion.field}
+                        className="flex items-center gap-1 px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700"
+                      >
+                        <span className="opacity-50">{index + 1}.</span>
+                        <span>{t(`list.${criterion.field === 'dueDate' ? 'due_date' : criterion.field === 'scheduledDate' ? 'scheduled_date' : criterion.field === 'startDate' ? 'start_date' : criterion.field}`)}</span>
+                        <button
+                          onClick={() => handleToggleSortDirection(criterion.field)}
+                          className="ml-1 px-1.5 py-0.5 bg-white rounded hover:bg-indigo-100 transition-colors"
+                          title="Toggle direction"
+                        >
+                          {criterion.direction === 'asc' ? '↑' : '↓'}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveSortCriterion(criterion.field)}
+                          className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded hover:bg-rose-200 transition-colors"
+                          title="Remove"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={handleClearAllSortCriteria}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Clear all
+                    </button>
+
+                    <button
+                      onClick={() => setIsMultiSortMode(false)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition-colors"
+                    >
+                      Exit multi-sort
+                    </button>
+                  </div>
                 )}
 
                 <div className="ml-auto text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">
@@ -525,7 +697,7 @@ const App: React.FC = () => {
                     <div
                       key={t_row.id}
                       onDragOver={(e) => {
-                        if (listSortBy === 'manual') {
+                        if (listSortBy === 'manual' && !isMultiSortMode) {
                           e.preventDefault();
                           e.dataTransfer.dropEffect = 'move';
                         }
@@ -632,6 +804,13 @@ const App: React.FC = () => {
               <div className="pt-2 flex items-center gap-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
                 <input type="checkbox" id="hasNextAction" checked={taskForm.hasNextAction} className="w-5 h-5 rounded border-slate-300 text-indigo-600 cursor-pointer" onChange={e => setTaskForm({ ...taskForm, hasNextAction: e.target.checked })} />
                 <label htmlFor="hasNextAction" className="text-sm font-bold text-indigo-900 cursor-pointer">{t('form.next_action')} <span className="text-[10px] block font-normal opacity-60">{t('form.next_action_desc')}</span></label>
+              </div>
+              <div className="flex items-center gap-3 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
+                <input type="checkbox" id="isProject" checked={taskForm.isProject} className="w-5 h-5 rounded border-slate-300 text-emerald-600 cursor-pointer" onChange={e => setTaskForm({ ...taskForm, isProject: e.target.checked })} />
+                <label htmlFor="isProject" className="text-sm font-bold text-emerald-900 cursor-pointer">
+                  {language === 'zh' ? '项目相关' : 'Project Related'}
+                  <span className="text-[10px] block font-normal opacity-60">{language === 'zh' ? '勾选后自动添加 #project 标签' : 'Automatically adds #project tag when checked'}</span>
+                </label>
               </div>
               <div className="pt-6 flex gap-3">
                 <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl text-sm transition-all shadow-xl shadow-indigo-200">{t('actions.save')}</button>

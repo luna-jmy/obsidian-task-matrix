@@ -9,9 +9,10 @@ interface TaskCardProps {
   onToggleStatus: (id: string) => void;
   onEdit: (task: ObsidianTask) => void;
   onDelete: (id: string) => void;
+  isDragDisabled?: boolean;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStatus, onEdit, onDelete }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStatus, onEdit, onDelete, isDragDisabled = false }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isProject = task.description.toLowerCase().includes('#project');
 
@@ -43,6 +44,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStat
   };
 
   const handleDragStart = (e: React.DragEvent) => {
+    if (isDragDisabled) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('taskId', task.id);
     e.dataTransfer.effectAllowed = 'move';
     setTimeout(() => {
@@ -56,10 +61,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStat
 
   return (
     <div
-      draggable
+      draggable={!isDragDisabled}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      className={`p-2.5 sm:p-3 mb-2 rounded-lg border shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative flex flex-col justify-center min-h-[64px] sm:min-h-[72px]
+      className={`p-2.5 sm:p-3 mb-2 rounded-lg border shadow-sm hover:shadow-md transition-all ${isDragDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-grab active:cursor-grabbing'} group relative flex flex-col justify-center min-h-[64px] sm:min-h-[72px]
         ${isProject ? 'border-l-4 border-l-indigo-500 bg-indigo-50/30' : 'border-slate-200 bg-white'}
       `}
     >
