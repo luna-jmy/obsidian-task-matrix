@@ -10,9 +10,25 @@ interface TaskCardProps {
   onEdit: (task: ObsidianTask) => void;
   onDelete: (id: string) => void;
   isDragDisabled?: boolean;
+  // Cross-view status display
+  showGTDStatus?: boolean;
+  showEisenhowerStatus?: boolean;
+  gtdState?: string;
+  eisenhowerQuadrant?: string;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStatus, onEdit, onDelete, isDragDisabled = false }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({
+  task,
+  language,
+  onToggleStatus,
+  onEdit,
+  onDelete,
+  isDragDisabled = false,
+  showGTDStatus = false,
+  showEisenhowerStatus = false,
+  gtdState = '',
+  eisenhowerQuadrant = ''
+}) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isProject = task.description.toLowerCase().includes('#project');
 
@@ -122,6 +138,16 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, language, onToggleStat
           </p>
 
           <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1 sm:gap-1.5 text-[9px] sm:text-[10px]">
+            {showGTDStatus && gtdState && (
+              <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200" title="GTD State">
+                🔄 {gtdState}
+              </span>
+            )}
+            {showEisenhowerStatus && eisenhowerQuadrant && (
+              <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title="Eisenhower Quadrant">
+                📊 {eisenhowerQuadrant}
+              </span>
+            )}
             {task.priority !== Priority.None && (
               <span className={`px-1.5 py-0.5 rounded font-bold ${priorityColor[task.priority]}`}>
                 {priorityIcon[task.priority]} {(t(`priority.${task.priority.toLowerCase()}` as any)).toUpperCase()}

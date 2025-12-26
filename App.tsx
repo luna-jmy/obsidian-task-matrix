@@ -130,10 +130,17 @@ const App: React.FC = () => {
   }, []);
 
   // Filter tasks for matrix views
-  const e_q1 = useMemo(() => tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open'), [tasks]);
-  const e_q2 = useMemo(() => tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open'), [tasks]);
-  const e_q3 = useMemo(() => tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open'), [tasks]);
-  const e_q4 = useMemo(() => tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open'), [tasks]);
+  // Helper to check if task is blocked (has unfinished dependency or waiting tag)
+  const isTaskBlocked = (task: ObsidianTask) => {
+    const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
+    const hasWaitingTag = task.description.toLowerCase().includes('#waiting') || task.description.toLowerCase().includes('#delegated') || task.description.toLowerCase().includes('#blocked');
+    return hasUnfinishedDependency || hasWaitingTag;
+  };
+
+  const e_q1 = useMemo(() => tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open' && !isTaskBlocked(t)), [tasks]);
+  const e_q2 = useMemo(() => tasks.filter(t => t.isImportant && !t.isUrgent && t.status === 'open' && !isTaskBlocked(t)), [tasks]);
+  const e_q3 = useMemo(() => tasks.filter(t => !t.isImportant && t.isUrgent && t.status === 'open' && !isTaskBlocked(t)), [tasks]);
+  const e_q4 = useMemo(() => tasks.filter(t => !t.isImportant && !t.isUrgent && t.status === 'open' && !isTaskBlocked(t)), [tasks]);
 
   const g_inbox = useMemo(() => tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'Inbox'), [tasks, getDynamicGTDState]);
   const g_waiting = useMemo(() => tasks.filter(t => t.status === 'open' && getDynamicGTDState(t, tasks) === 'NextActions'), [tasks, getDynamicGTDState]);
@@ -486,12 +493,26 @@ const App: React.FC = () => {
     }
   };
 
-  const Quadrant = ({ title, desc, tasks: qTasks, color, data, state, isGTD = false }: any) => {
+  const Quadrant = ({ title, desc, tasks: qTasks, color, data, state, isGTD = false, tooltipContent }: any) => {
     // Helper to check if a task should have drag disabled (blocked task in waiting area)
     const isTaskDragDisabled = (task: ObsidianTask) => {
       if (!isGTD) return false;
       const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
       return hasUnfinishedDependency && getDynamicGTDState(task, tasks) === 'NextActions';
+    };
+
+    // Get GTD state for a task
+    const getTaskGTDState = (task: ObsidianTask) => {
+      const gtdState = getDynamicGTDState(task, tasks);
+      return gtdState;
+    };
+
+    // Get Eisenhower quadrant for a task
+    const getTaskEisenhowerQuadrant = (task: ObsidianTask) => {
+      if (task.isImportant && task.isUrgent) return 'Q1';
+      if (task.isImportant && !task.isUrgent) return 'Q2';
+      if (!task.isImportant && task.isUrgent) return 'Q3';
+      return 'Q4';
     };
 
     return (
@@ -502,7 +523,21 @@ const App: React.FC = () => {
       >
         <div className="mb-4">
           <h3 className="text-lg font-bold flex items-center justify-between">
-            {title} <span className="text-xs bg-white/50 px-2 rounded-full border border-current">{qTasks.length}</span>
+            <div className="flex items-center gap-2">
+              {title}
+              {tooltipContent && (
+                <div className="group relative inline-flex">
+                  <span className="cursor-help text-slate-400 hover:text-slate-600 text-sm">ⓘ</span>
+                  <div className="absolute left-0 top-full mt-2 w-64 bg-slate-900 text-white text-xs rounded-lg p-3 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                    <div className="relative">
+                      <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 rotate-45"></div>
+                      {tooltipContent}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <span className="text-xs bg-white/50 px-2 rounded-full border border-current">{qTasks.length}</span>
           </h3>
           <p className="text-[10px] opacity-60 uppercase tracking-widest">{desc}</p>
         </div>
@@ -516,11 +551,56 @@ const App: React.FC = () => {
               onEdit={handleOpenEdit}
               onDelete={handleDeleteTask}
               isDragDisabled={isTaskDragDisabled(t_node)}
+              showGTDStatus={!isGTD}
+              showEisenhowerStatus={isGTD}
+              gtdState={getTaskGTDState(t_node)}
+              eisenhowerQuadrant={getTaskEisenhowerQuadrant(t_node)}
             />
           ))}
         </div>
       </div>
     );
+  };
+
+  // Tooltip content for quadrants
+  const getEisenhowerTooltip = (quadrant: string) => {
+    if (language === 'zh') {
+      const tooltips = {
+        q1: '识别规则：高优先级任务 + 3天内到期\n归类规则：重要且紧急，需要立即处理',
+        q2: '识别规则：高优先级任务 + 无紧急截止日期\n归类规则：重要不紧急，需要计划安排',
+        q3: '识别规则：低优先级或无优先级 + 3天内到期\n归类规则：不重要但紧急，快速处理或委托',
+        q4: '识别规则：低优先级或无优先级 + 无紧急截止日期\n归类规则：不重要不紧急，考虑删除或延后'
+      };
+      return tooltips[quadrant as keyof typeof tooltips];
+    } else {
+      const tooltips = {
+        q1: 'Detection: High priority + Due within 3 days\nClassification: Important & Urgent - Do it now',
+        q2: 'Detection: High priority + No urgent deadline\nClassification: Important & Not Urgent - Schedule it',
+        q3: 'Detection: Low/No priority + Due within 3 days\nClassification: Not Important & Urgent - Delegate or quick task',
+        q4: 'Detection: Low/No priority + No urgent deadline\nClassification: Not Important & Not Urgent - Delete or postpone'
+      };
+      return tooltips[quadrant as keyof typeof tooltips];
+    }
+  };
+
+  const getGTDTooltip = (state: string) => {
+    if (language === 'zh') {
+      const tooltips = {
+        inbox: '识别规则：未开始且无特殊标签的任务\n归类规则：新收集的任务，等待处理',
+        doing: '识别规则：有 #started/#doing/#active 标签，或开始日期已到，或计划日期已到\n归类规则：正在执行的任务',
+        waiting: '识别规则：有未完成依赖，或 #waiting/#delegated/#blocked 标签\n归类规则：等待外部条件或他人完成的任务',
+        done: '识别规则：状态为已完成或已取消\n归类规则：已完成的任务'
+      };
+      return tooltips[state as keyof typeof tooltips];
+    } else {
+      const tooltips = {
+        inbox: 'Detection: Open tasks without special tags\nClassification: Newly collected tasks, waiting to be processed',
+        doing: 'Detection: Has #started/#doing/#active tags, or start/scheduled date reached\nClassification: Tasks currently in progress',
+        waiting: 'Detection: Has unfinished dependencies, or #waiting/#delegated/#blocked tags\nClassification: Tasks waiting for external conditions or others',
+        done: 'Detection: Status is completed or cancelled\nClassification: Finished tasks'
+      };
+      return tooltips[state as keyof typeof tooltips];
+    }
   };
 
   return (
@@ -558,17 +638,17 @@ const App: React.FC = () => {
         {tasks.length > 0 ? (
           viewMode === 'eisenhower' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-              <Quadrant title={t('quadrant.e_q1.title')} desc={t('quadrant.e_q1.desc')} tasks={e_q1} color="bg-rose-50 border-rose-200 text-rose-900" data={{ isUrgent: true, isImportant: true }} />
-              <Quadrant title={t('quadrant.e_q2.title')} desc={t('quadrant.e_q2.desc')} tasks={e_q2} color="bg-emerald-50 border-emerald-200 text-emerald-900" data={{ isUrgent: false, isImportant: true }} />
-              <Quadrant title={t('quadrant.e_q3.title')} desc={t('quadrant.e_q3.desc')} tasks={e_q3} color="bg-amber-50 border-amber-200 text-amber-900" data={{ isUrgent: true, isImportant: false }} />
-              <Quadrant title={t('quadrant.e_q4.title')} desc={t('quadrant.e_q4.desc')} tasks={e_q4} color="bg-slate-50 border-slate-200 text-slate-600" data={{ isUrgent: false, isImportant: false }} />
+              <Quadrant title={t('quadrant.e_q1.title')} desc={t('quadrant.e_q1.desc')} tasks={e_q1} color="bg-rose-50 border-rose-200 text-rose-900" data={{ isUrgent: true, isImportant: true }} tooltipContent={getEisenhowerTooltip('q1')} />
+              <Quadrant title={t('quadrant.e_q2.title')} desc={t('quadrant.e_q2.desc')} tasks={e_q2} color="bg-emerald-50 border-emerald-200 text-emerald-900" data={{ isUrgent: false, isImportant: true }} tooltipContent={getEisenhowerTooltip('q2')} />
+              <Quadrant title={t('quadrant.e_q3.title')} desc={t('quadrant.e_q3.desc')} tasks={e_q3} color="bg-amber-50 border-amber-200 text-amber-900" data={{ isUrgent: true, isImportant: false }} tooltipContent={getEisenhowerTooltip('q3')} />
+              <Quadrant title={t('quadrant.e_q4.title')} desc={t('quadrant.e_q4.desc')} tasks={e_q4} color="bg-slate-50 border-slate-200 text-slate-600" data={{ isUrgent: false, isImportant: false }} tooltipContent={getEisenhowerTooltip('q4')} />
             </div>
           ) : viewMode === 'gtd' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-              <Quadrant title={t('quadrant.g_inbox.title')} desc={t('quadrant.g_inbox.desc')} tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" isGTD={true} />
-              <Quadrant title={t('quadrant.g_doing.title')} desc={t('quadrant.g_doing.desc')} tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" isGTD={true} />
-              <Quadrant title={t('quadrant.g_waiting.title')} desc={t('quadrant.g_waiting.desc')} tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" isGTD={true} />
-              <Quadrant title={t('quadrant.g_done.title')} desc={t('quadrant.g_done.desc')} tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" isGTD={true} />
+              <Quadrant title={t('quadrant.g_inbox.title')} desc={t('quadrant.g_inbox.desc')} tasks={g_inbox} color="bg-sky-50 border-sky-200 text-sky-900" state="Inbox" isGTD={true} tooltipContent={getGTDTooltip('inbox')} />
+              <Quadrant title={t('quadrant.g_doing.title')} desc={t('quadrant.g_doing.desc')} tasks={g_doing} color="bg-teal-50 border-teal-200 text-teal-900" state="InProgress" isGTD={true} tooltipContent={getGTDTooltip('doing')} />
+              <Quadrant title={t('quadrant.g_waiting.title')} desc={t('quadrant.g_waiting.desc')} tasks={g_waiting} color="bg-purple-50 border-purple-200 text-purple-900" state="NextActions" isGTD={true} tooltipContent={getGTDTooltip('waiting')} />
+              <Quadrant title={t('quadrant.g_done.title')} desc={t('quadrant.g_done.desc')} tasks={g_done} color="bg-slate-100 border-slate-300 text-slate-500" state="Done" isGTD={true} tooltipContent={getGTDTooltip('done')} />
             </div>
           ) : (
             /* List View */
