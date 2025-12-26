@@ -130,11 +130,15 @@ const App: React.FC = () => {
   }, []);
 
   // Filter tasks for matrix views
-  // Helper to check if task is blocked (has unfinished dependency or waiting tag)
+  // Helper to check if task has unfinished dependency (blocked)
   const isTaskBlocked = (task: ObsidianTask) => {
-    const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
-    const hasWaitingTag = task.description.toLowerCase().includes('#waiting') || task.description.toLowerCase().includes('#delegated') || task.description.toLowerCase().includes('#blocked');
-    return hasUnfinishedDependency || hasWaitingTag;
+    return task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
+  };
+
+  // Helper to check if task has waiting/delegated/blocked tag (for GTD state)
+  const isTaskWaiting = (task: ObsidianTask) => {
+    const descLower = task.description.toLowerCase();
+    return descLower.includes('#waiting') || descLower.includes('#delegated') || descLower.includes('#blocked');
   };
 
   const e_q1 = useMemo(() => tasks.filter(t => t.isImportant && t.isUrgent && t.status === 'open' && !isTaskBlocked(t)), [tasks]);
@@ -301,8 +305,8 @@ const App: React.FC = () => {
         } else if (viewMode === 'gtd') {
           const { gtdState } = targetData;
           // Check if task is blocked (has unfinished dependency)
-          const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
-          const hasWaitingTag = task.description.toLowerCase().includes('#waiting') || task.description.toLowerCase().includes('#delegated') || task.description.toLowerCase().includes('#blocked');
+          const hasUnfinishedDependency = isTaskBlocked(task);
+          const hasWaitingTag = isTaskWaiting(task);
 
           // If task is blocked and in Waiting/Delegated, prevent dragging out
           if (hasUnfinishedDependency && getDynamicGTDState(task, tasks) === 'NextActions' && gtdState !== 'NextActions' && gtdState !== 'Done') {
@@ -497,14 +501,18 @@ const App: React.FC = () => {
     // Helper to check if a task should have drag disabled (blocked task in waiting area)
     const isTaskDragDisabled = (task: ObsidianTask) => {
       if (!isGTD) return false;
-      const hasUnfinishedDependency = task.dependsOn && tasks.some((t: ObsidianTask) => t.taskId === task.dependsOn && t.status !== 'completed');
-      return hasUnfinishedDependency && getDynamicGTDState(task, tasks) === 'NextActions';
+      return isTaskBlocked(task) && getDynamicGTDState(task, tasks) === 'NextActions';
     };
 
     // Get GTD state for a task
     const getTaskGTDState = (task: ObsidianTask) => {
       const gtdState = getDynamicGTDState(task, tasks);
       return gtdState;
+    };
+
+    // Check if task would appear in Eisenhower matrix
+    const isTaskInEisenhower = (task: ObsidianTask) => {
+      return task.status === 'open' && !isTaskBlocked(task);
     };
 
     // Get Eisenhower quadrant for a task
@@ -554,7 +562,7 @@ const App: React.FC = () => {
               showGTDStatus={!isGTD}
               showEisenhowerStatus={isGTD}
               gtdState={getTaskGTDState(t_node)}
-              eisenhowerQuadrant={getTaskEisenhowerQuadrant(t_node)}
+              eisenhowerQuadrant={isGTD && isTaskInEisenhower(t_node) ? getTaskEisenhowerQuadrant(t_node) : ''}
             />
           ))}
         </div>
