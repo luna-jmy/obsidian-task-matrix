@@ -4,17 +4,77 @@ A powerful, visual task management board designed for power users of **Obsidian*
 
 ![Obsidian Matrix Preview](https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6)
 
+## 💡 Why Obsidian Task Matrix?
+
+**Obsidian Task Matrix** bridges the gap between plain-text task management and visual productivity tools. While Obsidian excels at knowledge management, managing tasks through plain text alone can be overwhelming as your task list grows. This tool brings your tasks to life with three powerful, interconnected views—without ever leaving the Obsidian ecosystem.
+
+**Perfect for:**
+- Obsidian power users who want better task visualization
+- GTD practitioners looking for visual workflow management
+- Productivity enthusiasts who need both structure (Eisenhower) and flexibility (GTD)
+- Teams managing complex projects with task dependencies
+- Bilingual users (English/中文) working across contexts
+
 ## ✨ Features
 
-- **🌐 Bilingual Support**: Full support for Chinese (简体中文) and English with instant switching
-- **📋 List View**: Traditional task list with powerful multi-criteria sorting and manual drag-and-drop reordering
-- **📥 GTD Flow**: Getting Things Done workflow with Inbox, In Progress, Waiting, and Done columns. Smart drag-and-drop automatically manages tags and dates
-- **🔳 Eisenhower Matrix**: Time management matrix categorizing tasks by Importance and Urgency. Blocked tasks (unfinished dependencies) are automatically excluded for clarity
-- **🔄 Cross-View Linking**: See GTD status badges in Eisenhower view and Eisenhower quadrant badges in GTD view for unified task awareness
-- **🏷️ Smart Project Management**: Toggle project-related tasks to automatically add/remove `#project` tags
-- **📊 Intelligent Task Detection**: Automatic detection of task states, priorities, urgency, and blocking conditions
-- **📄 Obsidian Integration**: Seamlessly import and export tasks in Obsidian-compatible Markdown format with full metadata support
-- **🔒 Privacy First**: All data is stored locally in your browser. No server, no tracking
+### 🔄 Three Interconnected Views
+Switch seamlessly between three complementary productivity frameworks:
+
+| View | Best For | Key Benefit |
+|------|----------|-------------|
+| **📋 List View** | Comprehensive task overview | Multi-criteria sorting + manual prioritization |
+| **📥 GTD Flow** | Workflow management | Visual progress tracking with smart automation |
+| **🔳 Eisenhower Matrix** | Priority decisions | Urgency vs. importance at a glance |
+
+### 🧠 Intelligence & Automation
+- **Smart Task Detection**: Automatically identifies task states, priorities, urgency, and blocking conditions
+- **Intelligent Drag-and-Drop**: Moving tasks between GTD columns auto-updates tags, dates, and status
+- **Dependency Awareness**: Blocked tasks are visually indicated and protected from accidental moves
+- **Cross-View Badges**: See GTD status in Eisenhower view, and Eisenhower quadrants in GTD view—never lose context
+
+### 🌐 Bilingual by Design
+- Full Chinese (简体中文) and English interface
+- Instant language switching without losing data
+- Context-aware translations for productivity terminology
+
+### 🎯 Productivity Enhancements
+- **Multi-Criteria Sorting**: Sort tasks by due date, priority, start date, scheduled date, or status—combine multiple criteria for custom ordering
+- **Project Management**: Toggle `#project` tag with a single checkbox
+- **Status Filtering**: Quickly view open, completed, or cancelled tasks
+- **Hover Tooltips**: ⓘ icons explain detection and classification rules for each quadrant/state
+
+### 🔒 Privacy & Portability
+- **100% Local Storage**: All data stays in your browser—no accounts, no servers, no tracking
+- **Markdown-Native**: Export your tasks back to Obsidian with full metadata preserved
+- **Zero Lock-In**: Your data remains in standard Markdown format—always accessible
+
+## 🌟 Product Highlights
+
+### 1. Smart GTD Automation
+Unlike basic kanban boards, Obsidian Task Matrix understands GTD semantics:
+- Drag a task to **In Progress** → Start date auto-sets to today, waiting tags removed
+- Drag to **Waiting** → `#waiting` tag added automatically
+- Drag to **Inbox** → All state tags and dates cleared—fresh start
+- Drag to **Done** → Marked complete with completion date
+
+### 2. Intelligent Eisenhower Classification
+Tasks are auto-classified using smart rules:
+- **Urgency detection**: Due within 3 days = Urgent
+- **Importance detection**: High priority = Important
+- **Smart filtering**: Blocked tasks (unfinished dependencies) hidden to reduce noise
+- **Visual clarity**: Color-coded quadrants for instant recognition
+
+### 3. Dependency-Aware Workflow
+- Tasks with unfinished `dependsOn` are marked as blocked
+- Blocked tasks automatically appear in GTD Waiting column
+- Protected from being dragged out of Waiting until dependency resolved
+- Cross-view badges show blocking status everywhere
+
+### 4. Obsidian-Native Integration
+- Import tasks directly from Obsidian Markdown files
+- Full support for [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin format
+- Export with all metadata: priorities, dates, tags, dependencies
+- Maintain your plain-text workflow while gaining visual power
 
 ## 🎯 Three View Modes
 
