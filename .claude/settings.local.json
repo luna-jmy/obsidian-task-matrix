@@ -4,7 +4,11 @@
       "Bash(npm run build:*)",
       "Bash(git push -f origin 991ec21:main)",
       "Bash(npm install)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git add .gitignore)",
+      "Bash(gh release:*)"
     ]
   }
 }
