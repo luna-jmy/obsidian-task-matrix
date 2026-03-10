@@ -1,0 +1,1209 @@
+import {
+  App,
+  ItemView,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  TFile,
+  WorkspaceLeaf,
+  Modal,
+  TextComponent,
+  ToggleComponent,
+  DropdownComponent,
+  ButtonComponent,
+} from "obsidian";
+import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode } from "./types";
+import { parseTaskLine, sortTasks, computeGtdState, computeQuadrant } from "./task-parser";
+
+const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
+const ICONS = {
+  refresh: "↻",
+  list: "List",
+  gtd: "GTD",
+  eisenhower: "Matrix",
+};
+
+export default class TaskMatrixPlugin extends Plugin {
+  settings: TaskMatrixSettings = DEFAULT_SETTINGS;
+  tasks: ParsedTask[] = [];
+  private refreshTimer: number | null = null;
+
+  async onload(): Promise<void> {
+    await this.loadSettings();
+    await this.refreshTasks();
+
+    this.registerView(
+      VIEW_TYPE_TASK_MATRIX,
+      (leaf) => new TaskMatrixView(leaf, this),
+    );
+
+    this.addRibbonIcon("kanban-square", "Open Task Matrix", async () => {
+      await this.activateView();
+    });
+
+    this.addCommand({
+      id: "open-task-matrix",
+      name: "Open task matrix",
+      callback: async () => {
+        await this.activateView();
+      },
+    });
+
+    this.addCommand({
+      id: "refresh-task-matrix",
+      name: "Refresh task matrix",
+      callback: async () => {
+        await this.refreshTasks(true);
+      },
+    });
+
+    this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+
+    this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
+
+    // Add CSS
+    this.addStyles();
+  }
+
+  onunload(): void {
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TASK_MATRIX);
+    this.removeStyles();
+  }
+
+  async loadSettings(): Promise<void> {
+    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+    this.refreshOpenViews();
+  }
+
+  async activateView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)[0];
+    if (!leaf) {
+      const newLeaf = this.app.workspace.getRightLeaf(false);
+      if (newLeaf) {
+        await newLeaf.setViewState({ type: VIEW_TYPE_TASK_MATRIX, active: true });
+        leaf = newLeaf;
+      }
+    }
+
+    if (leaf) {
+      this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  scheduleRefresh(): void {
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+    }
+
+    this.refreshTimer = window.setTimeout(() => {
+      void this.refreshTasks();
+      this.refreshTimer = null;
+    }, 500);
+  }
+
+  async refreshTasks(showNotice = false): Promise<void> {
+    this.tasks = await this.collectTasks();
+    this.refreshOpenViews();
+    if (showNotice) {
+      new Notice(`Task Matrix refreshed: ${this.tasks.length} tasks`);
+    }
+  }
+
+  private refreshOpenViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)) {
+      const view = leaf.view;
+      if (view instanceof TaskMatrixView) {
+        view.render();
+      }
+    }
+  }
+
+  private shouldIncludeFile(file: TFile): boolean {
+    const folder = this.settings.scanFolder.trim().replace(/^\/+|\/+$/g, "");
+    if (!folder) return true;
+    return file.path === folder || file.path.startsWith(`${folder}/`);
+  }
+
+  async collectTasks(): Promise<ParsedTask[]> {
+    const tasks: ParsedTask[] = [];
+    const files = this.app.vault.getMarkdownFiles().filter((file) => this.shouldIncludeFile(file));
+
+    for (const file of files) {
+      const content = await this.app.vault.cachedRead(file);
+      const lines = content.split(/\r?\n/u);
+      lines.forEach((line, index) => {
+        const parsed = parseTaskLine(line, file.path, index + 1);
+        if (!parsed) return;
+        if (!this.settings.includeCompleted && (parsed.status === "completed" || parsed.status === "cancelled")) {
+          return;
+        }
+        tasks.push(parsed);
+      });
+    }
+
+    // Update blocked status based on current task list
+    const completedIds = new Set(tasks.filter(t => t.status === "completed").map(t => t.taskId).filter(Boolean));
+    for (const task of tasks) {
+      if (task.dependsOn) {
+        task.blocked = !completedIds.has(task.dependsOn);
+        // Recompute GTD state with updated blocked status
+        task.gtdState = computeGtdState(task.status, task.description, task.startDate, task.scheduledDate, task.blocked);
+      }
+    }
+
+    return sortTasks(tasks);
+  }
+
+  // Task operations
+  async toggleTaskStatus(task: ParsedTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${task.lineNumber} not found in file`);
+      return;
+    }
+
+    const line = lines[lineIndex];
+    const newStatus = task.status === "completed" ? "open" : "completed";
+    const newMarker = newStatus === "completed" ? "x" : " ";
+    const newLine = line.replace(/\[( |x|X|\/-)\]/, `[${newMarker}]`);
+
+    if (newLine !== line) {
+      lines[lineIndex] = newLine;
+      await this.app.vault.modify(file, lines.join("\n"));
+      new Notice(`Task marked as ${newStatus}`);
+    }
+  }
+
+  async cancelTask(task: ParsedTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${task.lineNumber} not found in file`);
+      return;
+    }
+
+    const line = lines[lineIndex];
+    const newLine = line.replace(/\[( |x|X|\/-)\]/, "[-]");
+
+    if (newLine !== line) {
+      lines[lineIndex] = newLine;
+      await this.app.vault.modify(file, lines.join("\n"));
+      new Notice("Task cancelled");
+    }
+  }
+
+  async startTask(task: ParsedTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${task.lineNumber} not found in file`);
+      return;
+    }
+
+    const line = lines[lineIndex];
+    const newLine = line.replace(/\[( |x|X|\/-)\]/, "[/]");
+
+    if (newLine !== line) {
+      lines[lineIndex] = newLine;
+      await this.app.vault.modify(file, lines.join("\n"));
+      new Notice("Task started");
+    }
+  }
+
+  async deleteTask(task: ParsedTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${task.lineNumber} not found in file`);
+      return;
+    }
+
+    lines.splice(lineIndex, 1);
+    await this.app.vault.modify(file, lines.join("\n"));
+    new Notice("Task deleted");
+  }
+
+  async updateTaskLine(task: ParsedTask, newLine: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${task.lineNumber} not found in file`);
+      return;
+    }
+
+    lines[lineIndex] = newLine;
+    await this.app.vault.modify(file, lines.join("\n"));
+  }
+
+  // Drag and drop: move task to different state/quadrant
+  async moveTaskToGTDState(task: ParsedTask, newState: ParsedTask["gtdState"]): Promise<void> {
+    if (task.gtdState === newState) return;
+
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) return;
+
+    let line = lines[lineIndex];
+
+    // Remove old GTD tags
+    line = line.replace(/#(waiting|delegated|blocked|doing|active|next)\b/gi, "").trim();
+
+    // Add appropriate tag for new state
+    let tagToAdd = "";
+    switch (newState) {
+      case "Waiting":
+        tagToAdd = " #waiting";
+        break;
+      case "In Progress":
+        tagToAdd = " #doing";
+        break;
+      case "Done":
+        // Mark as completed
+        line = line.replace(/\[( |x|X|\/-)\]/, "[x]");
+        break;
+    }
+
+    if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
+      line += tagToAdd;
+    }
+
+    lines[lineIndex] = line;
+    await this.app.vault.modify(file, lines.join("\n"));
+    new Notice(`Moved to ${newState}`);
+  }
+
+  async moveTaskToQuadrant(task: ParsedTask, newQuadrant: ParsedTask["quadrant"]): Promise<void> {
+    if (task.quadrant === newQuadrant) return;
+
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) return;
+
+    let line = lines[lineIndex];
+
+    // Update priority based on quadrant
+    let priorityMarker = "";
+    switch (newQuadrant) {
+      case "Q1":
+        priorityMarker = "🔼"; // High priority
+        break;
+      case "Q2":
+        priorityMarker = "🔼"; // High priority
+        break;
+      case "Q3":
+        priorityMarker = "🔽"; // Low priority
+        break;
+      case "Q4":
+        priorityMarker = "⏬"; // Lowest priority
+        break;
+    }
+
+    // Remove existing priority markers
+    line = line.replace(/[🔼⏫🔽⏬]/gu, "").trim();
+
+    // Add new priority marker after checkbox
+    if (priorityMarker) {
+      const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
+      if (checkboxMatch) {
+        line = line.replace(checkboxMatch[1], checkboxMatch[1] + priorityMarker + " ");
+      }
+    }
+
+    lines[lineIndex] = line;
+    await this.app.vault.modify(file, lines.join("\n"));
+    new Notice(`Moved to ${newQuadrant}`);
+  }
+
+  private addStyles(): void {
+    const styleEl = document.createElement("style");
+    styleEl.id = "task-matrix-styles";
+    styleEl.textContent = `
+      .task-matrix-view {
+        padding: 16px;
+        height: 100%;
+        overflow: auto;
+      }
+      .task-matrix-shell {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      .task-matrix-header {
+        margin-bottom: 16px;
+      }
+      .task-matrix-title-block {
+        margin-bottom: 12px;
+      }
+      .task-matrix-kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+      .task-matrix-title {
+        font-size: 24px;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+      }
+      .task-matrix-subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin: 0;
+      }
+      .task-matrix-toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 12px;
+        background: var(--background-secondary);
+        border-radius: 8px;
+      }
+      .task-matrix-search {
+        flex: 1;
+        min-width: 200px;
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        background: var(--background-primary);
+        color: var(--text-normal);
+      }
+      .task-matrix-segmented {
+        display: flex;
+        gap: 4px;
+      }
+      .task-matrix-mode-button {
+        padding: 6px 12px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .task-matrix-mode-button.is-active {
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+      }
+      .task-matrix-refresh {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .task-matrix-empty {
+        text-align: center;
+        padding: 48px;
+        color: var(--text-muted);
+      }
+      .task-matrix-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .task-matrix-board {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+      }
+      .task-matrix-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+      @media (max-width: 800px) {
+        .task-matrix-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .task-matrix-column, .task-matrix-cell {
+        background: var(--background-secondary);
+        border-radius: 8px;
+        padding: 12px;
+        min-height: 200px;
+      }
+      .task-matrix-column-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--background-modifier-border);
+      }
+      .task-matrix-column-header h3 {
+        font-size: 14px;
+        margin: 0;
+        font-weight: 600;
+      }
+      .task-matrix-count {
+        background: var(--background-modifier-border);
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+      }
+      .task-matrix-card {
+        background: var(--background-primary);
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: box-shadow 0.2s;
+        position: relative;
+      }
+      .task-matrix-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .task-matrix-card.dragging {
+        opacity: 0.5;
+      }
+      .task-matrix-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .task-matrix-card-title {
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.4;
+        flex: 1;
+      }
+      .task-matrix-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      .task-matrix-badge.status-open {
+        background: var(--background-modifier-border);
+        color: var(--text-muted);
+      }
+      .task-matrix-badge.status-completed {
+        background: #22c55e;
+        color: white;
+      }
+      .task-matrix-badge.status-cancelled {
+        background: #ef4444;
+        color: white;
+      }
+      .task-matrix-badge.status-in-progress {
+        background: #3b82f6;
+        color: white;
+      }
+      .task-matrix-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
+      .task-matrix-chip {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: var(--background-secondary);
+        border-radius: 4px;
+        color: var(--text-muted);
+      }
+      .task-matrix-chip.warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .task-matrix-card-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .task-matrix-card-actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--background-modifier-border);
+      }
+      .task-matrix-action-btn {
+        font-size: 11px;
+        padding: 2px 6px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-secondary);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .task-matrix-action-btn:hover {
+        background: var(--background-modifier-hover);
+      }
+      .task-matrix-drag-over {
+        background: var(--background-modifier-hover) !important;
+        border: 2px dashed var(--interactive-accent);
+      }
+      .task-matrix-card.blocked {
+        opacity: 0.7;
+        border-left: 3px solid #ef4444;
+      }
+      .task-matrix-modal {
+        padding: 20px;
+      }
+      .task-matrix-modal h2 {
+        margin-top: 0;
+      }
+      .task-matrix-form-row {
+        margin-bottom: 16px;
+      }
+      .task-matrix-form-row label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: var(--text-muted);
+      }
+      .task-matrix-form-row input,
+      .task-matrix-form-row select,
+      .task-matrix-form-row textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 4px;
+        background: var(--background-primary);
+        color: var(--text-normal);
+      }
+      .task-matrix-form-row textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      .task-matrix-modal-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }
+
+  private removeStyles(): void {
+    const styleEl = document.getElementById("task-matrix-styles");
+    if (styleEl) {
+      styleEl.remove();
+    }
+  }
+}
+
+class TaskMatrixView extends ItemView {
+  private currentView: ViewMode;
+  private searchQuery = "";
+
+  constructor(leaf: WorkspaceLeaf, private readonly plugin: TaskMatrixPlugin) {
+    super(leaf);
+    this.currentView = plugin.settings.defaultView;
+  }
+
+  getViewType(): string {
+    return VIEW_TYPE_TASK_MATRIX;
+  }
+
+  getDisplayText(): string {
+    return "Task Matrix";
+  }
+
+  getIcon(): string {
+    return "kanban-square";
+  }
+
+  async onOpen(): Promise<void> {
+    this.render();
+  }
+
+  async onClose(): Promise<void> {
+    this.contentEl.empty();
+  }
+
+  render(): void {
+    const root = this.contentEl;
+    root.empty();
+    root.addClass("task-matrix-view");
+
+    const shell = root.createDiv({ cls: "task-matrix-shell" });
+    this.renderHeader(shell);
+    this.renderBody(shell);
+  }
+
+  private get filteredTasks(): ParsedTask[] {
+    const query = this.searchQuery.trim().toLowerCase();
+    if (!query) return this.plugin.tasks;
+    return this.plugin.tasks.filter((task) => {
+      return [task.description, task.filePath, task.taskId, task.dependsOn]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }
+
+  private renderHeader(parent: HTMLElement): void {
+    const header = parent.createDiv({ cls: "task-matrix-header" });
+    const titleBlock = header.createDiv({ cls: "task-matrix-title-block" });
+    titleBlock.createEl("div", { text: "Obsidian Task Matrix", cls: "task-matrix-kicker" });
+    titleBlock.createEl("h2", { text: "Vault task dashboards", cls: "task-matrix-title" });
+    titleBlock.createEl("p", {
+      text: `${this.plugin.tasks.length} tasks across ${new Set(this.plugin.tasks.map((task) => task.filePath)).size} files`,
+      cls: "task-matrix-subtitle",
+    });
+
+    const toolbar = header.createDiv({ cls: "task-matrix-toolbar" });
+    const search = toolbar.createEl("input", {
+      type: "search",
+      placeholder: "Search tasks, file paths, ids...",
+      cls: "task-matrix-search",
+    });
+    search.value = this.searchQuery;
+    search.addEventListener("input", () => {
+      this.searchQuery = search.value;
+      this.render();
+    });
+
+    const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
+    this.renderModeButton(segmented, "list", ICONS.list);
+    this.renderModeButton(segmented, "gtd", ICONS.gtd);
+    this.renderModeButton(segmented, "eisenhower", ICONS.eisenhower);
+
+    const refreshButton = toolbar.createEl("button", {
+      text: ICONS.refresh,
+      cls: "task-matrix-refresh",
+    });
+    refreshButton.title = "Refresh task index";
+    refreshButton.addEventListener("click", async () => {
+      await this.plugin.refreshTasks(true);
+    });
+  }
+
+  private renderModeButton(parent: HTMLElement, mode: ViewMode, label: string): void {
+    const button = parent.createEl("button", {
+      text: label,
+      cls: `task-matrix-mode-button${this.currentView === mode ? " is-active" : ""}`,
+    });
+    button.addEventListener("click", () => {
+      this.currentView = mode;
+      this.render();
+    });
+  }
+
+  private renderBody(parent: HTMLElement): void {
+    const tasks = this.filteredTasks;
+    if (tasks.length === 0) {
+      const empty = parent.createDiv({ cls: "task-matrix-empty" });
+      empty.createEl("h3", { text: "No tasks found" });
+      empty.createEl("p", {
+        text: this.searchQuery
+          ? "The current search did not match any tasks."
+          : "Create markdown tasks in your vault, then refresh this view.",
+      });
+      return;
+    }
+
+    if (this.currentView === "list") {
+      this.renderList(parent, tasks);
+      return;
+    }
+
+    if (this.currentView === "gtd") {
+      this.renderGtd(parent, tasks);
+      return;
+    }
+
+    this.renderEisenhower(parent, tasks);
+  }
+
+  private renderList(parent: HTMLElement, tasks: ParsedTask[]): void {
+    const wrap = parent.createDiv({ cls: "task-matrix-list" });
+    for (const task of tasks) {
+      this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+    }
+  }
+
+  private renderGtd(parent: HTMLElement, tasks: ParsedTask[]): void {
+    const board = parent.createDiv({ cls: "task-matrix-board" });
+    const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = [
+      { title: "Inbox", state: "Inbox" },
+      { title: "In Progress", state: "In Progress" },
+      { title: "Waiting", state: "Waiting" },
+      { title: "Done", state: "Done" },
+    ];
+
+    for (const column of columns) {
+      const columnEl = board.createDiv({ cls: "task-matrix-column" });
+      columnEl.dataset.state = column.state;
+
+      // Drag and drop handlers
+      columnEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        columnEl.addClass("task-matrix-drag-over");
+      });
+      columnEl.addEventListener("dragleave", () => {
+        columnEl.removeClass("task-matrix-drag-over");
+      });
+      columnEl.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        columnEl.removeClass("task-matrix-drag-over");
+        const taskId = e.dataTransfer?.getData("text/task-id");
+        if (taskId) {
+          const task = this.plugin.tasks.find((t) => t.id === taskId);
+          if (task) {
+            await this.plugin.moveTaskToGTDState(task, column.state);
+          }
+        }
+      });
+
+      const group = tasks.filter((task) => task.gtdState === column.state);
+      this.createColumnHeader(columnEl, column.title, group.length);
+      for (const task of group) {
+        this.createTaskCard(columnEl, task, this.describeTask(task));
+      }
+    }
+  }
+
+  private renderEisenhower(parent: HTMLElement, tasks: ParsedTask[]): void {
+    const board = parent.createDiv({ cls: "task-matrix-grid" });
+    const columns: Array<{ title: string; quadrant: ParsedTask["quadrant"]; subtitle: string }> = [
+      { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
+      { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
+      { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
+      { title: "Q4", quadrant: "Q4", subtitle: "Backlog or discard" },
+    ];
+
+    for (const column of columns) {
+      const cell = board.createDiv({ cls: "task-matrix-cell" });
+      cell.dataset.quadrant = column.quadrant;
+
+      // Drag and drop handlers
+      cell.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        cell.addClass("task-matrix-drag-over");
+      });
+      cell.addEventListener("dragleave", () => {
+        cell.removeClass("task-matrix-drag-over");
+      });
+      cell.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        cell.removeClass("task-matrix-drag-over");
+        const taskId = e.dataTransfer?.getData("text/task-id");
+        if (taskId) {
+          const task = this.plugin.tasks.find((t) => t.id === taskId);
+          if (task) {
+            await this.plugin.moveTaskToQuadrant(task, column.quadrant);
+          }
+        }
+      });
+
+      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.status !== "completed" && task.status !== "cancelled");
+      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
+      for (const task of group) {
+        this.createTaskCard(cell, task, this.describeTask(task));
+      }
+    }
+  }
+
+  private createColumnHeader(parent: HTMLElement, title: string, count: number): void {
+    const header = parent.createDiv({ cls: "task-matrix-column-header" });
+    header.createEl("h3", { text: title });
+    header.createEl("span", { text: String(count), cls: "task-matrix-count" });
+  }
+
+  private createTaskCard(parent: HTMLElement, task: ParsedTask, metaText: string): void {
+    const card = parent.createDiv({ cls: `task-matrix-card${task.blocked ? " blocked" : ""}` });
+    card.draggable = true;
+    card.dataset.taskId = task.id;
+
+    // Drag handlers
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer?.setData("text/task-id", task.id);
+      card.addClass("dragging");
+    });
+    card.addEventListener("dragend", () => {
+      card.removeClass("dragging");
+    });
+
+    // Click to open file
+    card.addEventListener("click", async (e) => {
+      // Don't open if clicking on action buttons
+      if ((e.target as HTMLElement).closest(".task-matrix-action-btn")) return;
+      await this.openTask(task);
+    });
+
+    const top = card.createDiv({ cls: "task-matrix-card-top" });
+    top.createEl("div", { text: task.description, cls: "task-matrix-card-title" });
+    top.createEl("div", { text: this.statusBadge(task.status), cls: `task-matrix-badge status-${task.status}` });
+
+    const chips = card.createDiv({ cls: "task-matrix-chip-row" });
+    if (task.priority !== "none") {
+      chips.createEl("span", { text: `Priority ${task.priority}`, cls: "task-matrix-chip" });
+    }
+    if (task.dueDate) {
+      chips.createEl("span", { text: `Due ${task.dueDate}`, cls: "task-matrix-chip" });
+    }
+    if (task.dependsOn) {
+      const depText = task.blocked ? `⛔ Depends ${task.dependsOn}` : `✓ Depends ${task.dependsOn}`;
+      chips.createEl("span", { text: depText, cls: `task-matrix-chip${task.blocked ? " warning" : ""}` });
+    }
+    if (task.taskId) {
+      chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
+    }
+
+    card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
+
+    // Action buttons
+    const actions = card.createDiv({ cls: "task-matrix-card-actions" });
+
+    if (task.status !== "completed" && task.status !== "cancelled") {
+      const completeBtn = actions.createEl("button", {
+        text: "✓",
+        cls: "task-matrix-action-btn",
+        title: "Complete",
+      });
+      completeBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+
+      if (task.status !== "in-progress") {
+        const startBtn = actions.createEl("button", {
+          text: "▶",
+          cls: "task-matrix-action-btn",
+          title: "Start",
+        });
+        startBtn.addEventListener("click", () => this.plugin.startTask(task));
+      }
+
+      const cancelBtn = actions.createEl("button", {
+        text: "✕",
+        cls: "task-matrix-action-btn",
+        title: "Cancel",
+      });
+      cancelBtn.addEventListener("click", () => this.plugin.cancelTask(task));
+    } else {
+      const reopenBtn = actions.createEl("button", {
+        text: "↺",
+        cls: "task-matrix-action-btn",
+        title: "Reopen",
+      });
+      reopenBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+    }
+
+    const editBtn = actions.createEl("button", {
+      text: "✎",
+      cls: "task-matrix-action-btn",
+      title: "Edit",
+    });
+    editBtn.addEventListener("click", () => {
+      new TaskEditModal(this.app, task, this.plugin).open();
+    });
+
+    const deleteBtn = actions.createEl("button", {
+      text: "🗑",
+      cls: "task-matrix-action-btn",
+      title: "Delete",
+    });
+    deleteBtn.addEventListener("click", () => {
+      if (confirm("Delete this task?")) {
+        this.plugin.deleteTask(task);
+      }
+    });
+  }
+
+  private statusBadge(status: ParsedTask["status"]): string {
+    switch (status) {
+      case "completed":
+        return "Done";
+      case "cancelled":
+        return "Cancelled";
+      case "in-progress":
+        return "Doing";
+      default:
+        return "Open";
+    }
+  }
+
+  private describeTask(task: ParsedTask): string {
+    return `${task.filePath}:${task.lineNumber} · ${task.gtdState}`;
+  }
+
+  private async openTask(task: ParsedTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${task.filePath}`);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf(true);
+    await leaf.openFile(file);
+    new Notice(`Opened ${task.filePath}:${task.lineNumber}`);
+  }
+}
+
+class TaskEditModal extends Modal {
+  constructor(
+    app: App,
+    private readonly task: ParsedTask,
+    private readonly plugin: TaskMatrixPlugin
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+
+    contentEl.createEl("h2", { text: "Edit Task" });
+
+    const form = contentEl.createDiv();
+
+    // Description
+    const descRow = form.createDiv({ cls: "task-matrix-form-row" });
+    descRow.createEl("label", { text: "Description" });
+    const descInput = new TextComponent(descRow);
+    descInput.setValue(this.task.description);
+
+    // Priority
+    const priorityRow = form.createDiv({ cls: "task-matrix-form-row" });
+    priorityRow.createEl("label", { text: "Priority" });
+    const prioritySelect = new DropdownComponent(priorityRow);
+    prioritySelect.addOption("none", "None");
+    prioritySelect.addOption("lowest", "Lowest");
+    prioritySelect.addOption("low", "Low");
+    prioritySelect.addOption("medium", "Medium");
+    prioritySelect.addOption("high", "High");
+    prioritySelect.addOption("highest", "Highest");
+    prioritySelect.setValue(this.task.priority);
+
+    // Due Date
+    const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
+    dueRow.createEl("label", { text: "Due Date" });
+    const dueInput = new TextComponent(dueRow);
+    dueInput.setValue(this.task.dueDate || "");
+    dueInput.setPlaceholder("YYYY-MM-DD");
+
+    // Start Date
+    const startRow = form.createDiv({ cls: "task-matrix-form-row" });
+    startRow.createEl("label", { text: "Start Date" });
+    const startInput = new TextComponent(startRow);
+    startInput.setValue(this.task.startDate || "");
+    startInput.setPlaceholder("YYYY-MM-DD");
+
+    // Task ID
+    const idRow = form.createDiv({ cls: "task-matrix-form-row" });
+    idRow.createEl("label", { text: "Task ID" });
+    const idInput = new TextComponent(idRow);
+    idInput.setValue(this.task.taskId || "");
+
+    // Depends On
+    const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
+    dependsRow.createEl("label", { text: "Depends On" });
+    const dependsInput = new TextComponent(dependsRow);
+    dependsInput.setValue(this.task.dependsOn || "");
+
+    // Buttons
+    const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+
+    new ButtonComponent(buttons)
+      .setButtonText("Cancel")
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttons)
+      .setButtonText("Save")
+      .setCta()
+      .onClick(async () => {
+        await this.saveTask({
+          description: descInput.getValue(),
+          priority: prioritySelect.getValue() as ParsedTask["priority"],
+          dueDate: dueInput.getValue() || undefined,
+          startDate: startInput.getValue() || undefined,
+          taskId: idInput.getValue() || undefined,
+          dependsOn: dependsInput.getValue() || undefined,
+        });
+        this.close();
+      });
+  }
+
+  private async saveTask(updates: Partial<ParsedTask>): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`File not found: ${this.task.filePath}`);
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/u);
+    const lineIndex = this.task.lineNumber - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      new Notice(`Line ${this.task.lineNumber} not found in file`);
+      return;
+    }
+
+    let line = lines[lineIndex];
+
+    // Update description
+    const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
+    if (checkboxMatch && updates.description) {
+      const prefix = checkboxMatch[1];
+      // Keep the checkbox and any inline fields, update description
+      const restOfLine = line.substring(prefix.length);
+      // Remove old description, keep inline fields
+      const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
+      line = prefix + updates.description + " " + inlineFields.join(" ");
+    }
+
+    // Update priority
+    if (updates.priority !== undefined) {
+      line = line.replace(/[🔼⏫🔽⏬]/gu, "");
+      if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
+      else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔼 ");
+      else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔽 ");
+      else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏬ ");
+    }
+
+    // Update due date
+    if (updates.dueDate !== undefined) {
+      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "");
+      if (updates.dueDate) line += ` 📅 ${updates.dueDate}`;
+    }
+
+    // Update start date
+    if (updates.startDate !== undefined) {
+      line = line.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
+      if (updates.startDate) line += ` 🛫 ${updates.startDate}`;
+    }
+
+    // Update task ID
+    if (updates.taskId !== undefined) {
+      line = line.replace(/\s*🆔\s*\S+/g, "");
+      line = line.replace(/\bid::\s*\S+/gi, "");
+      if (updates.taskId) line += ` 🆔 ${updates.taskId}`;
+    }
+
+    // Update depends on
+    if (updates.dependsOn !== undefined) {
+      line = line.replace(/\s*⛔\s*\S+/g, "");
+      line = line.replace(/\bdependsOn::\s*\S+/gi, "");
+      if (updates.dependsOn) line += ` ⛔ ${updates.dependsOn}`;
+    }
+
+    // Clean up extra spaces
+    line = line.replace(/\s+/g, " ").trim();
+
+    lines[lineIndex] = line;
+    await this.app.vault.modify(file, lines.join("\n"));
+    new Notice("Task updated");
+  }
+
+  onClose(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
+
+class TaskMatrixSettingTab extends PluginSettingTab {
+  constructor(app: App, private readonly plugin: TaskMatrixPlugin) {
+    super(app, plugin);
+  }
+
+  display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    containerEl.createEl("h2", { text: "Task Matrix settings" });
+
+    new Setting(containerEl)
+      .setName("Scan folder")
+      .setDesc("Only index markdown files inside this vault folder. Leave empty to scan the whole vault.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Projects/Tasks")
+          .setValue(this.plugin.settings.scanFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.scanFolder = value.trim();
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Default view")
+      .setDesc("Choose which dashboard opens first.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("eisenhower", "Eisenhower")
+          .addOption("gtd", "GTD")
+          .addOption("list", "List")
+          .setValue(this.plugin.settings.defaultView)
+          .onChange(async (value: string) => {
+            this.plugin.settings.defaultView = value as ViewMode;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Include completed tasks")
+      .setDesc("Show completed and cancelled tasks in the matrix.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.includeCompleted).onChange(async (value) => {
+          this.plugin.settings.includeCompleted = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshTasks();
+        }),
+      );
+  }
+}

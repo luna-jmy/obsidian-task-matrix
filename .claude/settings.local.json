@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(git push -f origin 991ec21:main)",
+      "Bash(npm install)",
+      "Bash(git add -A)"
     ]
   }
 }

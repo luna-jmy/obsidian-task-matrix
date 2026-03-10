@@ -1,23 +1,25 @@
 import { ParsedTask, Priority, TaskStatus, GTDState, EisenhowerQuadrant } from "./types";
 
+// Completed task IDs set for dependency checking
+let completedTaskIds: Set<string> = new Set();
+
 const PRIORITY_MARKERS: Array<[string, Priority]> = [
-  ["?", Priority.Highest],
-  ["??", Priority.High],
-  ["??", Priority.High],
-  ["??", Priority.Low],
-  ["?", Priority.Lowest],
+  ["⏫", Priority.Highest],
+  ["🔼", Priority.High],
+  ["🔽", Priority.Low],
+  ["⏬", Priority.Lowest],
 ];
 
 const FIELD_PATTERNS = {
-  dueDate: /??\s*(\d{4}-\d{2}-\d{2})/u,
-  startDate: /??\s*(\d{4}-\d{2}-\d{2})/u,
-  scheduledDate: /?\s*(\d{4}-\d{2}-\d{2})/u,
-  doneDate: /?\s*(\d{4}-\d{2}-\d{2})/u,
-  createdDate: /?\s*(\d{4}-\d{2}-\d{2})/u,
-  recurrence: /??\s*([^??????????????????#\n]+)/u,
-  taskIdIcon: /??\s*([^\s#]+)/u,
+  dueDate: /\ud83d\udcc5\s*(\d{4}-\d{2}-\d{2})/u,
+  startDate: /\ud83d\udeeb\ufe0f?\s*(\d{4}-\d{2}-\d{2})/u,
+  scheduledDate: /\u23f3\s*(\d{4}-\d{2}-\d{2})/u,
+  doneDate: /\u2705\s*(\d{4}-\d{2}-\d{2})/u,
+  createdDate: /\u2795\s*(\d{4}-\d{2}-\d{2})/u,
+  recurrence: /\ud83d\udd04\s*([^\n]+)/u,
+  taskIdIcon: /\ud83c\udd94\s*([^\s#]+)/u,
   taskIdField: /\bid::\s*([^\s#]+)/iu,
-  dependsIcon: /?\s*([^\s#]+)/u,
+  dependsIcon: /\u26d4\s*([^\s#]+)/u,
   dependsField: /\bdependsOn::\s*([^\s#]+)/iu,
 };
 
@@ -40,7 +42,7 @@ function cleanDescription(raw: string): string {
     .replace(FIELD_PATTERNS.taskIdField, "")
     .replace(FIELD_PATTERNS.dependsIcon, "")
     .replace(FIELD_PATTERNS.dependsField, "")
-    .replace(/[????????]/gu, "")
+    .replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -60,7 +62,7 @@ function isoDateOffset(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function computeGtdState(status: TaskStatus, description: string, startDate?: string, scheduledDate?: string, blocked?: boolean): GTDState {
+export function computeGtdState(status: TaskStatus, description: string, startDate?: string, scheduledDate?: string, blocked?: boolean): GTDState {
   if (status === "completed" || status === "cancelled") return "Done";
 
   const desc = description.toLowerCase();
@@ -83,7 +85,7 @@ function computeGtdState(status: TaskStatus, description: string, startDate?: st
   return "Inbox";
 }
 
-function computeQuadrant(priority: Priority, dueDate?: string): EisenhowerQuadrant {
+export function computeQuadrant(priority: Priority, dueDate?: string): EisenhowerQuadrant {
   const isImportant = priority === Priority.Highest || priority === Priority.High;
   const isUrgent = Boolean(dueDate && dueDate <= isoDateOffset(3));
 

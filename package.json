@@ -1,21 +1,25 @@
 {
-  "name": "obsidian-tasks-visualizer",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "obsidian-task-matrix-plugin",
+  "version": "0.1.0",
+  "description": "Task matrix dashboards for Obsidian.",
+  "main": "main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "node esbuild.mjs",
+    "build": "tsc --noEmit -skipLibCheck && node esbuild.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
-  "dependencies": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
-  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "tasks"
+  ],
+  "author": "Luna Jiang",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.3",
+    "obsidian": "^1.8.10",
+    "typescript": "^5.8.2"
   }
 }

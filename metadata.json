@@ -1,5 +1,0 @@
-{
-  "name": "Obsidian Tasks Visualizer",
-  "description": "A specialized 2x2 matrix dashboard for Obsidian Tasks, featuring Eisenhower and GTD views with full support for Obsidian-specific task markers and export capabilities.",
-  "requestFramePermissions": []
-}
