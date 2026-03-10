@@ -28,8 +28,9 @@ const FIELD_PATTERNS = {
   dependsField: /\bdependsOn::\s*([^\s#]+)/iu,
 };
 
-// Accept any checkbox content, will be validated against settings
-const TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]*(.*)$/u;
+// Task pattern: - [ ] or * [ ] followed by content
+// Excludes Dataview inline fields like [field::value] by rejecting ::
+const TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]+(.*)$/u;
 
 function extractValue(text: string, regex: RegExp): string | undefined {
   const match = text.match(regex);
@@ -166,6 +167,9 @@ export function parseTaskLine(
   if (!match) return null;
 
   const checkboxContent = match[1];
+  // Exclude Dataview inline fields like [field::value]
+  if (checkboxContent.includes("::")) return null;
+
   const rawDescription = match[2];
 
   const priority = PRIORITY_MARKERS.find(([marker]) => rawDescription.includes(marker))?.[1] ?? Priority.None;

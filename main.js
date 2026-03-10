@@ -58,7 +58,7 @@ var FIELD_PATTERNS = {
   dependsIcon: /\u26d4\s*([^\s#]+)/u,
   dependsField: /\bdependsOn::\s*([^\s#]+)/iu
 };
-var TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]*(.*)$/u;
+var TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]+(.*)$/u;
 function extractValue(text, regex) {
   const match = text.match(regex);
   return match?.[1]?.trim();
@@ -133,6 +133,7 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
   const match = line.match(TASK_PATTERN);
   if (!match) return null;
   const checkboxContent = match[1];
+  if (checkboxContent.includes("::")) return null;
   const rawDescription = match[2];
   const priority = PRIORITY_MARKERS.find(([marker]) => rawDescription.includes(marker))?.[1] ?? "none" /* None */;
   const dueDate = extractValue(rawDescription, FIELD_PATTERNS.dueDate);
