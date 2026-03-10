@@ -220,7 +220,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
-    this.refreshOpenViews();
+    await this.refreshOpenViews();
   }
   async activateView() {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)[0];
@@ -246,16 +246,16 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
   }
   async refreshTasks(showNotice = false) {
     this.tasks = await this.collectTasks();
-    this.refreshOpenViews();
+    await this.refreshOpenViews();
     if (showNotice) {
       new import_obsidian.Notice(`Task Matrix refreshed: ${this.tasks.length} tasks`);
     }
   }
-  refreshOpenViews() {
+  async refreshOpenViews() {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)) {
       const view = leaf.view;
       if (view instanceof TaskMatrixView) {
-        view.render();
+        await view.render();
       }
     }
   }
@@ -745,7 +745,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     return "kanban-square";
   }
   async onOpen() {
-    this.render();
+    await this.render();
   }
   async onClose() {
     if (this.searchDebounceTimer) {
@@ -753,25 +753,25 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     }
     this.contentEl.empty();
   }
-  render() {
+  async render() {
     const root = this.contentEl;
     root.empty();
     root.addClass("task-matrix-view");
     this.shellEl = root.createDiv({ cls: "task-matrix-shell" });
     this.renderHeader(this.shellEl);
-    this.renderBodyContainer(this.shellEl);
+    await this.renderBodyContainer(this.shellEl);
   }
-  renderBodyContainer(parent) {
+  async renderBodyContainer(parent) {
     if (this.bodyEl) {
       this.bodyEl.remove();
     }
     this.bodyEl = parent.createDiv({ cls: "task-matrix-body" });
-    this.renderBodyContent(this.bodyEl);
+    await this.renderBodyContent(this.bodyEl);
   }
-  refreshBody() {
+  async refreshBody() {
     if (this.bodyEl) {
       this.bodyEl.empty();
-      this.renderBodyContent(this.bodyEl);
+      await this.renderBodyContent(this.bodyEl);
     }
   }
   get filteredTasks() {
@@ -824,12 +824,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       text: label,
       cls: `task-matrix-mode-button${this.currentView === mode ? " is-active" : ""}`
     });
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       this.currentView = mode;
-      this.render();
+      await this.render();
     });
   }
-  renderBodyContent(parent) {
+  async renderBodyContent(parent) {
     const tasks = this.filteredTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
@@ -840,22 +840,22 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       return;
     }
     if (this.currentView === "list") {
-      this.renderList(parent, tasks);
+      await this.renderList(parent, tasks);
       return;
     }
     if (this.currentView === "gtd") {
-      this.renderGtd(parent, tasks);
+      await this.renderGtd(parent, tasks);
       return;
     }
-    this.renderEisenhower(parent, tasks);
+    await this.renderEisenhower(parent, tasks);
   }
-  renderList(parent, tasks) {
+  async renderList(parent, tasks) {
     const wrap = parent.createDiv({ cls: "task-matrix-list" });
     for (const task of tasks) {
-      this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+      await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
     }
   }
-  renderGtd(parent, tasks) {
+  async renderGtd(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-board" });
     const columns = [
       { title: "Inbox", state: "Inbox" },
@@ -887,11 +887,11 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const group = tasks.filter((task) => task.gtdState === column.state);
       this.createColumnHeader(columnEl, column.title, group.length);
       for (const task of group) {
-        this.createTaskCard(columnEl, task, this.describeTask(task));
+        await this.createTaskCard(columnEl, task, this.describeTask(task));
       }
     }
   }
-  renderEisenhower(parent, tasks) {
+  async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
     const columns = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
@@ -923,7 +923,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const group = tasks.filter((task) => task.quadrant === column.quadrant && task.status !== "completed" && task.status !== "cancelled");
       this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
       for (const task of group) {
-        this.createTaskCard(cell, task, this.describeTask(task));
+        await this.createTaskCard(cell, task, this.describeTask(task));
       }
     }
   }
@@ -932,7 +932,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     header.createEl("h3", { text: title });
     header.createEl("span", { text: String(count), cls: "task-matrix-count" });
   }
-  createTaskCard(parent, task, metaText) {
+  async createTaskCard(parent, task, metaText) {
     const card = parent.createDiv({ cls: `task-matrix-card${task.blocked ? " blocked" : ""}` });
     card.draggable = true;
     card.dataset.taskId = task.id;
@@ -948,7 +948,14 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       await this.openTask(task);
     });
     const top = card.createDiv({ cls: "task-matrix-card-top" });
-    top.createEl("div", { text: task.description, cls: "task-matrix-card-title" });
+    const titleEl = top.createDiv({ cls: "task-matrix-card-title" });
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (file instanceof import_obsidian.TFile) {
+      const markdownContent = task.description || "*No description*";
+      await import_obsidian.MarkdownRenderer.render(this.app, markdownContent, titleEl, task.filePath, this);
+    } else {
+      titleEl.setText(task.description);
+    }
     top.createEl("div", { text: this.statusBadge(task.status), cls: `task-matrix-badge status-${task.status}` });
     const chips = card.createDiv({ cls: "task-matrix-chip-row" });
     if (task.priority !== "none") {
