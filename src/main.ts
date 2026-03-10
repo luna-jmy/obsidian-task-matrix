@@ -156,8 +156,8 @@ export default class TaskMatrixPlugin extends Plugin {
       lines.forEach((line, index) => {
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
         if (!parsed) return;
-        // Filter out completed tasks if setting is disabled
-        if (!this.settings.includeCompleted && parsed.displayStatus === "completed") {
+        // Filter out completed and cancelled tasks if setting is disabled
+        if (!this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
           return;
         }
         tasks.push(parsed);
@@ -939,7 +939,7 @@ class TaskMatrixView extends ItemView {
         }
       });
 
-      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed");
+      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed" && task.displayStatus !== "cancelled");
       this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
       for (const task of group) {
         await this.createTaskCard(cell, task, this.describeTask(task));
@@ -1350,6 +1350,23 @@ class TaskMatrixSettingTab extends PluginSettingTab {
             this.plugin.settings.completionMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
             if (this.plugin.settings.completionMarkers.length === 0) {
               this.plugin.settings.completionMarkers = ["x", "X"];
+            }
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Cancelled markers")
+      .setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -")
+      .addText((text) =>
+        text
+          .setPlaceholder("-, cancelled, skip")
+          .setValue(this.plugin.settings.cancelledMarkers.join(", "))
+          .onChange(async (value) => {
+            this.plugin.settings.cancelledMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
+            if (this.plugin.settings.cancelledMarkers.length === 0) {
+              this.plugin.settings.cancelledMarkers = ["-"];
             }
             await this.plugin.saveSettings();
             await this.plugin.refreshTasks();

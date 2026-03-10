@@ -36,7 +36,8 @@ var DEFAULT_SETTINGS = {
   defaultView: "eisenhower",
   includeCompleted: true,
   openLocation: "sidebar",
-  completionMarkers: ["x", "X"]
+  completionMarkers: ["x", "X"],
+  cancelledMarkers: ["-"]
 };
 
 // src/task-parser.ts
@@ -79,9 +80,16 @@ function isCompletedCheckbox(checkboxContent, completionMarkers) {
   const trimmed = checkboxContent.trim();
   return completionMarkers.includes(trimmed);
 }
-function computeDisplayStatus(checkboxContent, completionMarkers, dueDate, startDate) {
+function isCancelledCheckbox(checkboxContent, cancelledMarkers) {
+  const trimmed = checkboxContent.trim();
+  return cancelledMarkers.includes(trimmed);
+}
+function computeDisplayStatus(checkboxContent, completionMarkers, cancelledMarkers, dueDate, startDate) {
   if (isCompletedCheckbox(checkboxContent, completionMarkers)) {
     return "completed";
+  }
+  if (isCancelledCheckbox(checkboxContent, cancelledMarkers)) {
+    return "cancelled";
   }
   const today = getToday();
   if (dueDate && dueDate < today) {
@@ -147,7 +155,7 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
   const tags = Array.from(rawDescription.matchAll(/(^|\s)(#[\p{L}\p{N}_/-]+)/gu)).map((entry) => entry[2].toLowerCase());
   const description = cleanDescription(rawDescription);
   const blocked = Boolean(dependsOn);
-  const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, dueDate, startDate);
+  const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, settings.cancelledMarkers, dueDate, startDate);
   const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
   const quadrant = computeQuadrant(priority, dueDate);
   return {
@@ -321,7 +329,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       lines.forEach((line, index) => {
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
         if (!parsed) return;
-        if (!this.settings.includeCompleted && parsed.displayStatus === "completed") {
+        if (!this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
           return;
         }
         tasks.push(parsed);
@@ -1008,7 +1016,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           }
         }
       });
-      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed");
+      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed" && task.displayStatus !== "cancelled");
       this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
       for (const task of group) {
         await this.createTaskCard(cell, task, this.describeTask(task));
@@ -1299,6 +1307,16 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
           this.plugin.settings.completionMarkers = ["x", "X"];
+        }
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -").addText(
+      (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange(async (value) => {
+        this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
+        if (this.plugin.settings.cancelledMarkers.length === 0) {
+          this.plugin.settings.cancelledMarkers = ["-"];
         }
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();

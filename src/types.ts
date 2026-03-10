@@ -50,6 +50,8 @@ export interface TaskMatrixSettings {
   openLocation: OpenLocation;
   // Custom completion markers (checkbox content that means completed)
   completionMarkers: string[];
+  // Custom cancelled markers (checkbox content that means cancelled)
+  cancelledMarkers: string[];
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -59,4 +61,5 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   includeCompleted: true,
   openLocation: "sidebar",
   completionMarkers: ["x", "X"],
+  cancelledMarkers: ["-"],
 };

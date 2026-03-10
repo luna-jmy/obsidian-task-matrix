@@ -71,16 +71,28 @@ function isCompletedCheckbox(checkboxContent: string, completionMarkers: string[
   return completionMarkers.includes(trimmed);
 }
 
+// Check if checkbox content means cancelled based on settings
+function isCancelledCheckbox(checkboxContent: string, cancelledMarkers: string[]): boolean {
+  const trimmed = checkboxContent.trim();
+  return cancelledMarkers.includes(trimmed);
+}
+
 // Determine display status based on checkbox and dates
 export function computeDisplayStatus(
   checkboxContent: string,
   completionMarkers: string[],
+  cancelledMarkers: string[],
   dueDate?: string,
   startDate?: string,
 ): TaskStatusDisplay {
   // First check if checkbox indicates completion
   if (isCompletedCheckbox(checkboxContent, completionMarkers)) {
     return "completed";
+  }
+
+  // Check if checkbox indicates cancelled
+  if (isCancelledCheckbox(checkboxContent, cancelledMarkers)) {
+    return "cancelled";
   }
 
   const today = getToday();
@@ -185,7 +197,7 @@ export function parseTaskLine(
   const description = cleanDescription(rawDescription);
   const blocked = Boolean(dependsOn);
 
-  const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, dueDate, startDate);
+  const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, settings.cancelledMarkers, dueDate, startDate);
   const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
   const quadrant = computeQuadrant(priority, dueDate);
 
