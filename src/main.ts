@@ -14,7 +14,7 @@ import {
   ButtonComponent,
   MarkdownRenderer,
 } from "obsidian";
-import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode } from "./types";
+import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode, Priority } from "./types";
 import { parseTaskLine, sortTasks, computeGtdState, computeQuadrant, generateShortId } from "./task-parser";
 
 const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
@@ -532,6 +532,29 @@ export default class TaskMatrixPlugin extends Plugin {
         border-radius: 12px;
         font-size: 12px;
       }
+      .task-matrix-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .task-matrix-add-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 50%;
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.2s;
+      }
+      .task-matrix-add-btn:hover {
+        opacity: 0.8;
+      }
       .task-matrix-card {
         background: var(--background-primary);
         border: 1px solid var(--background-modifier-border);
@@ -931,7 +954,29 @@ class TaskMatrixView extends ItemView {
       });
 
       const group = tasks.filter((task) => getGtdColumn(task) === column.state);
-      this.createColumnHeader(columnEl, column.title, group.length);
+
+      // Define default values based on GTD state
+      const getGtdDefaults = (state: ParsedTask["gtdState"]): Partial<ParsedTask> => {
+        const today = new Date().toISOString().slice(0, 10);
+        switch (state) {
+          case "Waiting":
+            return { gtdState: "Waiting" };
+          case "In Progress":
+            return { gtdState: "In Progress", startDate: today };
+          case "Overdue":
+            return { dueDate: today };
+          case "Done":
+            return {};
+          default:
+            return { gtdState: state };
+        }
+      };
+
+      this.createColumnHeader(columnEl, column.title, group.length, () => {
+        const defaults = getGtdDefaults(column.state);
+        new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      });
+
       for (const task of group) {
         await this.createTaskCard(columnEl, task, this.describeTask(task));
       }
@@ -972,17 +1017,56 @@ class TaskMatrixView extends ItemView {
       });
 
       const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed" && task.displayStatus !== "cancelled");
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
+
+      // Define default values based on quadrant
+      const getQuadrantDefaults = (quadrant: ParsedTask["quadrant"]): Partial<ParsedTask> => {
+        const today = new Date().toISOString().slice(0, 10);
+        switch (quadrant) {
+          case "Q1":
+            return { priority: Priority.High, dueDate: today };
+          case "Q2":
+            return { priority: Priority.High };
+          case "Q3":
+            return { priority: Priority.Low, dueDate: today };
+          case "Q4":
+            return { priority: Priority.Lowest };
+          default:
+            return {};
+        }
+      };
+
+      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+        const defaults = getQuadrantDefaults(column.quadrant);
+        new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      });
+
       for (const task of group) {
         await this.createTaskCard(cell, task, this.describeTask(task));
       }
     }
   }
 
-  private createColumnHeader(parent: HTMLElement, title: string, count: number): void {
+  private createColumnHeader(
+    parent: HTMLElement,
+    title: string,
+    count: number,
+    onAddTask?: () => void
+  ): void {
     const header = parent.createDiv({ cls: "task-matrix-column-header" });
     header.createEl("h3", { text: title });
-    header.createEl("span", { text: String(count), cls: "task-matrix-count" });
+
+    const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
+
+    if (onAddTask) {
+      const addBtn = rightSection.createEl("button", {
+        text: "+",
+        cls: "task-matrix-add-btn",
+        title: "Add task",
+      });
+      addBtn.addEventListener("click", onAddTask);
+    }
+
+    rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
   }
 
   private async createTaskCard(parent: HTMLElement, task: ParsedTask, metaText: string): Promise<void> {
@@ -1130,27 +1214,41 @@ class TaskMatrixView extends ItemView {
 }
 
 class TaskEditModal extends Modal {
+  private isCreateMode: boolean;
+  private defaultValues: Partial<ParsedTask>;
+
   constructor(
     app: App,
-    private readonly task: ParsedTask,
-    private readonly plugin: TaskMatrixPlugin
+    private readonly task: ParsedTask | null,
+    private readonly plugin: TaskMatrixPlugin,
+    defaultValues: Partial<ParsedTask> = {}
   ) {
     super(app);
+    this.isCreateMode = task === null;
+    this.defaultValues = defaultValues;
   }
 
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
 
-    contentEl.createEl("h2", { text: "Edit Task" });
+    contentEl.createEl("h2", { text: this.isCreateMode ? "Add Task" : "Edit Task" });
 
     const form = contentEl.createDiv();
+
+    // Get default values
+    const description = this.isCreateMode ? "" : this.task!.description;
+    const priority = this.isCreateMode ? (this.defaultValues.priority ?? "none") : this.task!.priority;
+    const dueDate = this.isCreateMode ? (this.defaultValues.dueDate ?? "") : (this.task!.dueDate || "");
+    const startDate = this.isCreateMode ? (this.defaultValues.startDate ?? "") : (this.task!.startDate || "");
+    const taskId = this.isCreateMode ? "" : (this.task!.taskId || "");
+    const dependsOn = this.isCreateMode ? "" : (this.task!.dependsOn || "");
 
     // Description
     const descRow = form.createDiv({ cls: "task-matrix-form-row" });
     descRow.createEl("label", { text: "Description" });
     const descInput = new TextComponent(descRow);
-    descInput.setValue(this.task.description);
+    descInput.setValue(description);
 
     // Priority
     const priorityRow = form.createDiv({ cls: "task-matrix-form-row" });
@@ -1162,20 +1260,20 @@ class TaskEditModal extends Modal {
     prioritySelect.addOption("medium", "Medium");
     prioritySelect.addOption("high", "High");
     prioritySelect.addOption("highest", "Highest");
-    prioritySelect.setValue(this.task.priority);
+    prioritySelect.setValue(priority);
 
     // Due Date
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
     dueRow.createEl("label", { text: "Due Date" });
     const dueInput = new TextComponent(dueRow);
-    dueInput.setValue(this.task.dueDate || "");
+    dueInput.setValue(dueDate);
     dueInput.setPlaceholder("YYYY-MM-DD");
 
     // Start Date
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
     const startInput = new TextComponent(startRow);
-    startInput.setValue(this.task.startDate || "");
+    startInput.setValue(startDate);
     startInput.setPlaceholder("YYYY-MM-DD");
 
     // Task ID with auto-generate button
@@ -1185,7 +1283,7 @@ class TaskEditModal extends Modal {
 
     const idInputRow = idRow.createDiv({ cls: "task-matrix-input-row" });
     const idInput = new TextComponent(idInputRow);
-    idInput.setValue(this.task.taskId || "");
+    idInput.setValue(taskId);
     idInput.inputEl.style.flex = "1";
 
     const generateIdBtn = new ButtonComponent(idInputRow)
@@ -1200,7 +1298,7 @@ class TaskEditModal extends Modal {
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
     dependsRow.createEl("label", { text: "Depends On" });
     const dependsInput = new TextComponent(dependsRow);
-    dependsInput.setValue(this.task.dependsOn || "");
+    dependsInput.setValue(dependsOn);
 
     // Buttons
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
@@ -1210,22 +1308,132 @@ class TaskEditModal extends Modal {
       .onClick(() => this.close());
 
     new ButtonComponent(buttons)
-      .setButtonText("Save")
+      .setButtonText(this.isCreateMode ? "Create" : "Save")
       .setCta()
       .onClick(async () => {
-        await this.saveTask({
+        const updates = {
           description: descInput.getValue(),
           priority: prioritySelect.getValue() as ParsedTask["priority"],
           dueDate: dueInput.getValue() || undefined,
           startDate: startInput.getValue() || undefined,
           taskId: idInput.getValue() || undefined,
           dependsOn: dependsInput.getValue() || undefined,
-        });
+        };
+        if (this.isCreateMode) {
+          await this.createTask(updates);
+        } else {
+          await this.saveTask(updates);
+        }
         this.close();
       });
   }
 
+  private async createTask(updates: Partial<ParsedTask>): Promise<void> {
+    const desc = updates.description?.trim();
+    if (!desc) {
+      new Notice("Task description is required");
+      return;
+    }
+
+    // Determine target file
+    let targetFile: TFile | null = null;
+    const { scanFolder } = this.plugin.settings;
+
+    if (scanFolder) {
+      // Try to find or create a file in the scan folder
+      const folderPath = scanFolder.trim().replace(/^\/+|\/+$/g, "");
+      const inboxPath = `${folderPath}/Inbox.md`;
+      targetFile = this.app.vault.getAbstractFileByPath(inboxPath) as TFile | null;
+      if (!targetFile) {
+        // Try to find any markdown file in the folder
+        const files = this.app.vault.getMarkdownFiles().filter(f => {
+          const fileFolder = f.path.split("/").slice(0, -1).join("/");
+          return fileFolder === folderPath || fileFolder.startsWith(`${folderPath}/`);
+        });
+        if (files.length > 0) {
+          targetFile = files[0];
+        }
+      }
+    }
+
+    // Fall back to active file or create in vault root
+    if (!targetFile) {
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.extension === "md") {
+        targetFile = activeFile;
+      } else {
+        // Find any markdown file
+        const files = this.app.vault.getMarkdownFiles();
+        if (files.length > 0) {
+          targetFile = files[0];
+        }
+      }
+    }
+
+    if (!targetFile) {
+      new Notice("No markdown file found to add task");
+      return;
+    }
+
+    // Build task line
+    let taskLine = `- [ ] ${desc}`;
+
+    // Add priority
+    if (updates.priority && updates.priority !== "none") {
+      const priorityEmoji = {
+        highest: "⏫",
+        high: "🔼",
+        medium: "",
+        low: "🔽",
+        lowest: "⏬",
+      }[updates.priority];
+      if (priorityEmoji) {
+        taskLine = taskLine.replace(/^(- \[ \] )/, `$1${priorityEmoji} `);
+      }
+    }
+
+    // Add due date
+    if (updates.dueDate) {
+      taskLine += ` 📅 ${updates.dueDate}`;
+    }
+
+    // Add start date
+    if (updates.startDate) {
+      taskLine += ` 🛫 ${updates.startDate}`;
+    }
+
+    // Add GTD tag based on default values
+    if (this.defaultValues.gtdState) {
+      switch (this.defaultValues.gtdState) {
+        case "Waiting":
+          taskLine += " #waiting";
+          break;
+        case "In Progress":
+          taskLine += " #doing";
+          break;
+      }
+    }
+
+    // Add task ID
+    if (updates.taskId) {
+      taskLine += ` 🆔 ${updates.taskId}`;
+    }
+
+    // Add depends on
+    if (updates.dependsOn) {
+      taskLine += ` ⛔ ${updates.dependsOn}`;
+    }
+
+    // Append to file
+    const content = await this.app.vault.read(targetFile);
+    const newContent = content.trim() + "\n" + taskLine;
+    await this.app.vault.modify(targetFile, newContent);
+
+    new Notice(`Task added to ${targetFile.path}`);
+  }
+
   private async saveTask(updates: Partial<ParsedTask>): Promise<void> {
+    if (!this.task) return;
     const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
     if (!(file instanceof TFile)) {
       new Notice(`File not found: ${this.task.filePath}`);
@@ -1251,7 +1459,16 @@ class TaskEditModal extends Modal {
       const restOfLine = line.substring(prefix.length);
       // Remove old description, keep inline fields
       const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
-      line = prefix + updates.description + " " + inlineFields.join(" ");
+      // Filter out tags that already exist in the new description to avoid duplicates
+      const uniqueInlineFields = inlineFields.filter((field) => {
+        const trimmed = field.trim();
+        // Only check tags (starting with #)
+        if (trimmed.startsWith("#")) {
+          return !updates.description!.toLowerCase().includes(trimmed.toLowerCase());
+        }
+        return true;
+      });
+      line = prefix + updates.description + " " + uniqueInlineFields.join(" ");
     }
 
     // Update priority

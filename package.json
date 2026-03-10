@@ -1,6 +1,6 @@
 {
   "name": "obsidian-task-matrix-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Task matrix dashboards for Obsidian.",
   "main": "main.js",
   "scripts": {
