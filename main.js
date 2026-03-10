@@ -648,6 +648,29 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         border-radius: 12px;
         font-size: 12px;
       }
+      .task-matrix-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .task-matrix-add-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 50%;
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.2s;
+      }
+      .task-matrix-add-btn:hover {
+        opacity: 0.8;
+      }
       .task-matrix-card {
         background: var(--background-primary);
         border: 1px solid var(--background-modifier-border);
@@ -1009,7 +1032,25 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         }
       });
       const group = tasks.filter((task) => getGtdColumn(task) === column.state);
-      this.createColumnHeader(columnEl, column.title, group.length);
+      const getGtdDefaults = (state) => {
+        const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        switch (state) {
+          case "Waiting":
+            return { gtdState: "Waiting" };
+          case "In Progress":
+            return { gtdState: "In Progress", startDate: today };
+          case "Overdue":
+            return { dueDate: today };
+          case "Done":
+            return {};
+          default:
+            return { gtdState: state };
+        }
+      };
+      this.createColumnHeader(columnEl, column.title, group.length, () => {
+        const defaults = getGtdDefaults(column.state);
+        new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      });
       for (const task of group) {
         await this.createTaskCard(columnEl, task, this.describeTask(task));
       }
@@ -1045,16 +1086,43 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         }
       });
       const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed" && task.displayStatus !== "cancelled");
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
+      const getQuadrantDefaults = (quadrant) => {
+        const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        switch (quadrant) {
+          case "Q1":
+            return { priority: "high" /* High */, dueDate: today };
+          case "Q2":
+            return { priority: "high" /* High */ };
+          case "Q3":
+            return { priority: "low" /* Low */, dueDate: today };
+          case "Q4":
+            return { priority: "lowest" /* Lowest */ };
+          default:
+            return {};
+        }
+      };
+      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+        const defaults = getQuadrantDefaults(column.quadrant);
+        new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      });
       for (const task of group) {
         await this.createTaskCard(cell, task, this.describeTask(task));
       }
     }
   }
-  createColumnHeader(parent, title, count) {
+  createColumnHeader(parent, title, count, onAddTask) {
     const header = parent.createDiv({ cls: "task-matrix-column-header" });
     header.createEl("h3", { text: title });
-    header.createEl("span", { text: String(count), cls: "task-matrix-count" });
+    const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
+    if (onAddTask) {
+      const addBtn = rightSection.createEl("button", {
+        text: "+",
+        cls: "task-matrix-add-btn",
+        title: "Add task"
+      });
+      addBtn.addEventListener("click", onAddTask);
+    }
+    rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
   }
   async createTaskCard(parent, task, metaText) {
     const card = parent.createDiv({ cls: `task-matrix-card${task.blocked ? " blocked" : ""}` });
@@ -1176,20 +1244,28 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
 };
 var TaskEditModal = class extends import_obsidian.Modal {
-  constructor(app, task, plugin) {
+  constructor(app, task, plugin, defaultValues = {}) {
     super(app);
     this.task = task;
     this.plugin = plugin;
+    this.isCreateMode = task === null;
+    this.defaultValues = defaultValues;
   }
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
-    contentEl.createEl("h2", { text: "Edit Task" });
+    contentEl.createEl("h2", { text: this.isCreateMode ? "Add Task" : "Edit Task" });
     const form = contentEl.createDiv();
+    const description = this.isCreateMode ? "" : this.task.description;
+    const priority = this.isCreateMode ? this.defaultValues.priority ?? "none" : this.task.priority;
+    const dueDate = this.isCreateMode ? this.defaultValues.dueDate ?? "" : this.task.dueDate || "";
+    const startDate = this.isCreateMode ? this.defaultValues.startDate ?? "" : this.task.startDate || "";
+    const taskId = this.isCreateMode ? "" : this.task.taskId || "";
+    const dependsOn = this.isCreateMode ? "" : this.task.dependsOn || "";
     const descRow = form.createDiv({ cls: "task-matrix-form-row" });
     descRow.createEl("label", { text: "Description" });
     const descInput = new import_obsidian.TextComponent(descRow);
-    descInput.setValue(this.task.description);
+    descInput.setValue(description);
     const priorityRow = form.createDiv({ cls: "task-matrix-form-row" });
     priorityRow.createEl("label", { text: "Priority" });
     const prioritySelect = new import_obsidian.DropdownComponent(priorityRow);
@@ -1199,23 +1275,23 @@ var TaskEditModal = class extends import_obsidian.Modal {
     prioritySelect.addOption("medium", "Medium");
     prioritySelect.addOption("high", "High");
     prioritySelect.addOption("highest", "Highest");
-    prioritySelect.setValue(this.task.priority);
+    prioritySelect.setValue(priority);
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
     dueRow.createEl("label", { text: "Due Date" });
     const dueInput = new import_obsidian.TextComponent(dueRow);
-    dueInput.setValue(this.task.dueDate || "");
+    dueInput.setValue(dueDate);
     dueInput.setPlaceholder("YYYY-MM-DD");
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
     const startInput = new import_obsidian.TextComponent(startRow);
-    startInput.setValue(this.task.startDate || "");
+    startInput.setValue(startDate);
     startInput.setPlaceholder("YYYY-MM-DD");
     const idRow = form.createDiv({ cls: "task-matrix-form-row" });
     const idLabelRow = idRow.createDiv({ cls: "task-matrix-label-row" });
     idLabelRow.createEl("label", { text: "Task ID" });
     const idInputRow = idRow.createDiv({ cls: "task-matrix-input-row" });
     const idInput = new import_obsidian.TextComponent(idInputRow);
-    idInput.setValue(this.task.taskId || "");
+    idInput.setValue(taskId);
     idInput.inputEl.style.flex = "1";
     const generateIdBtn = new import_obsidian.ButtonComponent(idInputRow).setButtonText("\u{1F3B2}").setTooltip("Generate random ID").onClick(() => {
       idInput.setValue(generateShortId());
@@ -1224,22 +1300,105 @@ var TaskEditModal = class extends import_obsidian.Modal {
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
     dependsRow.createEl("label", { text: "Depends On" });
     const dependsInput = new import_obsidian.TextComponent(dependsRow);
-    dependsInput.setValue(this.task.dependsOn || "");
+    dependsInput.setValue(dependsOn);
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
     new import_obsidian.ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
-    new import_obsidian.ButtonComponent(buttons).setButtonText("Save").setCta().onClick(async () => {
-      await this.saveTask({
+    new import_obsidian.ButtonComponent(buttons).setButtonText(this.isCreateMode ? "Create" : "Save").setCta().onClick(async () => {
+      const updates = {
         description: descInput.getValue(),
         priority: prioritySelect.getValue(),
         dueDate: dueInput.getValue() || void 0,
         startDate: startInput.getValue() || void 0,
         taskId: idInput.getValue() || void 0,
         dependsOn: dependsInput.getValue() || void 0
-      });
+      };
+      if (this.isCreateMode) {
+        await this.createTask(updates);
+      } else {
+        await this.saveTask(updates);
+      }
       this.close();
     });
   }
+  async createTask(updates) {
+    const desc = updates.description?.trim();
+    if (!desc) {
+      new import_obsidian.Notice("Task description is required");
+      return;
+    }
+    let targetFile = null;
+    const { scanFolder } = this.plugin.settings;
+    if (scanFolder) {
+      const folderPath = scanFolder.trim().replace(/^\/+|\/+$/g, "");
+      const inboxPath = `${folderPath}/Inbox.md`;
+      targetFile = this.app.vault.getAbstractFileByPath(inboxPath);
+      if (!targetFile) {
+        const files = this.app.vault.getMarkdownFiles().filter((f) => {
+          const fileFolder = f.path.split("/").slice(0, -1).join("/");
+          return fileFolder === folderPath || fileFolder.startsWith(`${folderPath}/`);
+        });
+        if (files.length > 0) {
+          targetFile = files[0];
+        }
+      }
+    }
+    if (!targetFile) {
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.extension === "md") {
+        targetFile = activeFile;
+      } else {
+        const files = this.app.vault.getMarkdownFiles();
+        if (files.length > 0) {
+          targetFile = files[0];
+        }
+      }
+    }
+    if (!targetFile) {
+      new import_obsidian.Notice("No markdown file found to add task");
+      return;
+    }
+    let taskLine = `- [ ] ${desc}`;
+    if (updates.priority && updates.priority !== "none") {
+      const priorityEmoji = {
+        highest: "\u23EB",
+        high: "\u{1F53C}",
+        medium: "",
+        low: "\u{1F53D}",
+        lowest: "\u23EC"
+      }[updates.priority];
+      if (priorityEmoji) {
+        taskLine = taskLine.replace(/^(- \[ \] )/, `$1${priorityEmoji} `);
+      }
+    }
+    if (updates.dueDate) {
+      taskLine += ` \u{1F4C5} ${updates.dueDate}`;
+    }
+    if (updates.startDate) {
+      taskLine += ` \u{1F6EB} ${updates.startDate}`;
+    }
+    if (this.defaultValues.gtdState) {
+      switch (this.defaultValues.gtdState) {
+        case "Waiting":
+          taskLine += " #waiting";
+          break;
+        case "In Progress":
+          taskLine += " #doing";
+          break;
+      }
+    }
+    if (updates.taskId) {
+      taskLine += ` \u{1F194} ${updates.taskId}`;
+    }
+    if (updates.dependsOn) {
+      taskLine += ` \u26D4 ${updates.dependsOn}`;
+    }
+    const content = await this.app.vault.read(targetFile);
+    const newContent = content.trim() + "\n" + taskLine;
+    await this.app.vault.modify(targetFile, newContent);
+    new import_obsidian.Notice(`Task added to ${targetFile.path}`);
+  }
   async saveTask(updates) {
+    if (!this.task) return;
     const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
     if (!(file instanceof import_obsidian.TFile)) {
       new import_obsidian.Notice(`File not found: ${this.task.filePath}`);
@@ -1258,7 +1417,14 @@ var TaskEditModal = class extends import_obsidian.Modal {
       const prefix = checkboxMatch[1];
       const restOfLine = line.substring(prefix.length);
       const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
-      line = prefix + updates.description + " " + inlineFields.join(" ");
+      const uniqueInlineFields = inlineFields.filter((field) => {
+        const trimmed = field.trim();
+        if (trimmed.startsWith("#")) {
+          return !updates.description.toLowerCase().includes(trimmed.toLowerCase());
+        }
+        return true;
+      });
+      line = prefix + updates.description + " " + uniqueInlineFields.join(" ");
     }
     if (updates.priority !== void 0) {
       line = line.replace(/[🔼⏫🔽⏬]/gu, "");
