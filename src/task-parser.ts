@@ -1,7 +1,12 @@
-import { ParsedTask, Priority, TaskStatus, GTDState, EisenhowerQuadrant } from "./types";
-
-// Completed task IDs set for dependency checking
-let completedTaskIds: Set<string> = new Set();
+import {
+  ParsedTask,
+  Priority,
+  TaskStatusDisplay,
+  GTDState,
+  EisenhowerQuadrant,
+  CheckboxStatus,
+  TaskMatrixSettings,
+} from "./types";
 
 const PRIORITY_MARKERS: Array<[string, Priority]> = [
   ["⏫", Priority.Highest],
@@ -23,7 +28,8 @@ const FIELD_PATTERNS = {
   dependsField: /\bdependsOn::\s*([^\s#]+)/iu,
 };
 
-const TASK_PATTERN = /^[ \t]*[-*][ \t]\[( |x|X|\/|-)\][ \t]*(.*)$/u;
+// Accept any checkbox content, will be validated against settings
+const TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]*(.*)$/u;
 
 function extractValue(text: string, regex: RegExp): string | undefined {
   const match = text.match(regex);
@@ -47,14 +53,6 @@ function cleanDescription(raw: string): string {
     .trim();
 }
 
-function getStatus(marker: string): TaskStatus {
-  const normalized = marker.toLowerCase();
-  if (normalized === "x") return "completed";
-  if (normalized === "-") return "cancelled";
-  if (normalized === "/") return "in-progress";
-  return "open";
-}
-
 function isoDateOffset(days: number): string {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -62,23 +60,85 @@ function isoDateOffset(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function computeGtdState(status: TaskStatus, description: string, startDate?: string, scheduledDate?: string, blocked?: boolean): GTDState {
-  if (status === "completed" || status === "cancelled") return "Done";
+function getToday(): string {
+  return isoDateOffset(0);
+}
+
+// Check if checkbox content means completed based on settings
+function isCompletedCheckbox(checkboxContent: string, completionMarkers: string[]): boolean {
+  const trimmed = checkboxContent.trim();
+  return completionMarkers.includes(trimmed);
+}
+
+// Determine display status based on checkbox and dates
+export function computeDisplayStatus(
+  checkboxContent: string,
+  completionMarkers: string[],
+  dueDate?: string,
+  startDate?: string,
+): TaskStatusDisplay {
+  // First check if checkbox indicates completion
+  if (isCompletedCheckbox(checkboxContent, completionMarkers)) {
+    return "completed";
+  }
+
+  const today = getToday();
+
+  // Check if overdue (past due date)
+  if (dueDate && dueDate < today) {
+    return "overdue";
+  }
+
+  // Check if has start date
+  if (startDate) {
+    if (startDate <= today) {
+      return "in-progress";
+    } else {
+      return "to-be-started";
+    }
+  }
+
+  // Open - no due date, no start date
+  return "open";
+}
+
+export function computeGtdState(
+  displayStatus: TaskStatusDisplay,
+  checkboxContent: string,
+  description: string,
+  dueDate?: string,
+  startDate?: string,
+  blocked?: boolean,
+): GTDState {
+  // Completed or cancelled
+  if (displayStatus === "completed") {
+    return "Done";
+  }
 
   const desc = description.toLowerCase();
+  const today = getToday();
+
+  // Check for blocked/waiting first
   if (blocked || desc.includes("#waiting") || desc.includes("#delegated") || desc.includes("#blocked")) {
     return "Waiting";
   }
 
-  const today = isoDateOffset(0);
-  if (
-    status === "in-progress" ||
-    desc.includes("#doing") ||
-    desc.includes("#active") ||
-    desc.includes("#next") ||
-    (startDate && startDate <= today) ||
-    (scheduledDate && scheduledDate <= today)
-  ) {
+  // Check for overdue
+  if (dueDate && dueDate < today) {
+    return "Overdue";
+  }
+
+  // Check for in progress
+  if (startDate) {
+    if (startDate <= today) {
+      return "In Progress";
+    } else {
+      return "To be Started";
+    }
+  }
+
+  // Check for doing/active tags
+  if (desc.includes("#doing") || desc.includes("#active") || desc.includes("#next")) {
     return "In Progress";
   }
 
@@ -87,7 +147,8 @@ export function computeGtdState(status: TaskStatus, description: string, startDa
 
 export function computeQuadrant(priority: Priority, dueDate?: string): EisenhowerQuadrant {
   const isImportant = priority === Priority.Highest || priority === Priority.High;
-  const isUrgent = Boolean(dueDate && dueDate <= isoDateOffset(3));
+  const today = getToday();
+  const isUrgent = Boolean(dueDate && dueDate <= today);
 
   if (isImportant && isUrgent) return "Q1";
   if (isImportant && !isUrgent) return "Q2";
@@ -95,12 +156,18 @@ export function computeQuadrant(priority: Priority, dueDate?: string): Eisenhowe
   return "Q4";
 }
 
-export function parseTaskLine(line: string, filePath: string, lineNumber: number): ParsedTask | null {
+export function parseTaskLine(
+  line: string,
+  filePath: string,
+  lineNumber: number,
+  settings: TaskMatrixSettings,
+): ParsedTask | null {
   const match = line.match(TASK_PATTERN);
   if (!match) return null;
 
-  const status = getStatus(match[1]);
+  const checkboxContent = match[1];
   const rawDescription = match[2];
+
   const priority = PRIORITY_MARKERS.find(([marker]) => rawDescription.includes(marker))?.[1] ?? Priority.None;
   const dueDate = extractValue(rawDescription, FIELD_PATTERNS.dueDate);
   const startDate = extractValue(rawDescription, FIELD_PATTERNS.startDate);
@@ -113,7 +180,9 @@ export function parseTaskLine(line: string, filePath: string, lineNumber: number
   const tags = Array.from(rawDescription.matchAll(/(^|\s)(#[\p{L}\p{N}_/-]+)/gu)).map((entry) => entry[2].toLowerCase());
   const description = cleanDescription(rawDescription);
   const blocked = Boolean(dependsOn);
-  const gtdState = computeGtdState(status, description, startDate, scheduledDate, blocked);
+
+  const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, dueDate, startDate);
+  const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
   const quadrant = computeQuadrant(priority, dueDate);
 
   return {
@@ -122,7 +191,8 @@ export function parseTaskLine(line: string, filePath: string, lineNumber: number
     lineNumber,
     lineText: line,
     description,
-    status,
+    checkboxStatus: checkboxContent as CheckboxStatus,
+    displayStatus,
     priority,
     dueDate,
     startDate,
@@ -168,4 +238,9 @@ export function sortTasks(tasks: ParsedTask[]): ParsedTask[] {
     if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
     return a.lineNumber - b.lineNumber;
   });
+}
+
+// Generate a short unique ID
+export function generateShortId(): string {
+  return Math.random().toString(36).substring(2, 8);
 }

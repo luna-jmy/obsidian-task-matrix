@@ -15,7 +15,7 @@ import {
   MarkdownRenderer,
 } from "obsidian";
 import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode } from "./types";
-import { parseTaskLine, sortTasks, computeGtdState, computeQuadrant } from "./task-parser";
+import { parseTaskLine, sortTasks, computeGtdState, computeQuadrant, generateShortId } from "./task-parser";
 
 const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
 const ICONS = {
@@ -85,12 +85,16 @@ export default class TaskMatrixPlugin extends Plugin {
   }
 
   async activateView(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)[0];
+    let leaf: WorkspaceLeaf | null = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)[0];
     if (!leaf) {
-      const newLeaf = this.app.workspace.getRightLeaf(false);
-      if (newLeaf) {
-        await newLeaf.setViewState({ type: VIEW_TYPE_TASK_MATRIX, active: true });
-        leaf = newLeaf;
+      // Create new leaf based on settings
+      if (this.settings.openLocation === "tab") {
+        leaf = this.app.workspace.getLeaf(true);
+      } else {
+        leaf = this.app.workspace.getRightLeaf(false);
+      }
+      if (leaf) {
+        await leaf.setViewState({ type: VIEW_TYPE_TASK_MATRIX, active: true });
       }
     }
 
@@ -128,6 +132,15 @@ export default class TaskMatrixPlugin extends Plugin {
   }
 
   private shouldIncludeFile(file: TFile): boolean {
+    // Check excluded folders first
+    for (const excludeFolder of this.settings.excludeFolders) {
+      const trimmed = excludeFolder.trim().replace(/^\/+|\/+$/g, "");
+      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+        return false;
+      }
+    }
+
+    // Check scan folder
     const folder = this.settings.scanFolder.trim().replace(/^\/+|\/+$/g, "");
     if (!folder) return true;
     return file.path === folder || file.path.startsWith(`${folder}/`);
@@ -141,9 +154,10 @@ export default class TaskMatrixPlugin extends Plugin {
       const content = await this.app.vault.cachedRead(file);
       const lines = content.split(/\r?\n/u);
       lines.forEach((line, index) => {
-        const parsed = parseTaskLine(line, file.path, index + 1);
+        const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
         if (!parsed) return;
-        if (!this.settings.includeCompleted && (parsed.status === "completed" || parsed.status === "cancelled")) {
+        // Filter out completed tasks if setting is disabled
+        if (!this.settings.includeCompleted && parsed.displayStatus === "completed") {
           return;
         }
         tasks.push(parsed);
@@ -151,12 +165,12 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     // Update blocked status based on current task list
-    const completedIds = new Set(tasks.filter(t => t.status === "completed").map(t => t.taskId).filter(Boolean));
+    const completedIds = new Set(tasks.filter(t => t.displayStatus === "completed").map(t => t.taskId).filter(Boolean));
     for (const task of tasks) {
       if (task.dependsOn) {
         task.blocked = !completedIds.has(task.dependsOn);
         // Recompute GTD state with updated blocked status
-        task.gtdState = computeGtdState(task.status, task.description, task.startDate, task.scheduledDate, task.blocked);
+        task.gtdState = computeGtdState(task.displayStatus, task.checkboxStatus, task.description, task.dueDate, task.startDate, task.blocked);
       }
     }
 
@@ -181,14 +195,14 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     const line = lines[lineIndex];
-    const newStatus = task.status === "completed" ? "open" : "completed";
-    const newMarker = newStatus === "completed" ? "x" : " ";
-    const newLine = line.replace(/\[( |x|X|\/-)\]/, `[${newMarker}]`);
+    const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
+    const newMarker = isCompleted ? " " : "x";
+    const newLine = line.replace(/\[[^\]]*\]/, `[${newMarker}]`);
 
     if (newLine !== line) {
       lines[lineIndex] = newLine;
       await this.app.vault.modify(file, lines.join("\n"));
-      new Notice(`Task marked as ${newStatus}`);
+      new Notice(isCompleted ? "Task reopened" : "Task completed");
     }
   }
 
@@ -235,7 +249,18 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     const line = lines[lineIndex];
-    const newLine = line.replace(/\[( |x|X|\/-)\]/, "[/]");
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Add start date emoji if not present
+    let newLine = line;
+    if (!line.includes("🛫")) {
+      newLine = `${line} 🛫 ${today}`;
+    }
+
+    // Also add #doing tag if not present
+    if (!line.toLowerCase().includes("#doing")) {
+      newLine = `${newLine} #doing`;
+    }
 
     if (newLine !== line) {
       lines[lineIndex] = newLine;
@@ -553,6 +578,35 @@ export default class TaskMatrixPlugin extends Plugin {
         background: #3b82f6;
         color: white;
       }
+      .task-matrix-badge.status-to-be-started {
+        background: #8b5cf6;
+        color: white;
+      }
+      .task-matrix-badge.status-overdue {
+        background: #dc2626;
+        color: white;
+      }
+      /* Eisenhower Quadrant Colors */
+      .task-matrix-cell[data-quadrant="Q1"] .task-matrix-column-header h3 {
+        color: #dc2626;
+        border-left: 3px solid #dc2626;
+        padding-left: 8px;
+      }
+      .task-matrix-cell[data-quadrant="Q2"] .task-matrix-column-header h3 {
+        color: #059669;
+        border-left: 3px solid #059669;
+        padding-left: 8px;
+      }
+      .task-matrix-cell[data-quadrant="Q3"] .task-matrix-column-header h3 {
+        color: #d97706;
+        border-left: 3px solid #d97706;
+        padding-left: 8px;
+      }
+      .task-matrix-cell[data-quadrant="Q4"] .task-matrix-column-header h3 {
+        color: #6b7280;
+        border-left: 3px solid #6b7280;
+        padding-left: 8px;
+      }
       .task-matrix-chip-row {
         display: flex;
         flex-wrap: wrap;
@@ -629,6 +683,10 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-form-row textarea {
         min-height: 80px;
         resize: vertical;
+      }
+      .task-matrix-input-row {
+        display: flex;
+        align-items: center;
       }
       .task-matrix-modal-buttons {
         display: flex;
@@ -881,7 +939,7 @@ class TaskMatrixView extends ItemView {
         }
       });
 
-      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.status !== "completed" && task.status !== "cancelled");
+      const group = tasks.filter((task) => task.quadrant === column.quadrant && task.displayStatus !== "completed");
       this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length);
       for (const task of group) {
         await this.createTaskCard(cell, task, this.describeTask(task));
@@ -929,7 +987,7 @@ class TaskMatrixView extends ItemView {
       titleEl.setText(task.description);
     }
 
-    top.createEl("div", { text: this.statusBadge(task.status), cls: `task-matrix-badge status-${task.status}` });
+    top.createEl("div", { text: this.statusBadge(task.displayStatus), cls: `task-matrix-badge status-${task.displayStatus}` });
 
     const chips = card.createDiv({ cls: "task-matrix-chip-row" });
     if (task.priority !== "none") {
@@ -951,7 +1009,7 @@ class TaskMatrixView extends ItemView {
     // Action buttons
     const actions = card.createDiv({ cls: "task-matrix-card-actions" });
 
-    if (task.status !== "completed" && task.status !== "cancelled") {
+    if (task.displayStatus !== "completed") {
       const completeBtn = actions.createEl("button", {
         text: "✓",
         cls: "task-matrix-action-btn",
@@ -959,7 +1017,8 @@ class TaskMatrixView extends ItemView {
       });
       completeBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
 
-      if (task.status !== "in-progress") {
+      // Only show start button if no start date or start date is in the future
+      if (!task.startDate || task.displayStatus === "to-be-started") {
         const startBtn = actions.createEl("button", {
           text: "▶",
           cls: "task-matrix-action-btn",
@@ -1004,7 +1063,7 @@ class TaskMatrixView extends ItemView {
     });
   }
 
-  private statusBadge(status: ParsedTask["status"]): string {
+  private statusBadge(status: ParsedTask["displayStatus"]): string {
     switch (status) {
       case "completed":
         return "Done";
@@ -1012,6 +1071,10 @@ class TaskMatrixView extends ItemView {
         return "Cancelled";
       case "in-progress":
         return "Doing";
+      case "to-be-started":
+        return "To be Started";
+      case "overdue":
+        return "Overdue";
       default:
         return "Open";
     }
@@ -1083,11 +1146,23 @@ class TaskEditModal extends Modal {
     startInput.setValue(this.task.startDate || "");
     startInput.setPlaceholder("YYYY-MM-DD");
 
-    // Task ID
+    // Task ID with auto-generate button
     const idRow = form.createDiv({ cls: "task-matrix-form-row" });
-    idRow.createEl("label", { text: "Task ID" });
-    const idInput = new TextComponent(idRow);
+    const idLabelRow = idRow.createDiv({ cls: "task-matrix-label-row" });
+    idLabelRow.createEl("label", { text: "Task ID" });
+
+    const idInputRow = idRow.createDiv({ cls: "task-matrix-input-row" });
+    const idInput = new TextComponent(idInputRow);
     idInput.setValue(this.task.taskId || "");
+    idInput.inputEl.style.flex = "1";
+
+    const generateIdBtn = new ButtonComponent(idInputRow)
+      .setButtonText("🎲")
+      .setTooltip("Generate random ID")
+      .onClick(() => {
+        idInput.setValue(generateShortId());
+      });
+    generateIdBtn.buttonEl.style.marginLeft = "8px";
 
     // Depends On
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
@@ -1237,8 +1312,53 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Exclude folders")
+      .setDesc("Comma-separated list of folder paths to exclude from task scanning.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Archive, Templates, Daily")
+          .setValue(this.plugin.settings.excludeFolders.join(", "))
+          .onChange(async (value) => {
+            this.plugin.settings.excludeFolders = value.split(",").map(s => s.trim()).filter(Boolean);
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Open location")
+      .setDesc("Where to open the Task Matrix view.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("sidebar", "Right Sidebar")
+          .addOption("tab", "New Tab")
+          .setValue(this.plugin.settings.openLocation)
+          .onChange(async (value: string) => {
+            this.plugin.settings.openLocation = value as "sidebar" | "tab";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Completion markers")
+      .setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X")
+      .addText((text) =>
+        text
+          .setPlaceholder("x, X, done, 完成")
+          .setValue(this.plugin.settings.completionMarkers.join(", "))
+          .onChange(async (value) => {
+            this.plugin.settings.completionMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
+            if (this.plugin.settings.completionMarkers.length === 0) {
+              this.plugin.settings.completionMarkers = ["x", "X"];
+            }
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName("Include completed tasks")
-      .setDesc("Show completed and cancelled tasks in the matrix.")
+      .setDesc("Show completed tasks in the matrix.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.includeCompleted).onChange(async (value) => {
           this.plugin.settings.includeCompleted = value;
