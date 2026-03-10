@@ -1,0 +1,25 @@
+{
+  "name": "obsidian-task-matrix-plugin",
+  "version": "0.1.0",
+  "description": "Task matrix dashboards for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.mjs",
+    "build": "tsc --noEmit -skipLibCheck && node esbuild.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "tasks"
+  ],
+  "author": "Luna Jiang",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.3",
+    "obsidian": "^1.8.10",
+    "typescript": "^5.8.2"
+  }
+}
