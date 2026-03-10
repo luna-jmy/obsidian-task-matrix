@@ -8,7 +8,14 @@
       "Bash(git commit:*)",
       "Bash(git push)",
       "Bash(git add .gitignore)",
-      "Bash(gh release:*)"
+      "Bash(gh release:*)",
+      "Bash(zip -r obsidian-task-matrix-0.1.2.zip manifest.json main.js)",
+      "Bash(powershell -Command \"Compress-Archive -Path ''release\\\\manifest.json'',''release\\\\main.js'' -DestinationPath ''release\\\\obsidian-task-matrix-0.1.2.zip'' -Force\")",
+      "Bash(git add .gitignore README.md manifest.json package.json versions.json src/main.ts CHANGELOG.md LICENSE)",
+      "Bash(git tag -a 0.1.2 -m \"Release v0.1.2\")",
+      "Bash(git push origin main)",
+      "Bash(git push origin 0.1.2)",
+      "Bash(git add -f main.js)"
     ]
   }
 }
