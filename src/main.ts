@@ -650,6 +650,10 @@ export default class TaskMatrixPlugin extends Plugin {
 class TaskMatrixView extends ItemView {
   private currentView: ViewMode;
   private searchQuery = "";
+  private shellEl: HTMLElement | null = null;
+  private bodyEl: HTMLElement | null = null;
+  private searchEl: HTMLInputElement | null = null;
+  private searchDebounceTimer: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: TaskMatrixPlugin) {
     super(leaf);
@@ -673,6 +677,9 @@ class TaskMatrixView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.searchDebounceTimer) {
+      window.clearTimeout(this.searchDebounceTimer);
+    }
     this.contentEl.empty();
   }
 
@@ -681,9 +688,25 @@ class TaskMatrixView extends ItemView {
     root.empty();
     root.addClass("task-matrix-view");
 
-    const shell = root.createDiv({ cls: "task-matrix-shell" });
-    this.renderHeader(shell);
-    this.renderBody(shell);
+    this.shellEl = root.createDiv({ cls: "task-matrix-shell" });
+    this.renderHeader(this.shellEl);
+    this.renderBodyContainer(this.shellEl);
+  }
+
+  private renderBodyContainer(parent: HTMLElement): void {
+    // Remove old body if exists
+    if (this.bodyEl) {
+      this.bodyEl.remove();
+    }
+    this.bodyEl = parent.createDiv({ cls: "task-matrix-body" });
+    this.renderBodyContent(this.bodyEl);
+  }
+
+  private refreshBody(): void {
+    if (this.bodyEl) {
+      this.bodyEl.empty();
+      this.renderBodyContent(this.bodyEl);
+    }
   }
 
   private get filteredTasks(): ParsedTask[] {
@@ -707,15 +730,21 @@ class TaskMatrixView extends ItemView {
     });
 
     const toolbar = header.createDiv({ cls: "task-matrix-toolbar" });
-    const search = toolbar.createEl("input", {
+    this.searchEl = toolbar.createEl("input", {
       type: "search",
       placeholder: "Search tasks, file paths, ids...",
       cls: "task-matrix-search",
     });
-    search.value = this.searchQuery;
-    search.addEventListener("input", () => {
-      this.searchQuery = search.value;
-      this.render();
+    this.searchEl.value = this.searchQuery;
+    this.searchEl.addEventListener("input", () => {
+      this.searchQuery = this.searchEl?.value || "";
+      // Debounce body refresh to allow continuous typing
+      if (this.searchDebounceTimer) {
+        window.clearTimeout(this.searchDebounceTimer);
+      }
+      this.searchDebounceTimer = window.setTimeout(() => {
+        this.refreshBody();
+      }, 150);
     });
 
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
@@ -744,7 +773,7 @@ class TaskMatrixView extends ItemView {
     });
   }
 
-  private renderBody(parent: HTMLElement): void {
+  private renderBodyContent(parent: HTMLElement): void {
     const tasks = this.filteredTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });

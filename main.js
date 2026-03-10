@@ -729,6 +729,10 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.searchQuery = "";
+    this.shellEl = null;
+    this.bodyEl = null;
+    this.searchEl = null;
+    this.searchDebounceTimer = null;
     this.currentView = plugin.settings.defaultView;
   }
   getViewType() {
@@ -744,15 +748,31 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.render();
   }
   async onClose() {
+    if (this.searchDebounceTimer) {
+      window.clearTimeout(this.searchDebounceTimer);
+    }
     this.contentEl.empty();
   }
   render() {
     const root = this.contentEl;
     root.empty();
     root.addClass("task-matrix-view");
-    const shell = root.createDiv({ cls: "task-matrix-shell" });
-    this.renderHeader(shell);
-    this.renderBody(shell);
+    this.shellEl = root.createDiv({ cls: "task-matrix-shell" });
+    this.renderHeader(this.shellEl);
+    this.renderBodyContainer(this.shellEl);
+  }
+  renderBodyContainer(parent) {
+    if (this.bodyEl) {
+      this.bodyEl.remove();
+    }
+    this.bodyEl = parent.createDiv({ cls: "task-matrix-body" });
+    this.renderBodyContent(this.bodyEl);
+  }
+  refreshBody() {
+    if (this.bodyEl) {
+      this.bodyEl.empty();
+      this.renderBodyContent(this.bodyEl);
+    }
   }
   get filteredTasks() {
     const query = this.searchQuery.trim().toLowerCase();
@@ -771,15 +791,20 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       cls: "task-matrix-subtitle"
     });
     const toolbar = header.createDiv({ cls: "task-matrix-toolbar" });
-    const search = toolbar.createEl("input", {
+    this.searchEl = toolbar.createEl("input", {
       type: "search",
       placeholder: "Search tasks, file paths, ids...",
       cls: "task-matrix-search"
     });
-    search.value = this.searchQuery;
-    search.addEventListener("input", () => {
-      this.searchQuery = search.value;
-      this.render();
+    this.searchEl.value = this.searchQuery;
+    this.searchEl.addEventListener("input", () => {
+      this.searchQuery = this.searchEl?.value || "";
+      if (this.searchDebounceTimer) {
+        window.clearTimeout(this.searchDebounceTimer);
+      }
+      this.searchDebounceTimer = window.setTimeout(() => {
+        this.refreshBody();
+      }, 150);
     });
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
     this.renderModeButton(segmented, "list", ICONS.list);
@@ -804,7 +829,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       this.render();
     });
   }
-  renderBody(parent) {
+  renderBodyContent(parent) {
     const tasks = this.filteredTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
