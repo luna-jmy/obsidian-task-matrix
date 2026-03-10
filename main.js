@@ -105,7 +105,7 @@ function computeDisplayStatus(checkboxContent, completionMarkers, cancelledMarke
   return "open";
 }
 function computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked) {
-  if (displayStatus === "completed") {
+  if (displayStatus === "completed" || displayStatus === "cancelled") {
     return "Done";
   }
   const desc = description.toLowerCase();
@@ -360,8 +360,9 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     }
     const line = lines[lineIndex];
     const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
-    const newMarker = isCompleted ? " " : "x";
-    const newLine = line.replace(/\[[^\]]*\]/, `[${newMarker}]`);
+    const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+    const newMarker = isCompleted ? " " : defaultCompleteMarker;
+    const newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
     if (newLine !== line) {
       lines[lineIndex] = newLine;
       await this.app.vault.modify(file, lines.join("\n"));
@@ -382,7 +383,8 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       return;
     }
     const line = lines[lineIndex];
-    const newLine = line.replace(/\[( |x|X|\/-)\]/, "[-]");
+    const defaultCancelledMarker = this.settings.cancelledMarkers[0] ?? "-";
+    const newLine = line.replace(/\[[^\]]*\]/u, `[${defaultCancelledMarker}]`);
     if (newLine !== line) {
       lines[lineIndex] = newLine;
       await this.app.vault.modify(file, lines.join("\n"));
@@ -470,7 +472,10 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         tagToAdd = " #doing";
         break;
       case "Done":
-        line = line.replace(/\[( |x|X|\/-)\]/, "[x]");
+        {
+          const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+          line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
+        }
         break;
     }
     if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
@@ -953,12 +958,35 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderGtd(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-board" });
-    const columns = [
+    const simpleFlow = !this.plugin.settings.includeCompleted;
+    const columns = simpleFlow ? [
       { title: "Inbox", state: "Inbox" },
       { title: "In Progress", state: "In Progress" },
+      { title: "Waiting", state: "Waiting" }
+    ] : [
+      { title: "Inbox", state: "Inbox" },
+      { title: "To be Started", state: "To be Started" },
+      { title: "In Progress", state: "In Progress" },
       { title: "Waiting", state: "Waiting" },
+      { title: "Overdue", state: "Overdue" },
       { title: "Done", state: "Done" }
     ];
+    const todayIso = (() => {
+      const date = /* @__PURE__ */ new Date();
+      date.setHours(0, 0, 0, 0);
+      return date.toISOString().slice(0, 10);
+    })();
+    const getGtdColumn = (task) => {
+      if (!simpleFlow) return task.gtdState;
+      if (task.gtdState === "To be Started") return "Inbox";
+      if (task.gtdState === "Overdue") {
+        const desc = task.description.toLowerCase();
+        const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
+        const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
+        return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
+      }
+      return task.gtdState;
+    };
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
       columnEl.dataset.state = column.state;
@@ -980,7 +1008,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           }
         }
       });
-      const group = tasks.filter((task) => task.gtdState === column.state);
+      const group = tasks.filter((task) => getGtdColumn(task) === column.state);
       this.createColumnHeader(columnEl, column.title, group.length);
       for (const task of group) {
         await this.createTaskCard(columnEl, task, this.describeTask(task));

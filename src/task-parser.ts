@@ -123,8 +123,8 @@ export function computeGtdState(
   startDate?: string,
   blocked?: boolean,
 ): GTDState {
-  // Completed or cancelled
-  if (displayStatus === "completed") {
+  // Completed or cancelled both go to Done
+  if (displayStatus === "completed" || displayStatus === "cancelled") {
     return "Done";
   }
 

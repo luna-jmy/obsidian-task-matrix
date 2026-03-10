@@ -119,6 +119,11 @@ Create tasks in any markdown file using standard Obsidian syntax:
 
 ## 📝 Changelog
 
+### 0.1.1
+- GTD: Cancelled tasks now appear in Done
+- GTD: Hide Done column when "Include Completed" is off
+- GTD: Overdue tasks are visible in GTD view
+
 ### 0.1.0
 - Initial release
 - List, GTD, and Eisenhower views

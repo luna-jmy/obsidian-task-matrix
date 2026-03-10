@@ -196,8 +196,9 @@ export default class TaskMatrixPlugin extends Plugin {
 
     const line = lines[lineIndex];
     const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
-    const newMarker = isCompleted ? " " : "x";
-    const newLine = line.replace(/\[[^\]]*\]/, `[${newMarker}]`);
+    const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+    const newMarker = isCompleted ? " " : defaultCompleteMarker;
+    const newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
 
     if (newLine !== line) {
       lines[lineIndex] = newLine;
@@ -223,7 +224,8 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     const line = lines[lineIndex];
-    const newLine = line.replace(/\[( |x|X|\/-)\]/, "[-]");
+    const defaultCancelledMarker = this.settings.cancelledMarkers[0] ?? "-";
+    const newLine = line.replace(/\[[^\]]*\]/u, `[${defaultCancelledMarker}]`);
 
     if (newLine !== line) {
       lines[lineIndex] = newLine;
@@ -339,7 +341,10 @@ export default class TaskMatrixPlugin extends Plugin {
         break;
       case "Done":
         // Mark as completed
-        line = line.replace(/\[( |x|X|\/-)\]/, "[x]");
+        {
+          const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+          line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
+        }
         break;
     }
 
@@ -867,12 +872,39 @@ class TaskMatrixView extends ItemView {
 
   private async renderGtd(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-board" });
-    const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = [
-      { title: "Inbox", state: "Inbox" },
-      { title: "In Progress", state: "In Progress" },
-      { title: "Waiting", state: "Waiting" },
-      { title: "Done", state: "Done" },
-    ];
+    const simpleFlow = !this.plugin.settings.includeCompleted;
+    const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = simpleFlow
+      ? [
+          { title: "Inbox", state: "Inbox" },
+          { title: "In Progress", state: "In Progress" },
+          { title: "Waiting", state: "Waiting" },
+        ]
+      : [
+          { title: "Inbox", state: "Inbox" },
+          { title: "To be Started", state: "To be Started" },
+          { title: "In Progress", state: "In Progress" },
+          { title: "Waiting", state: "Waiting" },
+          { title: "Overdue", state: "Overdue" },
+          { title: "Done", state: "Done" },
+        ];
+
+    const todayIso = (() => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      return date.toISOString().slice(0, 10);
+    })();
+
+    const getGtdColumn = (task: ParsedTask): ParsedTask["gtdState"] => {
+      if (!simpleFlow) return task.gtdState;
+      if (task.gtdState === "To be Started") return "Inbox";
+      if (task.gtdState === "Overdue") {
+        const desc = task.description.toLowerCase();
+        const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
+        const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
+        return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
+      }
+      return task.gtdState;
+    };
 
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
@@ -898,7 +930,7 @@ class TaskMatrixView extends ItemView {
         }
       });
 
-      const group = tasks.filter((task) => task.gtdState === column.state);
+      const group = tasks.filter((task) => getGtdColumn(task) === column.state);
       this.createColumnHeader(columnEl, column.title, group.length);
       for (const task of group) {
         await this.createTaskCard(columnEl, task, this.describeTask(task));
