@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5
+- Fix: Resolved duplicate emoji issue when dragging tasks between quadrants
+  - Due date emoji (📅) was sometimes left behind when removing dates, causing `📅 📅 2026-03-12` patterns
+- New: Added 🔺 (Critical) priority level
+  - Higher priority than ⏫ (Highest)
+  - Critical tasks are treated as Important in Eisenhower Matrix
+- Fix: Task edit modal dropdown menu height increased for better text visibility
+
 ## 0.1.4
 - New: Urgent days range 设置 (1-7天)
   - 默认 1 = 只有今天和逾期算 urgent
