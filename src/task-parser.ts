@@ -9,6 +9,7 @@ import {
 } from "./types";
 
 const PRIORITY_MARKERS: Array<[string, Priority]> = [
+  ["🔺", Priority.Critical],
   ["⏫", Priority.Highest],
   ["🔼", Priority.High],
   ["🔽", Priority.Low],
@@ -49,7 +50,7 @@ function cleanDescription(raw: string): string {
     .replace(FIELD_PATTERNS.taskIdField, "")
     .replace(FIELD_PATTERNS.dependsIcon, "")
     .replace(FIELD_PATTERNS.dependsField, "")
-    .replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}]/gu, "")
+    .replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}\u{1f53a}]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -159,7 +160,7 @@ export function computeGtdState(
 }
 
 export function computeQuadrant(priority: Priority, dueDate: string | undefined, urgentDaysRange: number): EisenhowerQuadrant {
-  const isImportant = priority === Priority.Highest || priority === Priority.High;
+  const isImportant = priority === Priority.Critical || priority === Priority.Highest || priority === Priority.High;
   // Urgent if overdue or due within urgentDaysRange days (default 1 = today only)
   const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
   const isUrgent = Boolean(dueDate && dueDate <= urgentDeadline);
@@ -228,6 +229,8 @@ export function parseTaskLine(
 
 function priorityRank(priority: Priority): number {
   switch (priority) {
+    case Priority.Critical:
+      return 6;
     case Priority.Highest:
       return 5;
     case Priority.High:

@@ -406,8 +406,8 @@ export default class TaskMatrixPlugin extends Plugin {
         break;
     }
 
-    // Remove existing priority markers
-    line = line.replace(/[🔼⏫🔽⏬]/gu, "").trim();
+    // Remove existing priority markers (use alternation instead of character class for emoji)
+    line = line.replace(/⏫|🔼|🔽|⏬/gu, "").trim();
 
     // Add new priority marker after checkbox
     if (priorityMarker) {
@@ -418,14 +418,10 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     // Handle due date based on quadrant
-    if (shouldClearDueDate) {
-      // Remove due date emoji and date
-      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/gu, "").trim();
-    } else if (shouldAddDueDate) {
-      // Check if already has due date
-      if (!line.includes("📅")) {
-        line = line + ` 📅 ${today}`;
-      }
+    // Always remove any existing due date emoji (with or without date) first to avoid duplicates
+    line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "").trim();
+    if (shouldAddDueDate) {
+      line = line + ` 📅 ${today}`;
     }
 
     lines[lineIndex] = line;
@@ -736,6 +732,12 @@ export default class TaskMatrixPlugin extends Plugin {
         border-radius: 4px;
         background: var(--background-primary);
         color: var(--text-normal);
+        min-height: 36px;
+        line-height: 1.4;
+      }
+      .task-matrix-form-row select {
+        height: 36px;
+        padding: 6px 8px;
       }
       .task-matrix-form-row input[type="date"] {
         font-family: inherit;
@@ -1362,6 +1364,7 @@ class TaskEditModal extends Modal {
     prioritySelect.addOption("medium", "Medium");
     prioritySelect.addOption("high", "High");
     prioritySelect.addOption("highest", "Highest");
+    prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
 
     // Due Date
@@ -1487,6 +1490,7 @@ class TaskEditModal extends Modal {
 
     if (updates.priority && updates.priority !== "none") {
       const priorityEmoji = {
+        critical: "🔺",
         highest: "⏫",
         high: "🔼",
         medium: "",
@@ -1629,7 +1633,8 @@ class TaskEditModal extends Modal {
       // Keep the checkbox and any inline fields, update description
       const restOfLine = line.substring(prefix.length);
       // Remove old description, keep inline fields
-      const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
+      // Match emoji fields with optional dates, tags, and dataview inline fields
+      const inlineFields = restOfLine.match(/(\s*(?:📅\s*\d{4}-\d{2}-\d{2}|🛫\s*\d{4}-\d{2}-\d{2}|⏳\s*\d{4}-\d{2}-\d{2}|✅\s*\d{4}-\d{2}-\d{2}|➕\s*\d{4}-\d{2}-\d{2}|🔺|⏫|🔼|🔽|⏬|🆔\s*\S+|⛔\s*\S+|#\w+|::\s*\S+)\s*)/gu) || [];
       // Filter out tags that already exist in the new description to avoid duplicates
       const uniqueInlineFields = inlineFields.filter((field) => {
         const trimmed = field.trim();
@@ -1644,23 +1649,30 @@ class TaskEditModal extends Modal {
 
     // Update priority
     if (updates.priority !== undefined) {
-      line = line.replace(/[🔼⏫🔽⏬]/gu, "");
-      if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
+      line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
+      if (updates.priority === "critical") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔺 ");
+      else if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
       else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔼 ");
       else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔽 ");
       else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏬ ");
     }
 
-    // Update due date
+    // Update due date - make date optional in regex to handle orphaned emojis
     if (updates.dueDate !== undefined) {
-      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.dueDate) line += ` 📅 ${updates.dueDate}`;
     }
 
-    // Update start date
+    // Update start date - make date optional in regex to handle orphaned emojis
     if (updates.startDate !== undefined) {
-      line = line.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.startDate) line += ` 🛫 ${updates.startDate}`;
+    }
+
+    // Update created date - make date optional in regex to handle orphaned emojis
+    if (updates.createdDate !== undefined) {
+      line = line.replace(/\s*➕(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.createdDate) line += ` ➕ ${updates.createdDate}`;
     }
 
     // Update task ID

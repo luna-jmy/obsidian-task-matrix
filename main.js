@@ -48,6 +48,7 @@ var DEFAULT_SETTINGS = {
 
 // src/task-parser.ts
 var PRIORITY_MARKERS = [
+  ["\u{1F53A}", "critical" /* Critical */],
   ["\u23EB", "highest" /* Highest */],
   ["\u{1F53C}", "high" /* High */],
   ["\u{1F53D}", "low" /* Low */],
@@ -71,7 +72,7 @@ function extractValue(text, regex) {
   return match?.[1]?.trim();
 }
 function cleanDescription(raw) {
-  return raw.replace(FIELD_PATTERNS.dueDate, "").replace(FIELD_PATTERNS.startDate, "").replace(FIELD_PATTERNS.scheduledDate, "").replace(FIELD_PATTERNS.doneDate, "").replace(FIELD_PATTERNS.createdDate, "").replace(FIELD_PATTERNS.recurrence, "").replace(FIELD_PATTERNS.taskIdIcon, "").replace(FIELD_PATTERNS.taskIdField, "").replace(FIELD_PATTERNS.dependsIcon, "").replace(FIELD_PATTERNS.dependsField, "").replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}]/gu, "").replace(/\s+/g, " ").trim();
+  return raw.replace(FIELD_PATTERNS.dueDate, "").replace(FIELD_PATTERNS.startDate, "").replace(FIELD_PATTERNS.scheduledDate, "").replace(FIELD_PATTERNS.doneDate, "").replace(FIELD_PATTERNS.createdDate, "").replace(FIELD_PATTERNS.recurrence, "").replace(FIELD_PATTERNS.taskIdIcon, "").replace(FIELD_PATTERNS.taskIdField, "").replace(FIELD_PATTERNS.dependsIcon, "").replace(FIELD_PATTERNS.dependsField, "").replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}\u{1f53a}]/gu, "").replace(/\s+/g, " ").trim();
 }
 function isoDateOffset(days) {
   const date = /* @__PURE__ */ new Date();
@@ -135,7 +136,7 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
   return "Inbox";
 }
 function computeQuadrant(priority, dueDate, urgentDaysRange) {
-  const isImportant = priority === "highest" /* Highest */ || priority === "high" /* High */;
+  const isImportant = priority === "critical" /* Critical */ || priority === "highest" /* Highest */ || priority === "high" /* High */;
   const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
   const isUrgent = Boolean(dueDate && dueDate <= urgentDeadline);
   if (isImportant && isUrgent) return "Q1";
@@ -189,6 +190,8 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
 }
 function priorityRank(priority) {
   switch (priority) {
+    case "critical" /* Critical */:
+      return 6;
     case "highest" /* Highest */:
       return 5;
     case "high" /* High */:
@@ -528,19 +531,16 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         shouldClearDueDate = true;
         break;
     }
-    line = line.replace(/[🔼⏫🔽⏬]/gu, "").trim();
+    line = line.replace(/⏫|🔼|🔽|⏬/gu, "").trim();
     if (priorityMarker) {
       const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
       if (checkboxMatch) {
         line = line.replace(checkboxMatch[1], checkboxMatch[1] + priorityMarker + " ");
       }
     }
-    if (shouldClearDueDate) {
-      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/gu, "").trim();
-    } else if (shouldAddDueDate) {
-      if (!line.includes("\u{1F4C5}")) {
-        line = line + ` \u{1F4C5} ${today}`;
-      }
+    line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "").trim();
+    if (shouldAddDueDate) {
+      line = line + ` \u{1F4C5} ${today}`;
     }
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -849,6 +849,12 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         border-radius: 4px;
         background: var(--background-primary);
         color: var(--text-normal);
+        min-height: 36px;
+        line-height: 1.4;
+      }
+      .task-matrix-form-row select {
+        height: 36px;
+        padding: 6px 8px;
       }
       .task-matrix-form-row input[type="date"] {
         font-family: inherit;
@@ -1359,6 +1365,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
     prioritySelect.addOption("medium", "Medium");
     prioritySelect.addOption("high", "High");
     prioritySelect.addOption("highest", "Highest");
+    prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
     dueRow.createEl("label", { text: "Due Date" });
@@ -1447,6 +1454,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
     let taskLine = `- [ ] ${desc}`;
     if (updates.priority && updates.priority !== "none") {
       const priorityEmoji = {
+        critical: "\u{1F53A}",
         highest: "\u23EB",
         high: "\u{1F53C}",
         medium: "",
@@ -1549,7 +1557,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
     if (checkboxMatch && updates.description) {
       const prefix = checkboxMatch[1];
       const restOfLine = line.substring(prefix.length);
-      const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
+      const inlineFields = restOfLine.match(/(\s*(?:📅\s*\d{4}-\d{2}-\d{2}|🛫\s*\d{4}-\d{2}-\d{2}|⏳\s*\d{4}-\d{2}-\d{2}|✅\s*\d{4}-\d{2}-\d{2}|➕\s*\d{4}-\d{2}-\d{2}|🔺|⏫|🔼|🔽|⏬|🆔\s*\S+|⛔\s*\S+|#\w+|::\s*\S+)\s*)/gu) || [];
       const uniqueInlineFields = inlineFields.filter((field) => {
         const trimmed = field.trim();
         if (trimmed.startsWith("#")) {
@@ -1560,19 +1568,24 @@ var TaskEditModal = class extends import_obsidian.Modal {
       line = prefix + updates.description + " " + uniqueInlineFields.join(" ");
     }
     if (updates.priority !== void 0) {
-      line = line.replace(/[🔼⏫🔽⏬]/gu, "");
-      if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
+      line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
+      if (updates.priority === "critical") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53A} ");
+      else if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
       else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53C} ");
       else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53D} ");
       else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EC ");
     }
     if (updates.dueDate !== void 0) {
-      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.dueDate) line += ` \u{1F4C5} ${updates.dueDate}`;
     }
     if (updates.startDate !== void 0) {
-      line = line.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.startDate) line += ` \u{1F6EB} ${updates.startDate}`;
+    }
+    if (updates.createdDate !== void 0) {
+      line = line.replace(/\s*➕(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.createdDate) line += ` \u2795 ${updates.createdDate}`;
     }
     if (updates.taskId !== void 0) {
       line = line.replace(/\s*🆔\s*\S+/g, "");

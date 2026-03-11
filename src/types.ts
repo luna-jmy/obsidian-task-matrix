@@ -7,6 +7,7 @@ export type GTDState = "Inbox" | "To be Started" | "In Progress" | "Waiting" | "
 export type EisenhowerQuadrant = "Q1" | "Q2" | "Q3" | "Q4";
 
 export enum Priority {
+  Critical = "critical",
   Highest = "highest",
   High = "high",
   Medium = "medium",
