@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.4
+- New: Urgent days range 设置 (1-7天)
+  - 默认 1 = 只有今天和逾期算 urgent
+  - 可调至 7 = 未来7天内到期都算 urgent
+- New: Track completion date setting
+  - When enabled, completing a task adds `✅ yyyy-mm-dd` to the task line
+  - Reopening a task removes the completion date
+- New: 任务编辑器的 Depends On 改为下拉列表
+  - 显示所有未完成且有任务ID的任务
+  - 按 Due Date 由近到远排序
+  - 显示任务ID、截止日期和描述预览
+
 ## 0.1.3
 - New: List view folder grouping with configurable depth
 - New: Date picker in task editor for Due Date and Start Date

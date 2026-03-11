@@ -58,6 +58,10 @@ export interface TaskMatrixSettings {
   // Task creation settings
   newTaskTargetPath: string;
   newTaskTargetHeading: string;
+  // Track completion date
+  trackCompletionDate: boolean;
+  // Urgent days range (1-7, default 1 means today only)
+  urgentDaysRange: number;
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -72,4 +76,6 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   listGroupByFolderDepth: 1,
   newTaskTargetPath: "",
   newTaskTargetHeading: "",
+  trackCompletionDate: false,
+  urgentDaysRange: 1,
 };

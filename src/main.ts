@@ -198,7 +198,17 @@ export default class TaskMatrixPlugin extends Plugin {
     const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
     const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
     const newMarker = isCompleted ? " " : defaultCompleteMarker;
-    const newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+    let newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+
+    // Add or remove completion date
+    if (!isCompleted && this.settings.trackCompletionDate) {
+      // Task is being completed - add completion date
+      const today = new Date().toISOString().split("T")[0];
+      newLine = `${newLine} ✅ ${today}`;
+    } else if (isCompleted && this.settings.trackCompletionDate) {
+      // Task is being reopened - remove completion date
+      newLine = newLine.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
+    }
 
     if (newLine !== line) {
       lines[lineIndex] = newLine;
@@ -1081,7 +1091,7 @@ class TaskMatrixView extends ItemView {
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
       { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
-      { title: "Q4", quadrant: "Q4", subtitle: "Backlog or discard" },
+      { title: "Q4", quadrant: "Q4", subtitle: "Delegated or discard" },
     ];
 
     for (const column of columns) {
@@ -1390,11 +1400,29 @@ class TaskEditModal extends Modal {
       });
     generateIdBtn.buttonEl.style.marginLeft = "8px";
 
-    // Depends On
+    // Depends On - Dropdown with available tasks
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
     dependsRow.createEl("label", { text: "Depends On" });
-    const dependsInput = new TextComponent(dependsRow);
-    dependsInput.setValue(dependsOn);
+    const dependsSelect = new DropdownComponent(dependsRow);
+    dependsSelect.addOption("", "-- None --");
+
+    // Get incomplete tasks with taskId, sorted by due date
+    const availableTasks = this.plugin.tasks
+      .filter((t) => t.displayStatus !== "completed" && t.displayStatus !== "cancelled" && t.taskId && t.taskId !== taskId)
+      .sort((a, b) => {
+        // Sort by due date (no due date = last)
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      });
+
+    for (const t of availableTasks) {
+      const dueLabel = t.dueDate ? ` (Due: ${t.dueDate})` : "";
+      const label = `${t.taskId}${dueLabel}: ${t.description.slice(0, 40)}${t.description.length > 40 ? "..." : ""}`;
+      dependsSelect.addOption(t.taskId!, label);
+    }
+    dependsSelect.setValue(dependsOn);
 
     // Buttons
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
@@ -1413,7 +1441,7 @@ class TaskEditModal extends Modal {
           dueDate: dueInput.value || undefined,
           startDate: startInput.value || undefined,
           taskId: idInput.getValue() || undefined,
-          dependsOn: dependsInput.getValue() || undefined,
+          dependsOn: dependsSelect.getValue() || undefined,
         };
         if (this.isCreateMode) {
           await this.createTask(updates);
@@ -1774,6 +1802,31 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           await this.plugin.refreshTasks();
         }),
+      );
+
+    new Setting(containerEl)
+      .setName("Track completion date")
+      .setDesc("When enabled, automatically add ✅ yyyy-mm-dd to tasks when they are marked as completed.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.trackCompletionDate).onChange(async (value) => {
+          this.plugin.settings.trackCompletionDate = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Urgent days range")
+      .setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 7, 1)
+          .setValue(this.plugin.settings.urgentDaysRange)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.urgentDaysRange = value;
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
       );
 
     containerEl.createEl("h3", { text: "New Task Settings" });

@@ -41,7 +41,9 @@ var DEFAULT_SETTINGS = {
   listGroupByFolder: false,
   listGroupByFolderDepth: 1,
   newTaskTargetPath: "",
-  newTaskTargetHeading: ""
+  newTaskTargetHeading: "",
+  trackCompletionDate: false,
+  urgentDaysRange: 1
 };
 
 // src/task-parser.ts
@@ -132,10 +134,10 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
   }
   return "Inbox";
 }
-function computeQuadrant(priority, dueDate) {
+function computeQuadrant(priority, dueDate, urgentDaysRange) {
   const isImportant = priority === "highest" /* Highest */ || priority === "high" /* High */;
-  const today = getToday();
-  const isUrgent = Boolean(dueDate && dueDate <= today);
+  const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
+  const isUrgent = Boolean(dueDate && dueDate <= urgentDeadline);
   if (isImportant && isUrgent) return "Q1";
   if (isImportant && !isUrgent) return "Q2";
   if (!isImportant && isUrgent) return "Q3";
@@ -161,7 +163,7 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
   const blocked = Boolean(dependsOn);
   const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, settings.cancelledMarkers, dueDate, startDate);
   const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
-  const quadrant = computeQuadrant(priority, dueDate);
+  const quadrant = computeQuadrant(priority, dueDate, settings.urgentDaysRange);
   return {
     id: `${filePath}:${lineNumber}:${description}`,
     filePath,
@@ -366,7 +368,13 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
     const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
     const newMarker = isCompleted ? " " : defaultCompleteMarker;
-    const newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+    let newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+    if (!isCompleted && this.settings.trackCompletionDate) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      newLine = `${newLine} \u2705 ${today}`;
+    } else if (isCompleted && this.settings.trackCompletionDate) {
+      newLine = newLine.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
+    }
     if (newLine !== line) {
       lines[lineIndex] = newLine;
       await this.app.vault.modify(file, lines.join("\n"));
@@ -1138,7 +1146,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
       { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
-      { title: "Q4", quadrant: "Q4", subtitle: "Backlog or discard" }
+      { title: "Q4", quadrant: "Q4", subtitle: "Delegated or discard" }
     ];
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
@@ -1379,8 +1387,20 @@ var TaskEditModal = class extends import_obsidian.Modal {
     generateIdBtn.buttonEl.style.marginLeft = "8px";
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
     dependsRow.createEl("label", { text: "Depends On" });
-    const dependsInput = new import_obsidian.TextComponent(dependsRow);
-    dependsInput.setValue(dependsOn);
+    const dependsSelect = new import_obsidian.DropdownComponent(dependsRow);
+    dependsSelect.addOption("", "-- None --");
+    const availableTasks = this.plugin.tasks.filter((t) => t.displayStatus !== "completed" && t.displayStatus !== "cancelled" && t.taskId && t.taskId !== taskId).sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.localeCompare(b.dueDate);
+    });
+    for (const t of availableTasks) {
+      const dueLabel = t.dueDate ? ` (Due: ${t.dueDate})` : "";
+      const label = `${t.taskId}${dueLabel}: ${t.description.slice(0, 40)}${t.description.length > 40 ? "..." : ""}`;
+      dependsSelect.addOption(t.taskId, label);
+    }
+    dependsSelect.setValue(dependsOn);
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
     new import_obsidian.ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
     new import_obsidian.ButtonComponent(buttons).setButtonText(this.isCreateMode ? "Create" : "Save").setCta().onClick(async () => {
@@ -1390,7 +1410,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
         dueDate: dueInput.value || void 0,
         startDate: startInput.value || void 0,
         taskId: idInput.getValue() || void 0,
-        dependsOn: dependsInput.getValue() || void 0
+        dependsOn: dependsSelect.getValue() || void 0
       };
       if (this.isCreateMode) {
         await this.createTask(updates);
@@ -1632,6 +1652,19 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Include completed tasks").setDesc("Show completed tasks in the matrix.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.includeCompleted).onChange(async (value) => {
         this.plugin.settings.includeCompleted = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Track completion date").setDesc("When enabled, automatically add \u2705 yyyy-mm-dd to tasks when they are marked as completed.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.trackCompletionDate).onChange(async (value) => {
+        this.plugin.settings.trackCompletionDate = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Urgent days range").setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.").addSlider(
+      (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange(async (value) => {
+        this.plugin.settings.urgentDaysRange = value;
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();
       })

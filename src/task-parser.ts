@@ -158,10 +158,11 @@ export function computeGtdState(
   return "Inbox";
 }
 
-export function computeQuadrant(priority: Priority, dueDate?: string): EisenhowerQuadrant {
+export function computeQuadrant(priority: Priority, dueDate: string | undefined, urgentDaysRange: number): EisenhowerQuadrant {
   const isImportant = priority === Priority.Highest || priority === Priority.High;
-  const today = getToday();
-  const isUrgent = Boolean(dueDate && dueDate <= today);
+  // Urgent if overdue or due within urgentDaysRange days (default 1 = today only)
+  const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
+  const isUrgent = Boolean(dueDate && dueDate <= urgentDeadline);
 
   if (isImportant && isUrgent) return "Q1";
   if (isImportant && !isUrgent) return "Q2";
@@ -199,7 +200,7 @@ export function parseTaskLine(
 
   const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, settings.cancelledMarkers, dueDate, startDate);
   const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
-  const quadrant = computeQuadrant(priority, dueDate);
+  const quadrant = computeQuadrant(priority, dueDate, settings.urgentDaysRange);
 
   return {
     id: `${filePath}:${lineNumber}:${description}`,
