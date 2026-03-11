@@ -28,5 +28,5 @@ dist-ssr
 *.sw?
 
 # Claude / AI assistant directories
-.claude
+.claude/
 .agent
