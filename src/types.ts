@@ -52,6 +52,12 @@ export interface TaskMatrixSettings {
   completionMarkers: string[];
   // Custom cancelled markers (checkbox content that means cancelled)
   cancelledMarkers: string[];
+  // List view folder grouping
+  listGroupByFolder: boolean;
+  listGroupByFolderDepth: number;
+  // Task creation settings
+  newTaskTargetPath: string;
+  newTaskTargetHeading: string;
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -62,4 +68,8 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   openLocation: "sidebar",
   completionMarkers: ["x", "X"],
   cancelledMarkers: ["-"],
+  listGroupByFolder: false,
+  listGroupByFolderDepth: 1,
+  newTaskTargetPath: "",
+  newTaskTargetHeading: "",
 };

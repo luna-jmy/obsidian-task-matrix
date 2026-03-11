@@ -370,21 +370,29 @@ export default class TaskMatrixPlugin extends Plugin {
     if (lineIndex < 0 || lineIndex >= lines.length) return;
 
     let line = lines[lineIndex];
+    const today = new Date().toISOString().slice(0, 10);
 
-    // Update priority based on quadrant
+    // Update priority and due date based on quadrant
     let priorityMarker = "";
+    let shouldAddDueDate = false;
+    let shouldClearDueDate = false;
+
     switch (newQuadrant) {
       case "Q1":
         priorityMarker = "🔼"; // High priority
+        shouldAddDueDate = true;
         break;
       case "Q2":
         priorityMarker = "🔼"; // High priority
+        shouldClearDueDate = true;
         break;
       case "Q3":
         priorityMarker = "🔽"; // Low priority
+        shouldAddDueDate = true;
         break;
       case "Q4":
         priorityMarker = "⏬"; // Lowest priority
+        shouldClearDueDate = true;
         break;
     }
 
@@ -396,6 +404,17 @@ export default class TaskMatrixPlugin extends Plugin {
       const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
       if (checkboxMatch) {
         line = line.replace(checkboxMatch[1], checkboxMatch[1] + priorityMarker + " ");
+      }
+    }
+
+    // Handle due date based on quadrant
+    if (shouldClearDueDate) {
+      // Remove due date emoji and date
+      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/gu, "").trim();
+    } else if (shouldAddDueDate) {
+      // Check if already has due date
+      if (!line.includes("📅")) {
+        line = line + ` 📅 ${today}`;
       }
     }
 
@@ -708,6 +727,14 @@ export default class TaskMatrixPlugin extends Plugin {
         background: var(--background-primary);
         color: var(--text-normal);
       }
+      .task-matrix-form-row input[type="date"] {
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .task-matrix-form-row input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: var(--calendar-picker-filter, none);
+        cursor: pointer;
+      }
       .task-matrix-form-row textarea {
         min-height: 80px;
         resize: vertical;
@@ -721,6 +748,19 @@ export default class TaskMatrixPlugin extends Plugin {
         gap: 8px;
         justify-content: flex-end;
         margin-top: 20px;
+      }
+      .task-matrix-folder-group {
+        margin-bottom: 16px;
+      }
+      .task-matrix-folder-header {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        padding: 8px 12px;
+        background: var(--background-secondary);
+        border-radius: 6px 6px 0 0;
+        margin: 0 0 4px 0;
+        border-bottom: 1px solid var(--background-modifier-border);
       }
     `;
     document.head.appendChild(styleEl);
@@ -888,9 +928,61 @@ class TaskMatrixView extends ItemView {
 
   private async renderList(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const wrap = parent.createDiv({ cls: "task-matrix-list" });
-    for (const task of tasks) {
-      await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+
+    if (this.plugin.settings.listGroupByFolder) {
+      // Group tasks by folder
+      const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
+
+      for (const [folderPath, folderTasks] of Object.entries(grouped)) {
+        const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
+        groupEl.createEl("h4", {
+          text: folderPath || "Root",
+          cls: "task-matrix-folder-header",
+        });
+        for (const task of folderTasks) {
+          await this.createTaskCard(groupEl, task, `${task.filePath}:${task.lineNumber}`);
+        }
+      }
+    } else {
+      // Flat list
+      for (const task of tasks) {
+        await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+      }
     }
+  }
+
+  private groupTasksByFolder(tasks: ParsedTask[], depth: number): Record<string, ParsedTask[]> {
+    const grouped: Record<string, ParsedTask[]> = {};
+
+    for (const task of tasks) {
+      const folderPath = this.getFolderPath(task.filePath, depth);
+      if (!grouped[folderPath]) {
+        grouped[folderPath] = [];
+      }
+      grouped[folderPath].push(task);
+    }
+
+    // Sort folder keys alphabetically
+    return Object.keys(grouped)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = grouped[key];
+        return acc;
+      }, {} as Record<string, ParsedTask[]>);
+  }
+
+  private getFolderPath(filePath: string, depth: number): string {
+    const parts = filePath.split("/");
+    // Remove filename
+    parts.pop();
+
+    if (parts.length === 0) {
+      return "";
+    }
+
+    // Take only up to depth levels
+    const folderParts = parts.slice(0, depth);
+    return folderParts.join("/");
   }
 
   private async renderGtd(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
@@ -1265,16 +1357,20 @@ class TaskEditModal extends Modal {
     // Due Date
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
     dueRow.createEl("label", { text: "Due Date" });
-    const dueInput = new TextComponent(dueRow);
-    dueInput.setValue(dueDate);
-    dueInput.setPlaceholder("YYYY-MM-DD");
+    const dueInput = dueRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: dueDate,
+    });
 
     // Start Date
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
-    const startInput = new TextComponent(startRow);
-    startInput.setValue(startDate);
-    startInput.setPlaceholder("YYYY-MM-DD");
+    const startInput = startRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: startDate,
+    });
 
     // Task ID with auto-generate button
     const idRow = form.createDiv({ cls: "task-matrix-form-row" });
@@ -1314,8 +1410,8 @@ class TaskEditModal extends Modal {
         const updates = {
           description: descInput.getValue(),
           priority: prioritySelect.getValue() as ParsedTask["priority"],
-          dueDate: dueInput.getValue() || undefined,
-          startDate: startInput.getValue() || undefined,
+          dueDate: dueInput.value || undefined,
+          startDate: startInput.value || undefined,
           taskId: idInput.getValue() || undefined,
           dependsOn: dependsInput.getValue() || undefined,
         };
@@ -1337,48 +1433,30 @@ class TaskEditModal extends Modal {
 
     // Determine target file
     let targetFile: TFile | null = null;
-    const { scanFolder } = this.plugin.settings;
+    const { newTaskTargetPath } = this.plugin.settings;
 
-    if (scanFolder) {
-      // Try to find or create a file in the scan folder
-      const folderPath = scanFolder.trim().replace(/^\/+|\/+$/g, "");
-      const inboxPath = `${folderPath}/Inbox.md`;
-      targetFile = this.app.vault.getAbstractFileByPath(inboxPath) as TFile | null;
+    // Use configured target path with date template
+    if (newTaskTargetPath) {
+      const resolvedPath = this.resolveDateTemplate(newTaskTargetPath);
+      targetFile = this.app.vault.getAbstractFileByPath(resolvedPath) as TFile | null;
       if (!targetFile) {
-        // Try to find any markdown file in the folder
-        const files = this.app.vault.getMarkdownFiles().filter(f => {
-          const fileFolder = f.path.split("/").slice(0, -1).join("/");
-          return fileFolder === folderPath || fileFolder.startsWith(`${folderPath}/`);
-        });
-        if (files.length > 0) {
-          targetFile = files[0];
-        }
+        new Notice(`Target note not found: ${resolvedPath}`);
+        return;
       }
-    }
-
-    // Fall back to active file or create in vault root
-    if (!targetFile) {
+    } else {
+      // No target path configured, use active file
       const activeFile = this.app.workspace.getActiveFile();
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        // Find any markdown file
-        const files = this.app.vault.getMarkdownFiles();
-        if (files.length > 0) {
-          targetFile = files[0];
-        }
+        new Notice("No target note configured and no active markdown file. Please configure Target note path in settings or open a markdown file.");
+        return;
       }
-    }
-
-    if (!targetFile) {
-      new Notice("No markdown file found to add task");
-      return;
     }
 
     // Build task line
     let taskLine = `- [ ] ${desc}`;
 
-    // Add priority
     if (updates.priority && updates.priority !== "none") {
       const priorityEmoji = {
         highest: "⏫",
@@ -1392,17 +1470,14 @@ class TaskEditModal extends Modal {
       }
     }
 
-    // Add due date
     if (updates.dueDate) {
       taskLine += ` 📅 ${updates.dueDate}`;
     }
 
-    // Add start date
     if (updates.startDate) {
       taskLine += ` 🛫 ${updates.startDate}`;
     }
 
-    // Add GTD tag based on default values
     if (this.defaultValues.gtdState) {
       switch (this.defaultValues.gtdState) {
         case "Waiting":
@@ -1414,22 +1489,90 @@ class TaskEditModal extends Modal {
       }
     }
 
-    // Add task ID
     if (updates.taskId) {
       taskLine += ` 🆔 ${updates.taskId}`;
     }
 
-    // Add depends on
     if (updates.dependsOn) {
       taskLine += ` ⛔ ${updates.dependsOn}`;
     }
 
-    // Append to file
+    // Read content and determine insertion point
     const content = await this.app.vault.read(targetFile);
-    const newContent = content.trim() + "\n" + taskLine;
-    await this.app.vault.modify(targetFile, newContent);
+    const { newTaskTargetHeading } = this.plugin.settings;
 
+    let newContent: string;
+    if (newTaskTargetHeading) {
+      const result = this.insertTaskUnderHeading(content, newTaskTargetHeading, taskLine);
+      if (!result.success) {
+        new Notice(`Cannot add task: ${result.error}`);
+        return;
+      }
+      newContent = result.content!;
+    } else {
+      newContent = content.trim() + "\n" + taskLine;
+    }
+
+    await this.app.vault.modify(targetFile, newContent);
     new Notice(`Task added to ${targetFile.path}`);
+  }
+
+  private resolveDateTemplate(template: string): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    return template
+      .replace(/YYYY/g, String(year))
+      .replace(/MM/g, month)
+      .replace(/DD/g, day);
+  }
+
+  private insertTaskUnderHeading(
+    content: string,
+    heading: string,
+    taskLine: string
+  ): { success: boolean; content?: string; error?: string } {
+    const lines = content.split(/\r?\n/u);
+
+    // Find the target heading
+    const headingRegex = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    const headingIndex = lines.findIndex((line) => headingRegex.test(line.trim()));
+
+    if (headingIndex === -1) {
+      return { success: false, error: `Heading "${heading}" not found` };
+    }
+
+    // Determine heading level
+    const headingMatch = lines[headingIndex].match(/^(#{1,6})/);
+    if (!headingMatch) {
+      return { success: false, error: "Invalid heading format" };
+    }
+    const headingLevel = headingMatch[1].length;
+
+    // Find the end of this section (next heading of same or higher level, or end of file)
+    let insertIndex = headingIndex + 1;
+    for (let i = headingIndex + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const nextHeadingMatch = line.match(/^(#{1,6})\s/);
+      if (nextHeadingMatch && nextHeadingMatch[1].length <= headingLevel) {
+        break;
+      }
+      insertIndex = i + 1;
+    }
+
+    // Insert task at the end of the section
+    // Find the last non-empty line in the section
+    let lastContentIndex = insertIndex - 1;
+    while (lastContentIndex > headingIndex && !lines[lastContentIndex].trim()) {
+      lastContentIndex--;
+    }
+
+    // Insert after the last content line
+    lines.splice(lastContentIndex + 1, 0, taskLine);
+
+    return { success: true, content: lines.join("\n") };
   }
 
   private async saveTask(updates: Partial<ParsedTask>): Promise<void> {
@@ -1631,6 +1774,60 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           await this.plugin.refreshTasks();
         }),
+      );
+
+    containerEl.createEl("h3", { text: "New Task Settings" });
+
+    new Setting(containerEl)
+      .setName("Target note path")
+      .setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Daily/YYYY-MM-DD.md")
+          .setValue(this.plugin.settings.newTaskTargetPath)
+          .onChange(async (value) => {
+            this.plugin.settings.newTaskTargetPath = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Target heading")
+      .setDesc("Insert new tasks under this heading. Leave empty to append at end of file.")
+      .addText((text) =>
+        text
+          .setPlaceholder("## 👀 GTD任务看板")
+          .setValue(this.plugin.settings.newTaskTargetHeading)
+          .onChange(async (value) => {
+            this.plugin.settings.newTaskTargetHeading = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    containerEl.createEl("h3", { text: "List View Settings" });
+
+    new Setting(containerEl)
+      .setName("Group by folder")
+      .setDesc("Group tasks by their containing folder in list view.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.listGroupByFolder).onChange(async (value) => {
+          this.plugin.settings.listGroupByFolder = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Folder grouping depth")
+      .setDesc("How many folder levels to display for grouping (1 = top level only, 2 = two levels, etc.).")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 5, 1)
+          .setValue(this.plugin.settings.listGroupByFolderDepth)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.listGroupByFolderDepth = value;
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }

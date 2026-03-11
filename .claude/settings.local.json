@@ -15,7 +15,8 @@
       "Bash(git tag -a 0.1.2 -m \"Release v0.1.2\")",
       "Bash(git push origin main)",
       "Bash(git push origin 0.1.2)",
-      "Bash(git add -f main.js)"
+      "Bash(git add -f main.js)",
+      "Bash(npm run version)"
     ]
   }
 }
