@@ -72,3 +72,47 @@ No test framework is currently configured. Testing is done manually by:
 1. Building the plugin
 2. Copying `main.js` and `manifest.json` to a test vault's `.obsidian/plugins/obsidian-task-matrix/`
 3. Reloading Obsidian (Ctrl+R) or using the "Reload app without saving" command
+
+## Release Checklist
+
+When releasing a new version:
+
+1. **Update Version Numbers**
+   - Update `version` in `manifest.json`
+   - Update `version` in `package.json` (keep in sync)
+
+2. **Update Documentation**
+   - Add changelog entry to `CHANGELOG.md` with new features/fixes
+   - Update `README.md` if there are user-facing changes
+
+3. **Build and Verify**
+   ```bash
+   npm run build
+   ```
+   - Ensure TypeScript compiles without errors
+   - Verify `main.js` is generated in repo root
+
+4. **Git Operations**
+   ```bash
+   git add -A
+   git commit -m "Release vX.Y.Z"
+   git tag X.Y.Z
+   git push origin main --tags
+   ```
+
+5. **GitHub Release**
+   - Create release from tag
+   - **Only attach required files:** `main.js`, `manifest.json`, `styles.css` (if exists)
+   - **Do NOT include:** `versions.json`, `package.json`, source files
+   - Copy relevant changelog entries to release notes
+
+## Common Issues & Solutions
+
+**Duplicate Emoji Bug**: When modifying task dates via drag-and-drop, orphaned emojis (e.g., `📅` without date) could accumulate. Fixed by using regex that makes the date optional: `(?:\s*\d{4}-\d{2}-\d{2})?` to match and remove emoji with or without attached date.
+
+**Priority Handling**: When adding new priority levels, update:
+1. `Priority` enum in `types.ts`
+2. `PRIORITY_MARKERS` array in `task-parser.ts`
+3. `computeQuadrant()` to determine if priority counts as "Important"
+4. `priorityRank()` for sorting order
+5. `EditTaskModal` dropdown options in `main.ts`
