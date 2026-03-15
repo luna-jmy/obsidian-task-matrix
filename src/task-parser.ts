@@ -137,6 +137,11 @@ export function computeGtdState(
     return "Waiting";
   }
 
+  // Check for in progress by tags (in addition to start date check above)
+  if (desc.includes("#started") || desc.includes("#doing") || desc.includes("#active")) {
+    return "In Progress";
+  }
+
   // Check for overdue
   if (dueDate && dueDate < today) {
     return "Overdue";

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+- Improved: Enhanced GTD view classification with additional tags
+  - In Progress: Now recognizes `#started`, `#doing`, `#active` tags
+  - Waiting: Now recognizes `#waiting`, `#delegated`, `#blocked` tags
+
 ## 0.1.5
 - Fix: Resolved duplicate emoji issue when dragging tasks between quadrants
   - Due date emoji (📅) was sometimes left behind when removing dates, causing `📅 📅 2026-03-12` patterns

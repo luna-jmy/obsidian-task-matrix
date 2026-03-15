@@ -120,6 +120,9 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
   if (blocked || desc.includes("#waiting") || desc.includes("#delegated") || desc.includes("#blocked")) {
     return "Waiting";
   }
+  if (desc.includes("#started") || desc.includes("#doing") || desc.includes("#active")) {
+    return "In Progress";
+  }
   if (dueDate && dueDate < today) {
     return "Overdue";
   }
