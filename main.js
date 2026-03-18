@@ -31,7 +31,7 @@ var import_obsidian = require("obsidian");
 
 // src/types.ts
 var DEFAULT_SETTINGS = {
-  scanFolder: "",
+  scanFolders: [],
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,
@@ -76,9 +76,11 @@ function cleanDescription(raw) {
 }
 function isoDateOffset(days) {
   const date = /* @__PURE__ */ new Date();
-  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 function getToday() {
   return isoDateOffset(0);
@@ -102,12 +104,8 @@ function computeDisplayStatus(checkboxContent, completionMarkers, cancelledMarke
   if (dueDate && dueDate < today) {
     return "overdue";
   }
-  if (startDate) {
-    if (startDate <= today) {
-      return "in-progress";
-    } else {
-      return "to-be-started";
-    }
+  if (startDate && startDate > today) {
+    return "to-be-started";
   }
   return "open";
 }
@@ -127,9 +125,9 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
     return "Overdue";
   }
   if (startDate) {
-    if (startDate <= today) {
+    if (startDate < today) {
       return "In Progress";
-    } else {
+    } else if (startDate > today) {
       return "To be Started";
     }
   }
@@ -328,9 +326,14 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         return false;
       }
     }
-    const folder = this.settings.scanFolder.trim().replace(/^\/+|\/+$/g, "");
-    if (!folder) return true;
-    return file.path === folder || file.path.startsWith(`${folder}/`);
+    if (this.settings.scanFolders.length === 0) return true;
+    for (const scanFolder of this.settings.scanFolders) {
+      const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
+      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+        return true;
+      }
+    }
+    return false;
   }
   async collectTasks() {
     const tasks = [];
@@ -338,14 +341,27 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     for (const file of files) {
       const content = await this.app.vault.cachedRead(file);
       const lines = content.split(/\r?\n/u);
-      lines.forEach((line, index) => {
+      const fileCache = this.app.metadataCache.getFileCache(file);
+      const codeSections = fileCache?.sections?.filter((s) => s.type === "code") ?? [];
+      const codeBlockLines = /* @__PURE__ */ new Set();
+      for (const section of codeSections) {
+        const startLine = section.position.start.line + 1;
+        const endLine = section.position.end.line + 1;
+        for (let i = startLine; i <= endLine; i++) {
+          codeBlockLines.add(i);
+        }
+      }
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        const lineNumber = index + 1;
+        if (codeBlockLines.has(lineNumber)) continue;
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
-        if (!parsed) return;
+        if (!parsed) continue;
         if (!this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
-          return;
+          continue;
         }
         tasks.push(parsed);
-      });
+      }
     }
     const completedIds = new Set(tasks.filter((t) => t.displayStatus === "completed").map((t) => t.taskId).filter(Boolean));
     for (const task of tasks) {
@@ -470,9 +486,70 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     lines[lineIndex] = newLine;
     await this.app.vault.modify(file, lines.join("\n"));
   }
+  // Check if there's a date conflict (start date > due date)
+  checkDateConflict(startDate, dueDate) {
+    if (!startDate || !dueDate) return false;
+    return startDate > dueDate;
+  }
   // Drag and drop: move task to different state/quadrant
   async moveTaskToGTDState(task, newState) {
-    if (task.gtdState === newState) return;
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    let updates = {};
+    let tagToAdd = "";
+    let removeTags = [];
+    let shouldComplete = false;
+    switch (newState) {
+      case "Waiting":
+        tagToAdd = "#waiting";
+        removeTags = ["#doing", "#active", "#next"];
+        break;
+      case "In Progress":
+        tagToAdd = "#doing";
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        updates.startDate = today;
+        break;
+      case "To be Started":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Overdue":
+        updates.dueDate = today;
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        break;
+      case "Done":
+        shouldComplete = true;
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Inbox":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+    }
+    const effectiveStartDate = updates.startDate ?? task.startDate;
+    const effectiveDueDate = updates.dueDate ?? task.dueDate;
+    const hasDateConflict = this.checkDateConflict(effectiveStartDate, effectiveDueDate);
+    if (hasDateConflict && updates.startDate) {
+      new DateConflictModal(
+        this.app,
+        effectiveStartDate,
+        effectiveDueDate,
+        async (result) => {
+          if (result.adjustDueDate) {
+            updates.dueDate = today;
+            new import_obsidian.Notice("Due date adjusted to today");
+          } else if (result.addConflictTag) {
+            new import_obsidian.Notice("Date conflict tag added");
+          } else {
+            return;
+          }
+          await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+        }
+      ).open();
+      return;
+    }
+    const noChangesNeeded = task.gtdState === newState && !updates.startDate && !updates.dueDate && !shouldComplete;
+    if (noChangesNeeded) return;
+    await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, false);
+  }
+  async applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, addConflictTag) {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof import_obsidian.TFile)) return;
     const content = await this.app.vault.read(file);
@@ -480,24 +557,33 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const lineIndex = task.lineNumber - 1;
     if (lineIndex < 0 || lineIndex >= lines.length) return;
     let line = lines[lineIndex];
-    line = line.replace(/#(waiting|delegated|blocked|doing|active|next)\b/gi, "").trim();
-    let tagToAdd = "";
-    switch (newState) {
-      case "Waiting":
-        tagToAdd = " #waiting";
-        break;
-      case "In Progress":
-        tagToAdd = " #doing";
-        break;
-      case "Done":
-        {
-          const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
-          line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
-        }
-        break;
+    for (const tag of removeTags) {
+      const tagRegex = new RegExp(`\\s*${tag}\\b`, "gi");
+      line = line.replace(tagRegex, "");
     }
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    line = line.trim();
     if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
-      line += tagToAdd;
+      line += ` ${tagToAdd}`;
+    }
+    if (addConflictTag && !line.toLowerCase().includes("#due-date-conflict")) {
+      line += " #due-date-conflict";
+    }
+    if (shouldComplete) {
+      const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+      line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
+    }
+    if (updates.startDate !== void 0) {
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.startDate) {
+        line += ` \u{1F6EB} ${updates.startDate}`;
+      }
+    }
+    if (updates.dueDate !== void 0) {
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.dueDate) {
+        line += ` \u{1F4C5} ${updates.dueDate}`;
+      }
     }
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -796,6 +882,12 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-chip.warning {
         background: #fef3c7;
         color: #92400e;
+      }
+      .task-matrix-chip.conflict {
+        background: #fee2e2;
+        color: #dc2626;
+        font-weight: 600;
+        border: 1px solid #fecaca;
       }
       .task-matrix-card-meta {
         font-size: 11px;
@@ -1249,12 +1341,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     if (task.dueDate) {
       chips.createEl("span", { text: `Due ${task.dueDate}`, cls: "task-matrix-chip" });
     }
+    if (task.startDate) {
+      chips.createEl("span", { text: `Start ${task.startDate}`, cls: "task-matrix-chip" });
+    }
     if (task.dependsOn) {
       const depText = task.blocked ? `\u26D4 Depends ${task.dependsOn}` : `\u2713 Depends ${task.dependsOn}`;
       chips.createEl("span", { text: depText, cls: `task-matrix-chip${task.blocked ? " warning" : ""}` });
     }
     if (task.taskId) {
       chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
+    }
+    if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
+      chips.createEl("span", { text: "\u26A0\uFE0F Due Date Conflict", cls: "task-matrix-chip conflict" });
     }
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
     const actions = card.createDiv({ cls: "task-matrix-card-actions" });
@@ -1422,15 +1520,39 @@ var TaskEditModal = class extends import_obsidian.Modal {
         taskId: idInput.getValue() || void 0,
         dependsOn: dependsSelect.getValue() || void 0
       };
+      if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
+        new DateConflictModal(
+          this.app,
+          updates.startDate,
+          updates.dueDate,
+          async (result) => {
+            if (result.adjustDueDate) {
+              const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+              updates.dueDate = today;
+              new import_obsidian.Notice("Due date adjusted to today");
+            } else if (result.addConflictTag) {
+            } else {
+              return;
+            }
+            if (this.isCreateMode) {
+              await this.createTask(updates, result.addConflictTag);
+            } else {
+              await this.saveTask(updates, result.addConflictTag);
+            }
+            this.close();
+          }
+        ).open();
+        return;
+      }
       if (this.isCreateMode) {
-        await this.createTask(updates);
+        await this.createTask(updates, false);
       } else {
-        await this.saveTask(updates);
+        await this.saveTask(updates, false);
       }
       this.close();
     });
   }
-  async createTask(updates) {
+  async createTask(updates, addConflictTag = false) {
     const desc = updates.description?.trim();
     if (!desc) {
       new import_obsidian.Notice("Task description is required");
@@ -1490,6 +1612,9 @@ var TaskEditModal = class extends import_obsidian.Modal {
     if (updates.dependsOn) {
       taskLine += ` \u26D4 ${updates.dependsOn}`;
     }
+    if (addConflictTag) {
+      taskLine += " #due-date-conflict";
+    }
     const content = await this.app.vault.read(targetFile);
     const { newTaskTargetHeading } = this.plugin.settings;
     let newContent;
@@ -1541,7 +1666,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
     lines.splice(lastContentIndex + 1, 0, taskLine);
     return { success: true, content: lines.join("\n") };
   }
-  async saveTask(updates) {
+  async saveTask(updates, addConflictTag = false) {
     if (!this.task) return;
     const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
     if (!(file instanceof import_obsidian.TFile)) {
@@ -1600,6 +1725,10 @@ var TaskEditModal = class extends import_obsidian.Modal {
       line = line.replace(/\bdependsOn::\s*\S+/gi, "");
       if (updates.dependsOn) line += ` \u26D4 ${updates.dependsOn}`;
     }
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    if (addConflictTag) {
+      line += " #due-date-conflict";
+    }
     line = line.replace(/\s+/g, " ").trim();
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -1608,6 +1737,40 @@ var TaskEditModal = class extends import_obsidian.Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+  }
+};
+var DateConflictModal = class extends import_obsidian.Modal {
+  constructor(app, startDate, dueDate, onConfirm) {
+    super(app);
+    this.startDate = startDate;
+    this.dueDate = dueDate;
+    this.onConfirm = onConfirm;
+    this.result = null;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+    contentEl.createEl("h2", { text: "Date Conflict Detected" });
+    const message = contentEl.createEl("p");
+    message.innerHTML = `Start date (<strong>${this.startDate}</strong>) is later than due date (<strong>${this.dueDate}</strong>).<br><br>Would you like to adjust the due date to today?`;
+    const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("No, add conflict tag").onClick(() => {
+      this.result = { adjustDueDate: false, addConflictTag: true };
+      this.onConfirm(this.result);
+      this.close();
+    });
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("Yes, adjust due date").setCta().onClick(() => {
+      this.result = { adjustDueDate: true, addConflictTag: false };
+      this.onConfirm(this.result);
+      this.close();
+    });
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+    if (this.result === null) {
+      this.onConfirm({ adjustDueDate: false, addConflictTag: false });
+    }
   }
 };
 var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -1619,9 +1782,9 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Task Matrix settings" });
-    new import_obsidian.Setting(containerEl).setName("Scan folder").setDesc("Only index markdown files inside this vault folder. Leave empty to scan the whole vault.").addText(
-      (text) => text.setPlaceholder("Projects/Tasks").setValue(this.plugin.settings.scanFolder).onChange(async (value) => {
-        this.plugin.settings.scanFolder = value.trim();
+    new import_obsidian.Setting(containerEl).setName("Scan folders").setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.").addText(
+      (text) => text.setPlaceholder("Projects/Tasks, Inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange(async (value) => {
+        this.plugin.settings.scanFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();
       })

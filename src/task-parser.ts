@@ -57,9 +57,12 @@ function cleanDescription(raw: string): string {
 
 function isoDateOffset(days: number): string {
   const date = new Date();
-  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  // Use local date components to avoid timezone issues with toISOString
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getToday(): string {
@@ -103,16 +106,12 @@ export function computeDisplayStatus(
     return "overdue";
   }
 
-  // Check if has start date
-  if (startDate) {
-    if (startDate <= today) {
-      return "in-progress";
-    } else {
-      return "to-be-started";
-    }
+  // Check if has start date in the future
+  if (startDate && startDate > today) {
+    return "to-be-started";
   }
 
-  // Open - no due date, no start date
+  // Open - no due date, or start date is today or past
   return "open";
 }
 
@@ -147,13 +146,14 @@ export function computeGtdState(
     return "Overdue";
   }
 
-  // Check for in progress
+  // Check for in progress or to be started based on start date
   if (startDate) {
-    if (startDate <= today) {
+    if (startDate < today) {
       return "In Progress";
-    } else {
+    } else if (startDate > today) {
       return "To be Started";
     }
+    // startDate === today falls through to default Inbox
   }
 
   // Check for doing/active tags

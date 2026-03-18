@@ -44,7 +44,7 @@ export interface ParsedTask {
 export type CheckboxStatus = " " | "/" | "-" | "x" | string;
 
 export interface TaskMatrixSettings {
-  scanFolder: string;
+  scanFolders: string[];
   excludeFolders: string[];
   defaultView: ViewMode;
   includeCompleted: boolean;
@@ -66,7 +66,7 @@ export interface TaskMatrixSettings {
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
-  scanFolder: "",
+  scanFolders: [],
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,

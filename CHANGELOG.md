@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.7
+- Fix: GTD view drag-and-drop from Inbox to In Progress now works correctly for tasks with start dates
+- Fix: Tasks with start date = today now correctly show as "Open" instead of "To be Started"
+- Fix: Timezone issue in date comparison causing wrong task status display
+- New: Date conflict detection when start date > due date
+  - Shows warning modal when dragging tasks or editing dates
+  - Prevents invalid date combinations
+- New: Multiple scan folders support in settings (comma-separated)
+- New: Start date display on task cards
+- Fix: Properly exclude tasks inside code blocks using Obsidian's metadata cache
+
 ## 0.1.6
 - Improved: Enhanced GTD view classification with additional tags
   - In Progress: Now recognizes `#started`, `#doing`, `#active` tags

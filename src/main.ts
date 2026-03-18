@@ -140,10 +140,16 @@ export default class TaskMatrixPlugin extends Plugin {
       }
     }
 
-    // Check scan folder
-    const folder = this.settings.scanFolder.trim().replace(/^\/+|\/+$/g, "");
-    if (!folder) return true;
-    return file.path === folder || file.path.startsWith(`${folder}/`);
+    // Check scan folders (if none specified, include all)
+    if (this.settings.scanFolders.length === 0) return true;
+
+    for (const scanFolder of this.settings.scanFolders) {
+      const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
+      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   async collectTasks(): Promise<ParsedTask[]> {
@@ -153,15 +159,37 @@ export default class TaskMatrixPlugin extends Plugin {
     for (const file of files) {
       const content = await this.app.vault.cachedRead(file);
       const lines = content.split(/\r?\n/u);
-      lines.forEach((line, index) => {
+
+      // Use Obsidian's metadata cache to get code block sections
+      const fileCache = this.app.metadataCache.getFileCache(file);
+      const codeSections = fileCache?.sections?.filter(s => s.type === 'code') ?? [];
+
+      // Build a set of line numbers that are inside code blocks
+      const codeBlockLines = new Set<number>();
+      for (const section of codeSections) {
+        // Section positions are 0-indexed, convert to 1-indexed line numbers
+        const startLine = section.position.start.line + 1;
+        const endLine = section.position.end.line + 1;
+        for (let i = startLine; i <= endLine; i++) {
+          codeBlockLines.add(i);
+        }
+      }
+
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        const lineNumber = index + 1;
+
+        // Skip tasks inside code blocks (using Obsidian's metadata)
+        if (codeBlockLines.has(lineNumber)) continue;
+
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
-        if (!parsed) return;
+        if (!parsed) continue;
         // Filter out completed and cancelled tasks if setting is disabled
         if (!this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
-          return;
+          continue;
         }
         tasks.push(parsed);
-      });
+      }
     }
 
     // Update blocked status based on current task list
@@ -322,10 +350,94 @@ export default class TaskMatrixPlugin extends Plugin {
     await this.app.vault.modify(file, lines.join("\n"));
   }
 
+  // Check if there's a date conflict (start date > due date)
+  private checkDateConflict(startDate: string | undefined, dueDate: string | undefined): boolean {
+    if (!startDate || !dueDate) return false;
+    return startDate > dueDate;
+  }
+
   // Drag and drop: move task to different state/quadrant
   async moveTaskToGTDState(task: ParsedTask, newState: ParsedTask["gtdState"]): Promise<void> {
-    if (task.gtdState === newState) return;
+    // Determine what changes are needed for this GTD state transition
+    const today = new Date().toISOString().slice(0, 10);
+    let updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
+    let tagToAdd = "";
+    let removeTags: string[] = [];
+    let shouldComplete = false;
 
+    switch (newState) {
+      case "Waiting":
+        tagToAdd = "#waiting";
+        removeTags = ["#doing", "#active", "#next"];
+        break;
+      case "In Progress":
+        tagToAdd = "#doing";
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        updates.startDate = today;
+        break;
+      case "To be Started":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Overdue":
+        updates.dueDate = today;
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        break;
+      case "Done":
+        shouldComplete = true;
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Inbox":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+    }
+
+    // Check for date conflict when setting start date
+    const effectiveStartDate = updates.startDate ?? task.startDate;
+    const effectiveDueDate = updates.dueDate ?? task.dueDate;
+    const hasDateConflict = this.checkDateConflict(effectiveStartDate, effectiveDueDate);
+
+    // If there's a conflict and we're setting start date, show modal
+    if (hasDateConflict && updates.startDate) {
+      new DateConflictModal(
+        this.app,
+        effectiveStartDate!,
+        effectiveDueDate!,
+        async (result) => {
+          if (result.adjustDueDate) {
+            updates.dueDate = today;
+            new Notice("Due date adjusted to today");
+          } else if (result.addConflictTag) {
+            // Will add conflict tag below
+            new Notice("Date conflict tag added");
+          } else {
+            // User cancelled, abort the move
+            return;
+          }
+          await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+        }
+      ).open();
+      return;
+    }
+
+    // If no actual changes needed and state is the same, return early
+    const noChangesNeeded = task.gtdState === newState &&
+      !updates.startDate &&
+      !updates.dueDate &&
+      !shouldComplete;
+    if (noChangesNeeded) return;
+
+    await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, false);
+  }
+
+  private async applyGtdStateChanges(
+    task: ParsedTask,
+    newState: ParsedTask["gtdState"],
+    updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">>,
+    tagToAdd: string,
+    removeTags: string[],
+    shouldComplete: boolean,
+    addConflictTag: boolean
+  ): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
 
@@ -338,28 +450,45 @@ export default class TaskMatrixPlugin extends Plugin {
     let line = lines[lineIndex];
 
     // Remove old GTD tags
-    line = line.replace(/#(waiting|delegated|blocked|doing|active|next)\b/gi, "").trim();
+    for (const tag of removeTags) {
+      const tagRegex = new RegExp(`\\s*${tag}\\b`, "gi");
+      line = line.replace(tagRegex, "");
+    }
+    // Also remove conflict tag if present
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    line = line.trim();
 
     // Add appropriate tag for new state
-    let tagToAdd = "";
-    switch (newState) {
-      case "Waiting":
-        tagToAdd = " #waiting";
-        break;
-      case "In Progress":
-        tagToAdd = " #doing";
-        break;
-      case "Done":
-        // Mark as completed
-        {
-          const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
-          line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
-        }
-        break;
+    if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
+      line += ` ${tagToAdd}`;
     }
 
-    if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
-      line += tagToAdd;
+    // Add conflict tag if needed
+    if (addConflictTag && !line.toLowerCase().includes("#due-date-conflict")) {
+      line += " #due-date-conflict";
+    }
+
+    // Mark as completed if needed
+    if (shouldComplete) {
+      const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+      line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
+    }
+
+    // Update start date if needed
+    if (updates.startDate !== undefined) {
+      // Remove existing start date (emoji and date)
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.startDate) {
+        line += ` 🛫 ${updates.startDate}`;
+      }
+    }
+
+    // Update due date if needed
+    if (updates.dueDate !== undefined) {
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.dueDate) {
+        line += ` 📅 ${updates.dueDate}`;
+      }
     }
 
     lines[lineIndex] = line;
@@ -676,6 +805,12 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-chip.warning {
         background: #fef3c7;
         color: #92400e;
+      }
+      .task-matrix-chip.conflict {
+        background: #fee2e2;
+        color: #dc2626;
+        font-weight: 600;
+        border: 1px solid #fecaca;
       }
       .task-matrix-card-meta {
         font-size: 11px;
@@ -1216,12 +1351,19 @@ class TaskMatrixView extends ItemView {
     if (task.dueDate) {
       chips.createEl("span", { text: `Due ${task.dueDate}`, cls: "task-matrix-chip" });
     }
+    if (task.startDate) {
+      chips.createEl("span", { text: `Start ${task.startDate}`, cls: "task-matrix-chip" });
+    }
     if (task.dependsOn) {
       const depText = task.blocked ? `⛔ Depends ${task.dependsOn}` : `✓ Depends ${task.dependsOn}`;
       chips.createEl("span", { text: depText, cls: `task-matrix-chip${task.blocked ? " warning" : ""}` });
     }
     if (task.taskId) {
       chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
+    }
+    // Check for date conflict tag in the original task line
+    if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
+      chips.createEl("span", { text: "⚠️ Due Date Conflict", cls: "task-matrix-chip conflict" });
     }
 
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
@@ -1446,16 +1588,46 @@ class TaskEditModal extends Modal {
           taskId: idInput.getValue() || undefined,
           dependsOn: dependsSelect.getValue() || undefined,
         };
+
+        // Check for date conflict
+        if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
+          new DateConflictModal(
+            this.app,
+            updates.startDate,
+            updates.dueDate,
+            async (result) => {
+              if (result.adjustDueDate) {
+                const today = new Date().toISOString().slice(0, 10);
+                updates.dueDate = today;
+                new Notice("Due date adjusted to today");
+              } else if (result.addConflictTag) {
+                // Will be handled in createTask/saveTask
+              } else {
+                // User cancelled, don't close modal
+                return;
+              }
+
+              if (this.isCreateMode) {
+                await this.createTask(updates, result.addConflictTag);
+              } else {
+                await this.saveTask(updates, result.addConflictTag);
+              }
+              this.close();
+            }
+          ).open();
+          return;
+        }
+
         if (this.isCreateMode) {
-          await this.createTask(updates);
+          await this.createTask(updates, false);
         } else {
-          await this.saveTask(updates);
+          await this.saveTask(updates, false);
         }
         this.close();
       });
   }
 
-  private async createTask(updates: Partial<ParsedTask>): Promise<void> {
+  private async createTask(updates: Partial<ParsedTask>, addConflictTag: boolean = false): Promise<void> {
     const desc = updates.description?.trim();
     if (!desc) {
       new Notice("Task description is required");
@@ -1527,6 +1699,11 @@ class TaskEditModal extends Modal {
 
     if (updates.dependsOn) {
       taskLine += ` ⛔ ${updates.dependsOn}`;
+    }
+
+    // Add conflict tag if needed
+    if (addConflictTag) {
+      taskLine += " #due-date-conflict";
     }
 
     // Read content and determine insertion point
@@ -1607,7 +1784,7 @@ class TaskEditModal extends Modal {
     return { success: true, content: lines.join("\n") };
   }
 
-  private async saveTask(updates: Partial<ParsedTask>): Promise<void> {
+  private async saveTask(updates: Partial<ParsedTask>, addConflictTag: boolean = false): Promise<void> {
     if (!this.task) return;
     const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
     if (!(file instanceof TFile)) {
@@ -1689,6 +1866,12 @@ class TaskEditModal extends Modal {
       if (updates.dependsOn) line += ` ⛔ ${updates.dependsOn}`;
     }
 
+    // Handle conflict tag
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    if (addConflictTag) {
+      line += " #due-date-conflict";
+    }
+
     // Clean up extra spaces
     line = line.replace(/\s+/g, " ").trim();
 
@@ -1700,6 +1883,58 @@ class TaskEditModal extends Modal {
   onClose(): void {
     const { contentEl } = this;
     contentEl.empty();
+  }
+}
+
+// Confirmation modal for date conflict resolution
+class DateConflictModal extends Modal {
+  private result: { adjustDueDate: boolean; addConflictTag: boolean } | null = null;
+
+  constructor(
+    app: App,
+    private readonly startDate: string,
+    private readonly dueDate: string,
+    private readonly onConfirm: (result: { adjustDueDate: boolean; addConflictTag: boolean }) => void
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+
+    contentEl.createEl("h2", { text: "Date Conflict Detected" });
+
+    const message = contentEl.createEl("p");
+    message.innerHTML = `Start date (<strong>${this.startDate}</strong>) is later than due date (<strong>${this.dueDate}</strong>).<br><br>Would you like to adjust the due date to today?`;
+
+    const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+
+    new ButtonComponent(buttonRow)
+      .setButtonText("No, add conflict tag")
+      .onClick(() => {
+        this.result = { adjustDueDate: false, addConflictTag: true };
+        this.onConfirm(this.result);
+        this.close();
+      });
+
+    new ButtonComponent(buttonRow)
+      .setButtonText("Yes, adjust due date")
+      .setCta()
+      .onClick(() => {
+        this.result = { adjustDueDate: true, addConflictTag: false };
+        this.onConfirm(this.result);
+        this.close();
+      });
+  }
+
+  onClose(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    // If closed without selection, treat as cancel (no action)
+    if (this.result === null) {
+      this.onConfirm({ adjustDueDate: false, addConflictTag: false });
+    }
   }
 }
 
@@ -1715,14 +1950,14 @@ class TaskMatrixSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Task Matrix settings" });
 
     new Setting(containerEl)
-      .setName("Scan folder")
-      .setDesc("Only index markdown files inside this vault folder. Leave empty to scan the whole vault.")
+      .setName("Scan folders")
+      .setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.")
       .addText((text) =>
         text
-          .setPlaceholder("Projects/Tasks")
-          .setValue(this.plugin.settings.scanFolder)
+          .setPlaceholder("Projects/Tasks, Inbox")
+          .setValue(this.plugin.settings.scanFolders.join(", "))
           .onChange(async (value) => {
-            this.plugin.settings.scanFolder = value.trim();
+            this.plugin.settings.scanFolders = value.split(",").map(s => s.trim()).filter(Boolean);
             await this.plugin.saveSettings();
             await this.plugin.refreshTasks();
           }),

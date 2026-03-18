@@ -1,7 +1,7 @@
 {
   "id": "obsidian-task-matrix",
   "name": "Obsidian Task Matrix",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "minAppVersion": "1.5.0",
   "description": "Visual task dashboards for Obsidian with list, GTD, and Eisenhower views.",
   "author": "Luna Jiang",
