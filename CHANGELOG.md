@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8
+- New: Matrix view quick move buttons on task cards (`Move to 1/2/3/4`)
+- New: GTD view quick move buttons on task cards (`Move to I/P/W`)
+- New: List view folder groups can now be collapsed/expanded when `Group by folder` is enabled
+- Change: Plugin display name updated to `Task Matrix`
+
 ## 0.1.7
 - Fix: GTD view drag-and-drop from Inbox to In Progress now works correctly for tasks with start dates
 - Fix: Tasks with start date = today now correctly show as "Open" instead of "To be Started"

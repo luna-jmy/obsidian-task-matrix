@@ -911,6 +911,24 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-action-btn:hover {
         background: var(--background-modifier-hover);
       }
+      .task-matrix-action-btn.quadrant-move {
+        min-width: 24px;
+        text-align: center;
+        font-weight: 600;
+        padding: 2px 4px;
+      }
+      .task-matrix-action-separator {
+        font-size: 12px;
+        color: var(--text-muted);
+        align-self: center;
+        margin: 0 2px 0 4px;
+      }
+      .task-matrix-action-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        align-self: center;
+        margin-right: 2px;
+      }
       .task-matrix-drag-over {
         background: var(--background-modifier-hover) !important;
         border: 2px dashed var(--interactive-accent);
@@ -986,6 +1004,18 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         margin: 0 0 4px 0;
         border-bottom: 1px solid var(--background-modifier-border);
       }
+      .task-matrix-folder-header.task-matrix-folder-toggle {
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--background-modifier-border);
+        cursor: pointer;
+      }
+      .task-matrix-folder-header.task-matrix-folder-toggle:hover {
+        background: var(--background-modifier-hover);
+      }
+      .task-matrix-folder-content.is-collapsed {
+        display: none;
+      }
     `;
     document.head.appendChild(styleEl);
   }
@@ -1001,6 +1031,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.searchQuery = "";
+    this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
     this.searchEl = null;
@@ -1127,12 +1158,32 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
       for (const [folderPath, folderTasks] of Object.entries(grouped)) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
-        groupEl.createEl("h4", {
-          text: folderPath || "Root",
-          cls: "task-matrix-folder-header"
+        const groupKey = folderPath || "Root";
+        const toggle = groupEl.createEl("button", {
+          cls: "task-matrix-folder-header task-matrix-folder-toggle"
+        });
+        const content = groupEl.createDiv({ cls: "task-matrix-folder-content" });
+        const renderToggleLabel = () => {
+          const collapsed = this.collapsedFolderGroups.has(groupKey);
+          const marker = collapsed ? "\u25B8" : "\u25BE";
+          toggle.setText(`${marker} ${groupKey} (${folderTasks.length})`);
+          if (collapsed) {
+            content.addClass("is-collapsed");
+          } else {
+            content.removeClass("is-collapsed");
+          }
+        };
+        renderToggleLabel();
+        toggle.addEventListener("click", () => {
+          if (this.collapsedFolderGroups.has(groupKey)) {
+            this.collapsedFolderGroups.delete(groupKey);
+          } else {
+            this.collapsedFolderGroups.add(groupKey);
+          }
+          renderToggleLabel();
         });
         for (const task of folderTasks) {
-          await this.createTaskCard(groupEl, task, `${task.filePath}:${task.lineNumber}`);
+          await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);
         }
       }
     } else {
@@ -1164,6 +1215,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const folderParts = parts.slice(0, depth);
     return folderParts.join("/");
   }
+  mapTaskToGtdColumn(task, simpleFlow) {
+    if (!simpleFlow) return task.gtdState;
+    if (task.gtdState === "To be Started") return "Inbox";
+    if (task.gtdState === "Overdue") {
+      const todayIso = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const desc = task.description.toLowerCase();
+      const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
+      const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
+      return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
+    }
+    return task.gtdState;
+  }
   async renderGtd(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-board" });
     const simpleFlow = !this.plugin.settings.includeCompleted;
@@ -1179,22 +1242,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       { title: "Overdue", state: "Overdue" },
       { title: "Done", state: "Done" }
     ];
-    const todayIso = (() => {
-      const date = /* @__PURE__ */ new Date();
-      date.setHours(0, 0, 0, 0);
-      return date.toISOString().slice(0, 10);
-    })();
-    const getGtdColumn = (task) => {
-      if (!simpleFlow) return task.gtdState;
-      if (task.gtdState === "To be Started") return "Inbox";
-      if (task.gtdState === "Overdue") {
-        const desc = task.description.toLowerCase();
-        const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
-        const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
-        return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
-      }
-      return task.gtdState;
-    };
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
       columnEl.dataset.state = column.state;
@@ -1216,7 +1263,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           }
         }
       });
-      const group = tasks.filter((task) => getGtdColumn(task) === column.state);
+      const group = tasks.filter((task) => this.mapTaskToGtdColumn(task, simpleFlow) === column.state);
       const getGtdDefaults = (state) => {
         const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         switch (state) {
@@ -1403,6 +1450,44 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         this.plugin.deleteTask(task);
       }
     });
+    if (this.currentView === "eisenhower") {
+      actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+      actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+      const quickTargets = ["Q1", "Q2", "Q3", "Q4"].filter(
+        (quadrant) => quadrant !== task.quadrant
+      );
+      for (const targetQuadrant of quickTargets) {
+        const moveBtn = actions.createEl("button", {
+          text: targetQuadrant.slice(1),
+          cls: "task-matrix-action-btn quadrant-move",
+          title: `Move to ${targetQuadrant}`
+        });
+        moveBtn.addEventListener("click", () => this.plugin.moveTaskToQuadrant(task, targetQuadrant));
+      }
+    }
+    if (this.currentView === "gtd") {
+      const simpleFlow = !this.plugin.settings.includeCompleted;
+      const currentGtdColumn = this.mapTaskToGtdColumn(task, simpleFlow);
+      const quickStates = ["Inbox", "In Progress", "Waiting"];
+      const stateLabels = {
+        Inbox: "I",
+        "In Progress": "P",
+        Waiting: "W"
+      };
+      if (quickStates.includes(currentGtdColumn)) {
+        const targets = quickStates.filter((state) => state !== currentGtdColumn);
+        actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+        actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+        for (const targetState of targets) {
+          const moveBtn = actions.createEl("button", {
+            text: stateLabels[targetState],
+            cls: "task-matrix-action-btn quadrant-move",
+            title: `Move to ${targetState}`
+          });
+          moveBtn.addEventListener("click", () => this.plugin.moveTaskToGTDState(task, targetState));
+        }
+      }
+    }
   }
   statusBadge(status) {
     switch (status) {

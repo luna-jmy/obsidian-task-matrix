@@ -31,17 +31,24 @@ var import_obsidian = require("obsidian");
 
 // src/types.ts
 var DEFAULT_SETTINGS = {
-  scanFolder: "",
+  scanFolders: [],
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,
   openLocation: "sidebar",
   completionMarkers: ["x", "X"],
-  cancelledMarkers: ["-"]
+  cancelledMarkers: ["-"],
+  listGroupByFolder: false,
+  listGroupByFolderDepth: 1,
+  newTaskTargetPath: "",
+  newTaskTargetHeading: "",
+  trackCompletionDate: false,
+  urgentDaysRange: 1
 };
 
 // src/task-parser.ts
 var PRIORITY_MARKERS = [
+  ["\u{1F53A}", "critical" /* Critical */],
   ["\u23EB", "highest" /* Highest */],
   ["\u{1F53C}", "high" /* High */],
   ["\u{1F53D}", "low" /* Low */],
@@ -65,13 +72,15 @@ function extractValue(text, regex) {
   return match?.[1]?.trim();
 }
 function cleanDescription(raw) {
-  return raw.replace(FIELD_PATTERNS.dueDate, "").replace(FIELD_PATTERNS.startDate, "").replace(FIELD_PATTERNS.scheduledDate, "").replace(FIELD_PATTERNS.doneDate, "").replace(FIELD_PATTERNS.createdDate, "").replace(FIELD_PATTERNS.recurrence, "").replace(FIELD_PATTERNS.taskIdIcon, "").replace(FIELD_PATTERNS.taskIdField, "").replace(FIELD_PATTERNS.dependsIcon, "").replace(FIELD_PATTERNS.dependsField, "").replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}]/gu, "").replace(/\s+/g, " ").trim();
+  return raw.replace(FIELD_PATTERNS.dueDate, "").replace(FIELD_PATTERNS.startDate, "").replace(FIELD_PATTERNS.scheduledDate, "").replace(FIELD_PATTERNS.doneDate, "").replace(FIELD_PATTERNS.createdDate, "").replace(FIELD_PATTERNS.recurrence, "").replace(FIELD_PATTERNS.taskIdIcon, "").replace(FIELD_PATTERNS.taskIdField, "").replace(FIELD_PATTERNS.dependsIcon, "").replace(FIELD_PATTERNS.dependsField, "").replace(/[\u{1f4c5}\u{1f6eb}\u{23f3}\u{2705}\u{2795}\u{1f504}\u{1f194}\u{26d4}\u{1f53c}\u{23eb}\u{1f53d}\u{23ec}\u{1f53a}]/gu, "").replace(/\s+/g, " ").trim();
 }
 function isoDateOffset(days) {
   const date = /* @__PURE__ */ new Date();
-  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 function getToday() {
   return isoDateOffset(0);
@@ -95,12 +104,8 @@ function computeDisplayStatus(checkboxContent, completionMarkers, cancelledMarke
   if (dueDate && dueDate < today) {
     return "overdue";
   }
-  if (startDate) {
-    if (startDate <= today) {
-      return "in-progress";
-    } else {
-      return "to-be-started";
-    }
+  if (startDate && startDate > today) {
+    return "to-be-started";
   }
   return "open";
 }
@@ -113,13 +118,16 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
   if (blocked || desc.includes("#waiting") || desc.includes("#delegated") || desc.includes("#blocked")) {
     return "Waiting";
   }
+  if (desc.includes("#started") || desc.includes("#doing") || desc.includes("#active")) {
+    return "In Progress";
+  }
   if (dueDate && dueDate < today) {
     return "Overdue";
   }
   if (startDate) {
-    if (startDate <= today) {
+    if (startDate < today) {
       return "In Progress";
-    } else {
+    } else if (startDate > today) {
       return "To be Started";
     }
   }
@@ -128,10 +136,10 @@ function computeGtdState(displayStatus, checkboxContent, description, dueDate, s
   }
   return "Inbox";
 }
-function computeQuadrant(priority, dueDate) {
-  const isImportant = priority === "highest" /* Highest */ || priority === "high" /* High */;
-  const today = getToday();
-  const isUrgent = Boolean(dueDate && dueDate <= today);
+function computeQuadrant(priority, dueDate, urgentDaysRange) {
+  const isImportant = priority === "critical" /* Critical */ || priority === "highest" /* Highest */ || priority === "high" /* High */;
+  const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
+  const isUrgent = Boolean(dueDate && dueDate <= urgentDeadline);
   if (isImportant && isUrgent) return "Q1";
   if (isImportant && !isUrgent) return "Q2";
   if (!isImportant && isUrgent) return "Q3";
@@ -157,7 +165,7 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
   const blocked = Boolean(dependsOn);
   const displayStatus = computeDisplayStatus(checkboxContent, settings.completionMarkers, settings.cancelledMarkers, dueDate, startDate);
   const gtdState = computeGtdState(displayStatus, checkboxContent, description, dueDate, startDate, blocked);
-  const quadrant = computeQuadrant(priority, dueDate);
+  const quadrant = computeQuadrant(priority, dueDate, settings.urgentDaysRange);
   return {
     id: `${filePath}:${lineNumber}:${description}`,
     filePath,
@@ -183,6 +191,8 @@ function parseTaskLine(line, filePath, lineNumber, settings) {
 }
 function priorityRank(priority) {
   switch (priority) {
+    case "critical" /* Critical */:
+      return 6;
     case "highest" /* Highest */:
       return 5;
     case "high" /* High */:
@@ -316,9 +326,14 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         return false;
       }
     }
-    const folder = this.settings.scanFolder.trim().replace(/^\/+|\/+$/g, "");
-    if (!folder) return true;
-    return file.path === folder || file.path.startsWith(`${folder}/`);
+    if (this.settings.scanFolders.length === 0) return true;
+    for (const scanFolder of this.settings.scanFolders) {
+      const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
+      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+        return true;
+      }
+    }
+    return false;
   }
   async collectTasks() {
     const tasks = [];
@@ -326,14 +341,27 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     for (const file of files) {
       const content = await this.app.vault.cachedRead(file);
       const lines = content.split(/\r?\n/u);
-      lines.forEach((line, index) => {
+      const fileCache = this.app.metadataCache.getFileCache(file);
+      const codeSections = fileCache?.sections?.filter((s) => s.type === "code") ?? [];
+      const codeBlockLines = /* @__PURE__ */ new Set();
+      for (const section of codeSections) {
+        const startLine = section.position.start.line + 1;
+        const endLine = section.position.end.line + 1;
+        for (let i = startLine; i <= endLine; i++) {
+          codeBlockLines.add(i);
+        }
+      }
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        const lineNumber = index + 1;
+        if (codeBlockLines.has(lineNumber)) continue;
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
-        if (!parsed) return;
+        if (!parsed) continue;
         if (!this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
-          return;
+          continue;
         }
         tasks.push(parsed);
-      });
+      }
     }
     const completedIds = new Set(tasks.filter((t) => t.displayStatus === "completed").map((t) => t.taskId).filter(Boolean));
     for (const task of tasks) {
@@ -362,7 +390,13 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
     const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
     const newMarker = isCompleted ? " " : defaultCompleteMarker;
-    const newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+    let newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
+    if (!isCompleted && this.settings.trackCompletionDate) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      newLine = `${newLine} \u2705 ${today}`;
+    } else if (isCompleted && this.settings.trackCompletionDate) {
+      newLine = newLine.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
+    }
     if (newLine !== line) {
       lines[lineIndex] = newLine;
       await this.app.vault.modify(file, lines.join("\n"));
@@ -452,9 +486,70 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     lines[lineIndex] = newLine;
     await this.app.vault.modify(file, lines.join("\n"));
   }
+  // Check if there's a date conflict (start date > due date)
+  checkDateConflict(startDate, dueDate) {
+    if (!startDate || !dueDate) return false;
+    return startDate > dueDate;
+  }
   // Drag and drop: move task to different state/quadrant
   async moveTaskToGTDState(task, newState) {
-    if (task.gtdState === newState) return;
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    let updates = {};
+    let tagToAdd = "";
+    let removeTags = [];
+    let shouldComplete = false;
+    switch (newState) {
+      case "Waiting":
+        tagToAdd = "#waiting";
+        removeTags = ["#doing", "#active", "#next"];
+        break;
+      case "In Progress":
+        tagToAdd = "#doing";
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        updates.startDate = today;
+        break;
+      case "To be Started":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Overdue":
+        updates.dueDate = today;
+        removeTags = ["#waiting", "#delegated", "#blocked"];
+        break;
+      case "Done":
+        shouldComplete = true;
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+      case "Inbox":
+        removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+        break;
+    }
+    const effectiveStartDate = updates.startDate ?? task.startDate;
+    const effectiveDueDate = updates.dueDate ?? task.dueDate;
+    const hasDateConflict = this.checkDateConflict(effectiveStartDate, effectiveDueDate);
+    if (hasDateConflict && updates.startDate) {
+      new DateConflictModal(
+        this.app,
+        effectiveStartDate,
+        effectiveDueDate,
+        async (result) => {
+          if (result.adjustDueDate) {
+            updates.dueDate = today;
+            new import_obsidian.Notice("Due date adjusted to today");
+          } else if (result.addConflictTag) {
+            new import_obsidian.Notice("Date conflict tag added");
+          } else {
+            return;
+          }
+          await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+        }
+      ).open();
+      return;
+    }
+    const noChangesNeeded = task.gtdState === newState && !updates.startDate && !updates.dueDate && !shouldComplete;
+    if (noChangesNeeded) return;
+    await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, false);
+  }
+  async applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, addConflictTag) {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof import_obsidian.TFile)) return;
     const content = await this.app.vault.read(file);
@@ -462,24 +557,33 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const lineIndex = task.lineNumber - 1;
     if (lineIndex < 0 || lineIndex >= lines.length) return;
     let line = lines[lineIndex];
-    line = line.replace(/#(waiting|delegated|blocked|doing|active|next)\b/gi, "").trim();
-    let tagToAdd = "";
-    switch (newState) {
-      case "Waiting":
-        tagToAdd = " #waiting";
-        break;
-      case "In Progress":
-        tagToAdd = " #doing";
-        break;
-      case "Done":
-        {
-          const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
-          line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
-        }
-        break;
+    for (const tag of removeTags) {
+      const tagRegex = new RegExp(`\\s*${tag}\\b`, "gi");
+      line = line.replace(tagRegex, "");
     }
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    line = line.trim();
     if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
-      line += tagToAdd;
+      line += ` ${tagToAdd}`;
+    }
+    if (addConflictTag && !line.toLowerCase().includes("#due-date-conflict")) {
+      line += " #due-date-conflict";
+    }
+    if (shouldComplete) {
+      const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
+      line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
+    }
+    if (updates.startDate !== void 0) {
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.startDate) {
+        line += ` \u{1F6EB} ${updates.startDate}`;
+      }
+    }
+    if (updates.dueDate !== void 0) {
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.dueDate) {
+        line += ` \u{1F4C5} ${updates.dueDate}`;
+      }
     }
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -494,27 +598,38 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const lineIndex = task.lineNumber - 1;
     if (lineIndex < 0 || lineIndex >= lines.length) return;
     let line = lines[lineIndex];
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     let priorityMarker = "";
+    let shouldAddDueDate = false;
+    let shouldClearDueDate = false;
     switch (newQuadrant) {
       case "Q1":
         priorityMarker = "\u{1F53C}";
+        shouldAddDueDate = true;
         break;
       case "Q2":
         priorityMarker = "\u{1F53C}";
+        shouldClearDueDate = true;
         break;
       case "Q3":
         priorityMarker = "\u{1F53D}";
+        shouldAddDueDate = true;
         break;
       case "Q4":
         priorityMarker = "\u23EC";
+        shouldClearDueDate = true;
         break;
     }
-    line = line.replace(/[🔼⏫🔽⏬]/gu, "").trim();
+    line = line.replace(/⏫|🔼|🔽|⏬/gu, "").trim();
     if (priorityMarker) {
       const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
       if (checkboxMatch) {
         line = line.replace(checkboxMatch[1], checkboxMatch[1] + priorityMarker + " ");
       }
+    }
+    line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "").trim();
+    if (shouldAddDueDate) {
+      line = line + ` \u{1F4C5} ${today}`;
     }
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -768,6 +883,12 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         background: #fef3c7;
         color: #92400e;
       }
+      .task-matrix-chip.conflict {
+        background: #fee2e2;
+        color: #dc2626;
+        font-weight: 600;
+        border: 1px solid #fecaca;
+      }
       .task-matrix-card-meta {
         font-size: 11px;
         color: var(--text-muted);
@@ -789,6 +910,24 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       }
       .task-matrix-action-btn:hover {
         background: var(--background-modifier-hover);
+      }
+      .task-matrix-action-btn.quadrant-move {
+        min-width: 24px;
+        text-align: center;
+        font-weight: 600;
+        padding: 2px 4px;
+      }
+      .task-matrix-action-separator {
+        font-size: 12px;
+        color: var(--text-muted);
+        align-self: center;
+        margin: 0 2px 0 4px;
+      }
+      .task-matrix-action-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        align-self: center;
+        margin-right: 2px;
       }
       .task-matrix-drag-over {
         background: var(--background-modifier-hover) !important;
@@ -823,6 +962,20 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         border-radius: 4px;
         background: var(--background-primary);
         color: var(--text-normal);
+        min-height: 36px;
+        line-height: 1.4;
+      }
+      .task-matrix-form-row select {
+        height: 36px;
+        padding: 6px 8px;
+      }
+      .task-matrix-form-row input[type="date"] {
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .task-matrix-form-row input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: var(--calendar-picker-filter, none);
+        cursor: pointer;
       }
       .task-matrix-form-row textarea {
         min-height: 80px;
@@ -837,6 +990,31 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         gap: 8px;
         justify-content: flex-end;
         margin-top: 20px;
+      }
+      .task-matrix-folder-group {
+        margin-bottom: 16px;
+      }
+      .task-matrix-folder-header {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        padding: 8px 12px;
+        background: var(--background-secondary);
+        border-radius: 6px 6px 0 0;
+        margin: 0 0 4px 0;
+        border-bottom: 1px solid var(--background-modifier-border);
+      }
+      .task-matrix-folder-header.task-matrix-folder-toggle {
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--background-modifier-border);
+        cursor: pointer;
+      }
+      .task-matrix-folder-header.task-matrix-folder-toggle:hover {
+        background: var(--background-modifier-hover);
+      }
+      .task-matrix-folder-content.is-collapsed {
+        display: none;
       }
     `;
     document.head.appendChild(styleEl);
@@ -853,6 +1031,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.searchQuery = "";
+    this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
     this.searchEl = null;
@@ -975,9 +1154,78 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderList(parent, tasks) {
     const wrap = parent.createDiv({ cls: "task-matrix-list" });
-    for (const task of tasks) {
-      await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+    if (this.plugin.settings.listGroupByFolder) {
+      const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
+      for (const [folderPath, folderTasks] of Object.entries(grouped)) {
+        const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
+        const groupKey = folderPath || "Root";
+        const toggle = groupEl.createEl("button", {
+          cls: "task-matrix-folder-header task-matrix-folder-toggle"
+        });
+        const content = groupEl.createDiv({ cls: "task-matrix-folder-content" });
+        const renderToggleLabel = () => {
+          const collapsed = this.collapsedFolderGroups.has(groupKey);
+          const marker = collapsed ? "\u25B8" : "\u25BE";
+          toggle.setText(`${marker} ${groupKey} (${folderTasks.length})`);
+          if (collapsed) {
+            content.addClass("is-collapsed");
+          } else {
+            content.removeClass("is-collapsed");
+          }
+        };
+        renderToggleLabel();
+        toggle.addEventListener("click", () => {
+          if (this.collapsedFolderGroups.has(groupKey)) {
+            this.collapsedFolderGroups.delete(groupKey);
+          } else {
+            this.collapsedFolderGroups.add(groupKey);
+          }
+          renderToggleLabel();
+        });
+        for (const task of folderTasks) {
+          await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);
+        }
+      }
+    } else {
+      for (const task of tasks) {
+        await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+      }
     }
+  }
+  groupTasksByFolder(tasks, depth) {
+    const grouped = {};
+    for (const task of tasks) {
+      const folderPath = this.getFolderPath(task.filePath, depth);
+      if (!grouped[folderPath]) {
+        grouped[folderPath] = [];
+      }
+      grouped[folderPath].push(task);
+    }
+    return Object.keys(grouped).sort().reduce((acc, key) => {
+      acc[key] = grouped[key];
+      return acc;
+    }, {});
+  }
+  getFolderPath(filePath, depth) {
+    const parts = filePath.split("/");
+    parts.pop();
+    if (parts.length === 0) {
+      return "";
+    }
+    const folderParts = parts.slice(0, depth);
+    return folderParts.join("/");
+  }
+  mapTaskToGtdColumn(task, simpleFlow) {
+    if (!simpleFlow) return task.gtdState;
+    if (task.gtdState === "To be Started") return "Inbox";
+    if (task.gtdState === "Overdue") {
+      const todayIso = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const desc = task.description.toLowerCase();
+      const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
+      const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
+      return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
+    }
+    return task.gtdState;
   }
   async renderGtd(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-board" });
@@ -994,22 +1242,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       { title: "Overdue", state: "Overdue" },
       { title: "Done", state: "Done" }
     ];
-    const todayIso = (() => {
-      const date = /* @__PURE__ */ new Date();
-      date.setHours(0, 0, 0, 0);
-      return date.toISOString().slice(0, 10);
-    })();
-    const getGtdColumn = (task) => {
-      if (!simpleFlow) return task.gtdState;
-      if (task.gtdState === "To be Started") return "Inbox";
-      if (task.gtdState === "Overdue") {
-        const desc = task.description.toLowerCase();
-        const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
-        const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
-        return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
-      }
-      return task.gtdState;
-    };
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
       columnEl.dataset.state = column.state;
@@ -1031,7 +1263,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           }
         }
       });
-      const group = tasks.filter((task) => getGtdColumn(task) === column.state);
+      const group = tasks.filter((task) => this.mapTaskToGtdColumn(task, simpleFlow) === column.state);
       const getGtdDefaults = (state) => {
         const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         switch (state) {
@@ -1062,7 +1294,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
       { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
-      { title: "Q4", quadrant: "Q4", subtitle: "Backlog or discard" }
+      { title: "Q4", quadrant: "Q4", subtitle: "Delegated or discard" }
     ];
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
@@ -1156,12 +1388,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     if (task.dueDate) {
       chips.createEl("span", { text: `Due ${task.dueDate}`, cls: "task-matrix-chip" });
     }
+    if (task.startDate) {
+      chips.createEl("span", { text: `Start ${task.startDate}`, cls: "task-matrix-chip" });
+    }
     if (task.dependsOn) {
       const depText = task.blocked ? `\u26D4 Depends ${task.dependsOn}` : `\u2713 Depends ${task.dependsOn}`;
       chips.createEl("span", { text: depText, cls: `task-matrix-chip${task.blocked ? " warning" : ""}` });
     }
     if (task.taskId) {
       chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
+    }
+    if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
+      chips.createEl("span", { text: "\u26A0\uFE0F Due Date Conflict", cls: "task-matrix-chip conflict" });
     }
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
     const actions = card.createDiv({ cls: "task-matrix-card-actions" });
@@ -1212,6 +1450,44 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         this.plugin.deleteTask(task);
       }
     });
+    if (this.currentView === "eisenhower") {
+      actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+      actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+      const quickTargets = ["Q1", "Q2", "Q3", "Q4"].filter(
+        (quadrant) => quadrant !== task.quadrant
+      );
+      for (const targetQuadrant of quickTargets) {
+        const moveBtn = actions.createEl("button", {
+          text: targetQuadrant.slice(1),
+          cls: "task-matrix-action-btn quadrant-move",
+          title: `Move to ${targetQuadrant}`
+        });
+        moveBtn.addEventListener("click", () => this.plugin.moveTaskToQuadrant(task, targetQuadrant));
+      }
+    }
+    if (this.currentView === "gtd") {
+      const simpleFlow = !this.plugin.settings.includeCompleted;
+      const currentGtdColumn = this.mapTaskToGtdColumn(task, simpleFlow);
+      const quickStates = ["Inbox", "In Progress", "Waiting"];
+      const stateLabels = {
+        Inbox: "I",
+        "In Progress": "P",
+        Waiting: "W"
+      };
+      if (quickStates.includes(currentGtdColumn)) {
+        const targets = quickStates.filter((state) => state !== currentGtdColumn);
+        actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+        actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+        for (const targetState of targets) {
+          const moveBtn = actions.createEl("button", {
+            text: stateLabels[targetState],
+            cls: "task-matrix-action-btn quadrant-move",
+            title: `Move to ${targetState}`
+          });
+          moveBtn.addEventListener("click", () => this.plugin.moveTaskToGTDState(task, targetState));
+        }
+      }
+    }
   }
   statusBadge(status) {
     switch (status) {
@@ -1275,17 +1551,22 @@ var TaskEditModal = class extends import_obsidian.Modal {
     prioritySelect.addOption("medium", "Medium");
     prioritySelect.addOption("high", "High");
     prioritySelect.addOption("highest", "Highest");
+    prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
     dueRow.createEl("label", { text: "Due Date" });
-    const dueInput = new import_obsidian.TextComponent(dueRow);
-    dueInput.setValue(dueDate);
-    dueInput.setPlaceholder("YYYY-MM-DD");
+    const dueInput = dueRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: dueDate
+    });
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
-    const startInput = new import_obsidian.TextComponent(startRow);
-    startInput.setValue(startDate);
-    startInput.setPlaceholder("YYYY-MM-DD");
+    const startInput = startRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: startDate
+    });
     const idRow = form.createDiv({ cls: "task-matrix-form-row" });
     const idLabelRow = idRow.createDiv({ cls: "task-matrix-label-row" });
     idLabelRow.createEl("label", { text: "Task ID" });
@@ -1299,67 +1580,91 @@ var TaskEditModal = class extends import_obsidian.Modal {
     generateIdBtn.buttonEl.style.marginLeft = "8px";
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
     dependsRow.createEl("label", { text: "Depends On" });
-    const dependsInput = new import_obsidian.TextComponent(dependsRow);
-    dependsInput.setValue(dependsOn);
+    const dependsSelect = new import_obsidian.DropdownComponent(dependsRow);
+    dependsSelect.addOption("", "-- None --");
+    const availableTasks = this.plugin.tasks.filter((t) => t.displayStatus !== "completed" && t.displayStatus !== "cancelled" && t.taskId && t.taskId !== taskId).sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.localeCompare(b.dueDate);
+    });
+    for (const t of availableTasks) {
+      const dueLabel = t.dueDate ? ` (Due: ${t.dueDate})` : "";
+      const label = `${t.taskId}${dueLabel}: ${t.description.slice(0, 40)}${t.description.length > 40 ? "..." : ""}`;
+      dependsSelect.addOption(t.taskId, label);
+    }
+    dependsSelect.setValue(dependsOn);
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
     new import_obsidian.ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
     new import_obsidian.ButtonComponent(buttons).setButtonText(this.isCreateMode ? "Create" : "Save").setCta().onClick(async () => {
       const updates = {
         description: descInput.getValue(),
         priority: prioritySelect.getValue(),
-        dueDate: dueInput.getValue() || void 0,
-        startDate: startInput.getValue() || void 0,
+        dueDate: dueInput.value || void 0,
+        startDate: startInput.value || void 0,
         taskId: idInput.getValue() || void 0,
-        dependsOn: dependsInput.getValue() || void 0
+        dependsOn: dependsSelect.getValue() || void 0
       };
+      if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
+        new DateConflictModal(
+          this.app,
+          updates.startDate,
+          updates.dueDate,
+          async (result) => {
+            if (result.adjustDueDate) {
+              const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+              updates.dueDate = today;
+              new import_obsidian.Notice("Due date adjusted to today");
+            } else if (result.addConflictTag) {
+            } else {
+              return;
+            }
+            if (this.isCreateMode) {
+              await this.createTask(updates, result.addConflictTag);
+            } else {
+              await this.saveTask(updates, result.addConflictTag);
+            }
+            this.close();
+          }
+        ).open();
+        return;
+      }
       if (this.isCreateMode) {
-        await this.createTask(updates);
+        await this.createTask(updates, false);
       } else {
-        await this.saveTask(updates);
+        await this.saveTask(updates, false);
       }
       this.close();
     });
   }
-  async createTask(updates) {
+  async createTask(updates, addConflictTag = false) {
     const desc = updates.description?.trim();
     if (!desc) {
       new import_obsidian.Notice("Task description is required");
       return;
     }
     let targetFile = null;
-    const { scanFolder } = this.plugin.settings;
-    if (scanFolder) {
-      const folderPath = scanFolder.trim().replace(/^\/+|\/+$/g, "");
-      const inboxPath = `${folderPath}/Inbox.md`;
-      targetFile = this.app.vault.getAbstractFileByPath(inboxPath);
+    const { newTaskTargetPath } = this.plugin.settings;
+    if (newTaskTargetPath) {
+      const resolvedPath = this.resolveDateTemplate(newTaskTargetPath);
+      targetFile = this.app.vault.getAbstractFileByPath(resolvedPath);
       if (!targetFile) {
-        const files = this.app.vault.getMarkdownFiles().filter((f) => {
-          const fileFolder = f.path.split("/").slice(0, -1).join("/");
-          return fileFolder === folderPath || fileFolder.startsWith(`${folderPath}/`);
-        });
-        if (files.length > 0) {
-          targetFile = files[0];
-        }
+        new import_obsidian.Notice(`Target note not found: ${resolvedPath}`);
+        return;
       }
-    }
-    if (!targetFile) {
+    } else {
       const activeFile = this.app.workspace.getActiveFile();
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        const files = this.app.vault.getMarkdownFiles();
-        if (files.length > 0) {
-          targetFile = files[0];
-        }
+        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure Target note path in settings or open a markdown file.");
+        return;
       }
-    }
-    if (!targetFile) {
-      new import_obsidian.Notice("No markdown file found to add task");
-      return;
     }
     let taskLine = `- [ ] ${desc}`;
     if (updates.priority && updates.priority !== "none") {
       const priorityEmoji = {
+        critical: "\u{1F53A}",
         highest: "\u23EB",
         high: "\u{1F53C}",
         medium: "",
@@ -1392,12 +1697,61 @@ var TaskEditModal = class extends import_obsidian.Modal {
     if (updates.dependsOn) {
       taskLine += ` \u26D4 ${updates.dependsOn}`;
     }
+    if (addConflictTag) {
+      taskLine += " #due-date-conflict";
+    }
     const content = await this.app.vault.read(targetFile);
-    const newContent = content.trim() + "\n" + taskLine;
+    const { newTaskTargetHeading } = this.plugin.settings;
+    let newContent;
+    if (newTaskTargetHeading) {
+      const result = this.insertTaskUnderHeading(content, newTaskTargetHeading, taskLine);
+      if (!result.success) {
+        new import_obsidian.Notice(`Cannot add task: ${result.error}`);
+        return;
+      }
+      newContent = result.content;
+    } else {
+      newContent = content.trim() + "\n" + taskLine;
+    }
     await this.app.vault.modify(targetFile, newContent);
     new import_obsidian.Notice(`Task added to ${targetFile.path}`);
   }
-  async saveTask(updates) {
+  resolveDateTemplate(template) {
+    const now = /* @__PURE__ */ new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return template.replace(/YYYY/g, String(year)).replace(/MM/g, month).replace(/DD/g, day);
+  }
+  insertTaskUnderHeading(content, heading, taskLine) {
+    const lines = content.split(/\r?\n/u);
+    const headingRegex = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    const headingIndex = lines.findIndex((line) => headingRegex.test(line.trim()));
+    if (headingIndex === -1) {
+      return { success: false, error: `Heading "${heading}" not found` };
+    }
+    const headingMatch = lines[headingIndex].match(/^(#{1,6})/);
+    if (!headingMatch) {
+      return { success: false, error: "Invalid heading format" };
+    }
+    const headingLevel = headingMatch[1].length;
+    let insertIndex = headingIndex + 1;
+    for (let i = headingIndex + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const nextHeadingMatch = line.match(/^(#{1,6})\s/);
+      if (nextHeadingMatch && nextHeadingMatch[1].length <= headingLevel) {
+        break;
+      }
+      insertIndex = i + 1;
+    }
+    let lastContentIndex = insertIndex - 1;
+    while (lastContentIndex > headingIndex && !lines[lastContentIndex].trim()) {
+      lastContentIndex--;
+    }
+    lines.splice(lastContentIndex + 1, 0, taskLine);
+    return { success: true, content: lines.join("\n") };
+  }
+  async saveTask(updates, addConflictTag = false) {
     if (!this.task) return;
     const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
     if (!(file instanceof import_obsidian.TFile)) {
@@ -1416,7 +1770,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
     if (checkboxMatch && updates.description) {
       const prefix = checkboxMatch[1];
       const restOfLine = line.substring(prefix.length);
-      const inlineFields = restOfLine.match(/(\s*(?:📅|🛫|⏳|✅|➕|🔼|⏫|🔽|⏬|🆔|⛔|#\w+|::\s*\S+)\s*)/g) || [];
+      const inlineFields = restOfLine.match(/(\s*(?:📅\s*\d{4}-\d{2}-\d{2}|🛫\s*\d{4}-\d{2}-\d{2}|⏳\s*\d{4}-\d{2}-\d{2}|✅\s*\d{4}-\d{2}-\d{2}|➕\s*\d{4}-\d{2}-\d{2}|🔺|⏫|🔼|🔽|⏬|🆔\s*\S+|⛔\s*\S+|#\w+|::\s*\S+)\s*)/gu) || [];
       const uniqueInlineFields = inlineFields.filter((field) => {
         const trimmed = field.trim();
         if (trimmed.startsWith("#")) {
@@ -1427,19 +1781,24 @@ var TaskEditModal = class extends import_obsidian.Modal {
       line = prefix + updates.description + " " + uniqueInlineFields.join(" ");
     }
     if (updates.priority !== void 0) {
-      line = line.replace(/[🔼⏫🔽⏬]/gu, "");
-      if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
+      line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
+      if (updates.priority === "critical") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53A} ");
+      else if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
       else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53C} ");
       else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53D} ");
       else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EC ");
     }
     if (updates.dueDate !== void 0) {
-      line = line.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.dueDate) line += ` \u{1F4C5} ${updates.dueDate}`;
     }
     if (updates.startDate !== void 0) {
-      line = line.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
+      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
       if (updates.startDate) line += ` \u{1F6EB} ${updates.startDate}`;
+    }
+    if (updates.createdDate !== void 0) {
+      line = line.replace(/\s*➕(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
+      if (updates.createdDate) line += ` \u2795 ${updates.createdDate}`;
     }
     if (updates.taskId !== void 0) {
       line = line.replace(/\s*🆔\s*\S+/g, "");
@@ -1451,6 +1810,10 @@ var TaskEditModal = class extends import_obsidian.Modal {
       line = line.replace(/\bdependsOn::\s*\S+/gi, "");
       if (updates.dependsOn) line += ` \u26D4 ${updates.dependsOn}`;
     }
+    line = line.replace(/\s*#due-date-conflict\b/gi, "");
+    if (addConflictTag) {
+      line += " #due-date-conflict";
+    }
     line = line.replace(/\s+/g, " ").trim();
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
@@ -1459,6 +1822,40 @@ var TaskEditModal = class extends import_obsidian.Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+  }
+};
+var DateConflictModal = class extends import_obsidian.Modal {
+  constructor(app, startDate, dueDate, onConfirm) {
+    super(app);
+    this.startDate = startDate;
+    this.dueDate = dueDate;
+    this.onConfirm = onConfirm;
+    this.result = null;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+    contentEl.createEl("h2", { text: "Date Conflict Detected" });
+    const message = contentEl.createEl("p");
+    message.innerHTML = `Start date (<strong>${this.startDate}</strong>) is later than due date (<strong>${this.dueDate}</strong>).<br><br>Would you like to adjust the due date to today?`;
+    const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("No, add conflict tag").onClick(() => {
+      this.result = { adjustDueDate: false, addConflictTag: true };
+      this.onConfirm(this.result);
+      this.close();
+    });
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("Yes, adjust due date").setCta().onClick(() => {
+      this.result = { adjustDueDate: true, addConflictTag: false };
+      this.onConfirm(this.result);
+      this.close();
+    });
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+    if (this.result === null) {
+      this.onConfirm({ adjustDueDate: false, addConflictTag: false });
+    }
   }
 };
 var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -1470,9 +1867,9 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Task Matrix settings" });
-    new import_obsidian.Setting(containerEl).setName("Scan folder").setDesc("Only index markdown files inside this vault folder. Leave empty to scan the whole vault.").addText(
-      (text) => text.setPlaceholder("Projects/Tasks").setValue(this.plugin.settings.scanFolder).onChange(async (value) => {
-        this.plugin.settings.scanFolder = value.trim();
+    new import_obsidian.Setting(containerEl).setName("Scan folders").setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.").addText(
+      (text) => text.setPlaceholder("Projects/Tasks, Inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange(async (value) => {
+        this.plugin.settings.scanFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();
       })
@@ -1521,6 +1918,45 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.plugin.settings.includeCompleted = value;
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Track completion date").setDesc("When enabled, automatically add \u2705 yyyy-mm-dd to tasks when they are marked as completed.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.trackCompletionDate).onChange(async (value) => {
+        this.plugin.settings.trackCompletionDate = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Urgent days range").setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.").addSlider(
+      (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange(async (value) => {
+        this.plugin.settings.urgentDaysRange = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    containerEl.createEl("h3", { text: "New Task Settings" });
+    new import_obsidian.Setting(containerEl).setName("Target note path").setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.").addText(
+      (text) => text.setPlaceholder("Daily/YYYY-MM-DD.md").setValue(this.plugin.settings.newTaskTargetPath).onChange(async (value) => {
+        this.plugin.settings.newTaskTargetPath = value.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Target heading").setDesc("Insert new tasks under this heading. Leave empty to append at end of file.").addText(
+      (text) => text.setPlaceholder("## \u{1F440} GTD\u4EFB\u52A1\u770B\u677F").setValue(this.plugin.settings.newTaskTargetHeading).onChange(async (value) => {
+        this.plugin.settings.newTaskTargetHeading = value.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    containerEl.createEl("h3", { text: "List View Settings" });
+    new import_obsidian.Setting(containerEl).setName("Group by folder").setDesc("Group tasks by their containing folder in list view.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.listGroupByFolder).onChange(async (value) => {
+        this.plugin.settings.listGroupByFolder = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Folder grouping depth").setDesc("How many folder levels to display for grouping (1 = top level only, 2 = two levels, etc.).").addSlider(
+      (slider) => slider.setLimits(1, 5, 1).setValue(this.plugin.settings.listGroupByFolderDepth).setDynamicTooltip().onChange(async (value) => {
+        this.plugin.settings.listGroupByFolderDepth = value;
+        await this.plugin.saveSettings();
       })
     );
   }

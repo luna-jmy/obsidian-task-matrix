@@ -834,6 +834,24 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-action-btn:hover {
         background: var(--background-modifier-hover);
       }
+      .task-matrix-action-btn.quadrant-move {
+        min-width: 24px;
+        text-align: center;
+        font-weight: 600;
+        padding: 2px 4px;
+      }
+      .task-matrix-action-separator {
+        font-size: 12px;
+        color: var(--text-muted);
+        align-self: center;
+        margin: 0 2px 0 4px;
+      }
+      .task-matrix-action-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        align-self: center;
+        margin-right: 2px;
+      }
       .task-matrix-drag-over {
         background: var(--background-modifier-hover) !important;
         border: 2px dashed var(--interactive-accent);
@@ -909,6 +927,18 @@ export default class TaskMatrixPlugin extends Plugin {
         margin: 0 0 4px 0;
         border-bottom: 1px solid var(--background-modifier-border);
       }
+      .task-matrix-folder-header.task-matrix-folder-toggle {
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--background-modifier-border);
+        cursor: pointer;
+      }
+      .task-matrix-folder-header.task-matrix-folder-toggle:hover {
+        background: var(--background-modifier-hover);
+      }
+      .task-matrix-folder-content.is-collapsed {
+        display: none;
+      }
     `;
     document.head.appendChild(styleEl);
   }
@@ -924,6 +954,7 @@ export default class TaskMatrixPlugin extends Plugin {
 class TaskMatrixView extends ItemView {
   private currentView: ViewMode;
   private searchQuery = "";
+  private collapsedFolderGroups = new Set<string>();
   private shellEl: HTMLElement | null = null;
   private bodyEl: HTMLElement | null = null;
   private searchEl: HTMLInputElement | null = null;
@@ -1082,12 +1113,33 @@ class TaskMatrixView extends ItemView {
 
       for (const [folderPath, folderTasks] of Object.entries(grouped)) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
-        groupEl.createEl("h4", {
-          text: folderPath || "Root",
-          cls: "task-matrix-folder-header",
+        const groupKey = folderPath || "Root";
+        const toggle = groupEl.createEl("button", {
+          cls: "task-matrix-folder-header task-matrix-folder-toggle",
         });
+        const content = groupEl.createDiv({ cls: "task-matrix-folder-content" });
+        const renderToggleLabel = (): void => {
+          const collapsed = this.collapsedFolderGroups.has(groupKey);
+          const marker = collapsed ? "▸" : "▾";
+          toggle.setText(`${marker} ${groupKey} (${folderTasks.length})`);
+          if (collapsed) {
+            content.addClass("is-collapsed");
+          } else {
+            content.removeClass("is-collapsed");
+          }
+        };
+        renderToggleLabel();
+        toggle.addEventListener("click", () => {
+          if (this.collapsedFolderGroups.has(groupKey)) {
+            this.collapsedFolderGroups.delete(groupKey);
+          } else {
+            this.collapsedFolderGroups.add(groupKey);
+          }
+          renderToggleLabel();
+        });
+
         for (const task of folderTasks) {
-          await this.createTaskCard(groupEl, task, `${task.filePath}:${task.lineNumber}`);
+          await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);
         }
       }
     } else {
@@ -1132,6 +1184,19 @@ class TaskMatrixView extends ItemView {
     return folderParts.join("/");
   }
 
+  private mapTaskToGtdColumn(task: ParsedTask, simpleFlow: boolean): ParsedTask["gtdState"] {
+    if (!simpleFlow) return task.gtdState;
+    if (task.gtdState === "To be Started") return "Inbox";
+    if (task.gtdState === "Overdue") {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const desc = task.description.toLowerCase();
+      const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
+      const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
+      return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
+    }
+    return task.gtdState;
+  }
+
   private async renderGtd(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-board" });
     const simpleFlow = !this.plugin.settings.includeCompleted;
@@ -1149,24 +1214,6 @@ class TaskMatrixView extends ItemView {
           { title: "Overdue", state: "Overdue" },
           { title: "Done", state: "Done" },
         ];
-
-    const todayIso = (() => {
-      const date = new Date();
-      date.setHours(0, 0, 0, 0);
-      return date.toISOString().slice(0, 10);
-    })();
-
-    const getGtdColumn = (task: ParsedTask): ParsedTask["gtdState"] => {
-      if (!simpleFlow) return task.gtdState;
-      if (task.gtdState === "To be Started") return "Inbox";
-      if (task.gtdState === "Overdue") {
-        const desc = task.description.toLowerCase();
-        const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
-        const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
-        return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
-      }
-      return task.gtdState;
-    };
 
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
@@ -1192,7 +1239,7 @@ class TaskMatrixView extends ItemView {
         }
       });
 
-      const group = tasks.filter((task) => getGtdColumn(task) === column.state);
+      const group = tasks.filter((task) => this.mapTaskToGtdColumn(task, simpleFlow) === column.state);
 
       // Define default values based on GTD state
       const getGtdDefaults = (state: ParsedTask["gtdState"]): Partial<ParsedTask> => {
@@ -1423,6 +1470,50 @@ class TaskMatrixView extends ItemView {
         this.plugin.deleteTask(task);
       }
     });
+
+    // Matrix view: quick move icons for the other three quadrants
+    if (this.currentView === "eisenhower") {
+      actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+      actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+
+      const quickTargets: ParsedTask["quadrant"][] = (["Q1", "Q2", "Q3", "Q4"] as const).filter(
+        (quadrant) => quadrant !== task.quadrant
+      );
+      for (const targetQuadrant of quickTargets) {
+        const moveBtn = actions.createEl("button", {
+          text: targetQuadrant.slice(1),
+          cls: "task-matrix-action-btn quadrant-move",
+          title: `Move to ${targetQuadrant}`,
+        });
+        moveBtn.addEventListener("click", () => this.plugin.moveTaskToQuadrant(task, targetQuadrant));
+      }
+    }
+
+    // GTD view: quick move icons for Inbox / In Progress / Waiting
+    if (this.currentView === "gtd") {
+      const simpleFlow = !this.plugin.settings.includeCompleted;
+      const currentGtdColumn = this.mapTaskToGtdColumn(task, simpleFlow);
+      const quickStates: ParsedTask["gtdState"][] = ["Inbox", "In Progress", "Waiting"];
+      const stateLabels: Record<"Inbox" | "In Progress" | "Waiting", string> = {
+        Inbox: "I",
+        "In Progress": "P",
+        Waiting: "W",
+      };
+
+      if (quickStates.includes(currentGtdColumn)) {
+        const targets = quickStates.filter((state) => state !== currentGtdColumn);
+        actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
+        actions.createEl("span", { text: "Move to", cls: "task-matrix-action-label" });
+        for (const targetState of targets) {
+          const moveBtn = actions.createEl("button", {
+            text: stateLabels[targetState as "Inbox" | "In Progress" | "Waiting"],
+            cls: "task-matrix-action-btn quadrant-move",
+            title: `Move to ${targetState}`,
+          });
+          moveBtn.addEventListener("click", () => this.plugin.moveTaskToGTDState(task, targetState));
+        }
+      }
+    }
   }
 
   private statusBadge(status: ParsedTask["displayStatus"]): string {
