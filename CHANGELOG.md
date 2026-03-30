@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.14
+- Fix: Align plugin description in repository manifest and release assets for marketplace validation
+
 ## 0.1.13
 - Improve: List view now supports one-click expand/collapse for grouped folders
 - Improve: List view visual style refreshed to match the calendar list look more closely

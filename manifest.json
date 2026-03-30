@@ -1,9 +1,9 @@
 {
   "id": "task-matrix",
   "name": "Task Matrix",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "minAppVersion": "1.5.0",
-  "description": "Visual task dashboards for Obsidian with list, GTD, and Eisenhower views.",
+  "description": "Visual task dashboards with list, GTD, and Eisenhower views.",
   "author": "Luna Jiang",
   "authorUrl": "https://github.com/luna-jmy",
   "isDesktopOnly": false
