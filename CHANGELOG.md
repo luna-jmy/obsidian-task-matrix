@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9
 - Fix: Calendar `Summary` now excludes completed/cancelled tasks from `Due`, `Overdue`, `Start`, `Scheduled`, and `Recurrence` counts
 - Fix: `Done` count in Calendar `Summary` remains accurate even when global `Include completed tasks` is disabled
 - New: Calendar setting `First day of week` (`Monday` or `Sunday`)
