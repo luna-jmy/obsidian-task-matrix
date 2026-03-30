@@ -1039,6 +1039,15 @@ export default class TaskMatrixPlugin extends Plugin {
         .task-matrix-cell {
           min-height: 0;
         }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
+          display: inline-flex;
+        }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
+          margin-bottom: 0;
+        }
+        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
+          margin-bottom: 12px;
+        }
         .task-matrix-card {
           padding: 12px;
         }
@@ -1147,6 +1156,24 @@ export default class TaskMatrixPlugin extends Plugin {
         margin: 0;
         font-weight: 600;
         min-width: 0;
+      }
+      .task-matrix-column-header.is-collapsible {
+        cursor: pointer;
+      }
+      .task-matrix-column-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .task-matrix-collapse-indicator {
+        display: none;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex: 0 0 auto;
+      }
+      .task-matrix-cell-body.is-collapsed {
+        display: none;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);
@@ -1437,6 +1464,7 @@ class TaskMatrixView extends ItemView {
   private dateFiltersOpen = false;
   private startDateFilter: DateFilterConfig = { operator: "any", value: "" };
   private dueDateFilter: DateFilterConfig = { operator: "any", value: "" };
+  private collapsedMatrixQuadrants = new Set<ParsedTask["quadrant"]>();
   private collapsedFolderGroups = new Set<string>();
   private shellEl: HTMLElement | null = null;
   private bodyEl: HTMLElement | null = null;
@@ -1546,6 +1574,10 @@ class TaskMatrixView extends ItemView {
 
   private usesDateValue(operator: DateFilterOperator): boolean {
     return !["any", "is-empty", "is-not-empty"].includes(operator);
+  }
+
+  private isMobileLayout(): boolean {
+    return window.matchMedia("(max-width: 800px)").matches;
   }
 
   private getActiveDateFilterCount(): number {
@@ -2284,6 +2316,7 @@ class TaskMatrixView extends ItemView {
 
   private async renderEisenhower(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
+    const isMobile = this.isMobileLayout();
     const columns: Array<{ title: string; quadrant: ParsedTask["quadrant"]; subtitle: string }> = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
@@ -2294,6 +2327,9 @@ class TaskMatrixView extends ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
+      if (isMobile) {
+        cell.addClass("is-mobile-collapsible");
+      }
 
       // Drag and drop handlers
       cell.addEventListener("dragover", (e) => {
@@ -2334,13 +2370,31 @@ class TaskMatrixView extends ItemView {
         }
       };
 
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      if (isCollapsed) {
+        cell.addClass("is-collapsed");
+      }
+
+      const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      });
+      }, isMobile, isCollapsed);
+      const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
+
+      if (isMobile) {
+        header.addEventListener("click", (event) => {
+          if ((event.target as HTMLElement).closest(".task-matrix-add-btn")) return;
+          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+            this.collapsedMatrixQuadrants.delete(column.quadrant);
+          } else {
+            this.collapsedMatrixQuadrants.add(column.quadrant);
+          }
+          void this.render();
+        });
+      }
 
       for (const task of group) {
-        await this.createTaskCard(cell, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
@@ -2349,10 +2403,17 @@ class TaskMatrixView extends ItemView {
     parent: HTMLElement,
     title: string,
     count: number,
-    onAddTask?: () => void
-  ): void {
-    const header = parent.createDiv({ cls: "task-matrix-column-header" });
-    header.createEl("h3", { text: title });
+    onAddTask?: () => void,
+    isCollapsible = false,
+    isCollapsed = false
+  ): HTMLElement {
+    const header = parent.createDiv({ cls: `task-matrix-column-header${isCollapsible ? " is-collapsible" : ""}` });
+    const titleWrap = header.createDiv({ cls: "task-matrix-column-title" });
+    titleWrap.createEl("span", {
+      text: isCollapsible ? (isCollapsed ? "▸" : "▾") : "",
+      cls: "task-matrix-collapse-indicator",
+    });
+    titleWrap.createEl("h3", { text: title });
 
     const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
 
@@ -2366,6 +2427,7 @@ class TaskMatrixView extends ItemView {
     }
 
     rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
+    return header;
   }
 
   private async createTaskCard(parent: HTMLElement, task: ParsedTask, metaText: string): Promise<void> {

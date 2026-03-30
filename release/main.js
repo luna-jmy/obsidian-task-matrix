@@ -1104,6 +1104,15 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         .task-matrix-cell {
           min-height: 0;
         }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
+          display: inline-flex;
+        }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
+          margin-bottom: 0;
+        }
+        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
+          margin-bottom: 12px;
+        }
         .task-matrix-card {
           padding: 12px;
         }
@@ -1212,6 +1221,24 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         margin: 0;
         font-weight: 600;
         min-width: 0;
+      }
+      .task-matrix-column-header.is-collapsible {
+        cursor: pointer;
+      }
+      .task-matrix-column-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .task-matrix-collapse-indicator {
+        display: none;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex: 0 0 auto;
+      }
+      .task-matrix-cell-body.is-collapsed {
+        display: none;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);
@@ -1502,6 +1529,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.dateFiltersOpen = false;
     this.startDateFilter = { operator: "any", value: "" };
     this.dueDateFilter = { operator: "any", value: "" };
+    this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set();
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
@@ -1591,6 +1619,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   usesDateValue(operator) {
     return !["any", "is-empty", "is-not-empty"].includes(operator);
+  }
+  isMobileLayout() {
+    return window.matchMedia("(max-width: 800px)").matches;
   }
   getActiveDateFilterCount() {
     let count = 0;
@@ -2218,6 +2249,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
+    const isMobile = this.isMobileLayout();
     const columns = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
@@ -2227,6 +2259,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
+      if (isMobile) {
+        cell.addClass("is-mobile-collapsible");
+      }
       cell.addEventListener("dragover", (e) => {
         e.preventDefault();
         cell.addClass("task-matrix-drag-over");
@@ -2261,18 +2296,39 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             return {};
         }
       };
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      if (isCollapsed) {
+        cell.addClass("is-collapsed");
+      }
+      const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      });
+      }, isMobile, isCollapsed);
+      const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
+      if (isMobile) {
+        header.addEventListener("click", (event) => {
+          if (event.target.closest(".task-matrix-add-btn")) return;
+          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+            this.collapsedMatrixQuadrants.delete(column.quadrant);
+          } else {
+            this.collapsedMatrixQuadrants.add(column.quadrant);
+          }
+          void this.render();
+        });
+      }
       for (const task of group) {
-        await this.createTaskCard(cell, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
-  createColumnHeader(parent, title, count, onAddTask) {
-    const header = parent.createDiv({ cls: "task-matrix-column-header" });
-    header.createEl("h3", { text: title });
+  createColumnHeader(parent, title, count, onAddTask, isCollapsible = false, isCollapsed = false) {
+    const header = parent.createDiv({ cls: `task-matrix-column-header${isCollapsible ? " is-collapsible" : ""}` });
+    const titleWrap = header.createDiv({ cls: "task-matrix-column-title" });
+    titleWrap.createEl("span", {
+      text: isCollapsible ? isCollapsed ? "\u25B8" : "\u25BE" : "",
+      cls: "task-matrix-collapse-indicator"
+    });
+    titleWrap.createEl("h3", { text: title });
     const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
     if (onAddTask) {
       const addBtn = rightSection.createEl("button", {
@@ -2283,6 +2339,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       addBtn.addEventListener("click", onAddTask);
     }
     rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
+    return header;
   }
   async createTaskCard(parent, task, metaText) {
     const card = parent.createDiv({ cls: `task-matrix-card${task.blocked ? " blocked" : ""}` });

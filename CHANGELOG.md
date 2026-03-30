@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.12
+- Improve: Eisenhower view now supports mobile-only quadrant collapse/expand by tapping the quadrant title, while desktop stays fully expanded
+
 ## 0.1.11
 - New: Add global Start date and Due date filters with operators for exact match, range match, and empty/non-empty checks
 - Improve: Date filter inputs now disable clearly when the selected condition does not need a date value
