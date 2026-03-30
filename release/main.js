@@ -709,6 +709,84 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         gap: 4px;
         flex-wrap: wrap;
       }
+      .task-matrix-filter-wrap {
+        position: relative;
+      }
+      .task-matrix-filter-btn {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        cursor: pointer;
+        min-height: 34px;
+      }
+      .task-matrix-filter-btn.is-active {
+        background: var(--background-modifier-hover);
+        border-color: var(--interactive-accent);
+      }
+      .task-matrix-filter-panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 20;
+        width: min(360px, 90vw);
+        padding: 12px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 8px;
+        background: var(--background-primary);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+      .task-matrix-filter-panel[hidden] {
+        display: none;
+      }
+      .task-matrix-filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .task-matrix-filter-row {
+        display: grid;
+        grid-template-columns: 88px 1fr 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+      .task-matrix-filter-row label {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+      .task-matrix-filter-row select,
+      .task-matrix-filter-row input {
+        width: 100%;
+        min-height: 34px;
+        padding: 6px 8px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        background: var(--background-secondary);
+        color: var(--text-normal);
+        box-sizing: border-box;
+      }
+      .task-matrix-filter-row input:disabled {
+        background: var(--background-modifier-hover);
+        color: var(--text-faint);
+        border-color: var(--background-modifier-border);
+        cursor: not-allowed;
+        opacity: 0.75;
+      }
+      .task-matrix-filter-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+      .task-matrix-filter-clear {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        background: var(--background-secondary);
+        color: var(--text-normal);
+        cursor: pointer;
+      }
       .task-matrix-mode-button {
         padding: 6px 12px;
         border: 1px solid var(--background-modifier-border);
@@ -986,10 +1064,25 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           width: 100%;
         }
+        .task-matrix-filter-wrap {
+          width: 100%;
+        }
+        .task-matrix-filter-btn {
+          width: 100%;
+          min-height: 38px;
+        }
         .task-matrix-mode-button,
         .task-matrix-refresh {
           width: 100%;
           min-height: 38px;
+        }
+        .task-matrix-filter-panel {
+          position: static;
+          width: 100%;
+          margin-top: 8px;
+        }
+        .task-matrix-filter-row {
+          grid-template-columns: 1fr;
         }
         .task-matrix-board {
           display: flex;
@@ -1406,6 +1499,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.calendarDate = /* @__PURE__ */ new Date();
     this.calendarSummaryOpen = false;
     this.searchQuery = "";
+    this.dateFiltersOpen = false;
+    this.startDateFilter = { operator: "any", value: "" };
+    this.dueDateFilter = { operator: "any", value: "" };
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
@@ -1456,8 +1552,51 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const query = this.searchQuery.trim().toLowerCase();
     if (!query) return this.plugin.tasks;
     return this.plugin.tasks.filter((task) => {
-      return [task.description, task.filePath, task.taskId, task.dependsOn].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      const matchesQuery = [task.description, task.filePath, task.taskId, task.dependsOn].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      return matchesQuery;
     });
+  }
+  get visibleTasks() {
+    return this.filteredTasks.filter((task) => {
+      return this.matchesDateFilter(task.startDate, this.startDateFilter) && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
+    });
+  }
+  matchesDateFilter(dateValue, filter) {
+    switch (filter.operator) {
+      case "any":
+        return true;
+      case "is-empty":
+        return !dateValue;
+      case "is-not-empty":
+        return Boolean(dateValue);
+      default:
+        if (!dateValue || !filter.value) return true;
+        switch (filter.operator) {
+          case "not-on":
+            return dateValue !== filter.value;
+          case "on":
+            return dateValue === filter.value;
+          case "before":
+            return dateValue < filter.value;
+          case "on-or-before":
+            return dateValue <= filter.value;
+          case "after":
+            return dateValue > filter.value;
+          case "on-or-after":
+            return dateValue >= filter.value;
+          default:
+            return true;
+        }
+    }
+  }
+  usesDateValue(operator) {
+    return !["any", "is-empty", "is-not-empty"].includes(operator);
+  }
+  getActiveDateFilterCount() {
+    let count = 0;
+    if (this.startDateFilter.operator !== "any") count++;
+    if (this.dueDateFilter.operator !== "any") count++;
+    return count;
   }
   renderHeader(parent) {
     const header = parent.createDiv({ cls: "task-matrix-header" });
@@ -1484,6 +1623,90 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         this.refreshBody();
       }, 150);
     });
+    const filterWrap = toolbar.createDiv({ cls: "task-matrix-filter-wrap" });
+    const activeDateFilterCount = this.getActiveDateFilterCount();
+    const filterButton = filterWrap.createEl("button", {
+      text: activeDateFilterCount > 0 ? `Date Filters (${activeDateFilterCount})` : "Date Filters",
+      cls: `task-matrix-filter-btn${activeDateFilterCount > 0 ? " is-active" : ""}`
+    });
+    const updateFilterButtonState = () => {
+      const count = this.getActiveDateFilterCount();
+      filterButton.setText(count > 0 ? `Date Filters (${count})` : "Date Filters");
+      filterButton.toggleClass("is-active", count > 0);
+    };
+    filterButton.addEventListener("click", () => {
+      this.dateFiltersOpen = !this.dateFiltersOpen;
+      if (this.dateFiltersOpen) {
+        filterPanel.removeAttribute("hidden");
+      } else {
+        filterPanel.setAttribute("hidden", "hidden");
+      }
+    });
+    const filterPanel = filterWrap.createDiv({ cls: "task-matrix-filter-panel" });
+    if (!this.dateFiltersOpen) {
+      filterPanel.setAttribute("hidden", "hidden");
+    }
+    const filterGroup = filterPanel.createDiv({ cls: "task-matrix-filter-group" });
+    const renderDateFilterRow = (label, filter, onChange) => {
+      const row = filterGroup.createDiv({ cls: "task-matrix-filter-row" });
+      row.createEl("label", { text: label });
+      const selectEl = row.createEl("select");
+      const options = [
+        { value: "any", label: "Any" },
+        { value: "not-on", label: "Not on" },
+        { value: "on", label: "On" },
+        { value: "before", label: "Before" },
+        { value: "on-or-before", label: "On or before" },
+        { value: "after", label: "After" },
+        { value: "on-or-after", label: "On or after" },
+        { value: "is-empty", label: "Is empty" },
+        { value: "is-not-empty", label: "Is not empty" }
+      ];
+      for (const option of options) {
+        selectEl.createEl("option", { value: option.value, text: option.label });
+      }
+      selectEl.value = filter.operator;
+      const dateInput = row.createEl("input", { type: "date" });
+      dateInput.value = filter.value;
+      const syncDateInputState = () => {
+        const needsDate = this.usesDateValue(selectEl.value);
+        dateInput.disabled = !needsDate;
+        if (!needsDate) {
+          dateInput.value = "";
+        }
+      };
+      syncDateInputState();
+      const updateFilter = () => {
+        const operator = selectEl.value;
+        const value = this.usesDateValue(operator) ? dateInput.value : "";
+        onChange({ operator, value });
+        updateFilterButtonState();
+        void this.refreshBody();
+      };
+      selectEl.addEventListener("change", () => {
+        syncDateInputState();
+        updateFilter();
+      });
+      dateInput.addEventListener("change", updateFilter);
+    };
+    renderDateFilterRow("Start date", this.startDateFilter, (next) => {
+      this.startDateFilter = next;
+    });
+    renderDateFilterRow("Due date", this.dueDateFilter, (next) => {
+      this.dueDateFilter = next;
+    });
+    const filterActions = filterPanel.createDiv({ cls: "task-matrix-filter-actions" });
+    const clearButton = filterActions.createEl("button", {
+      text: "Clear filters",
+      cls: "task-matrix-filter-clear"
+    });
+    clearButton.addEventListener("click", async () => {
+      this.startDateFilter = { operator: "any", value: "" };
+      this.dueDateFilter = { operator: "any", value: "" };
+      this.dateFiltersOpen = false;
+      updateFilterButtonState();
+      await this.render();
+    });
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
     this.renderModeButton(segmented, "list", ICONS.list);
     this.renderModeButton(segmented, "gtd", ICONS.gtd);
@@ -1509,12 +1732,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
   }
   async renderBodyContent(parent) {
-    const tasks = this.filteredTasks;
+    const tasks = this.visibleTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
       empty.createEl("h3", { text: "No tasks found" });
       empty.createEl("p", {
-        text: this.searchQuery ? "The current search did not match any tasks." : "Create markdown tasks in your vault, then refresh this view."
+        text: this.searchQuery || this.getActiveDateFilterCount() > 0 ? "The current search or date filters did not match any tasks." : "Create markdown tasks in your vault, then refresh this view."
       });
       return;
     }
