@@ -1,5 +1,6 @@
 export type ViewMode = "list" | "gtd" | "eisenhower" | "calendar";
 export type OpenLocation = "sidebar" | "tab";
+export type FirstDayOfWeek = "monday" | "sunday";
 
 // User-defined task status display type
 export type TaskStatusDisplay = "open" | "completed" | "cancelled" | "in-progress" | "to-be-started" | "overdue";
@@ -72,6 +73,8 @@ export interface TaskMatrixSettings {
   calendarListShowFullMonth: boolean;
   // Calendar setting: show in-process tasks on every day between start and due
   showCalendarInProcessTasks: boolean;
+  // Calendar setting: first day of week
+  calendarFirstDayOfWeek: FirstDayOfWeek;
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -92,4 +95,5 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   showCalendarMonthWeekends: true,
   calendarListShowFullMonth: false,
   showCalendarInProcessTasks: false,
+  calendarFirstDayOfWeek: "monday",
 };

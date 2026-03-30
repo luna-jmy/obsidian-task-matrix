@@ -47,7 +47,8 @@ var DEFAULT_SETTINGS = {
   showCalendarWeekends: true,
   showCalendarMonthWeekends: true,
   calendarListShowFullMonth: false,
-  showCalendarInProcessTasks: false
+  showCalendarInProcessTasks: false,
+  calendarFirstDayOfWeek: "monday"
 };
 
 // src/task-parser.ts
@@ -833,6 +834,9 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         color: var(--text-muted);
         text-align: center;
       }
+      .task-calendar-head.weekend {
+        color: var(--interactive-accent);
+      }
       .task-calendar-day {
         border: 1px solid var(--background-modifier-border);
         background: var(--background-primary);
@@ -843,12 +847,21 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         flex-direction: column;
         gap: 4px;
       }
+      .task-calendar-day.weekend-day {
+        background: var(--background-modifier-active-hover);
+      }
+      .task-calendar-day.weekend-day .task-calendar-date {
+        color: var(--interactive-accent);
+      }
       .task-calendar-day.outside {
         opacity: 0.45;
       }
       .task-calendar-day.today {
         border: 2px solid var(--interactive-accent);
         background: var(--background-modifier-active-hover);
+      }
+      .task-calendar-day.weekend-day.today {
+        background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
       }
       .task-calendar-day.today .task-calendar-date {
         color: var(--interactive-accent);
@@ -882,9 +895,25 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-calendar-item.type-process { border-left: 2px solid #0ea5e9; }
       .task-calendar-week {
         display: grid;
-        grid-template-columns: repeat(7, 1fr);
+        grid-template-columns: repeat(5, minmax(160px, 1fr));
         gap: 8px;
         overflow-x: auto;
+      }
+      .task-calendar-week-split {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .task-calendar-week-main {
+        grid-template-columns: repeat(5, minmax(160px, 1fr));
+      }
+      .task-calendar-week-compact {
+        grid-template-columns: repeat(5, minmax(160px, 1fr));
+      }
+      .task-calendar-weekend {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+        gap: 8px;
       }
       .task-calendar-day.week-day {
         min-height: 180px;
@@ -929,6 +958,11 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         .task-calendar-heads,
         .task-calendar-month-grid,
         .task-calendar-week {
+          grid-template-columns: 1fr;
+        }
+        .task-calendar-week-main,
+        .task-calendar-week-compact,
+        .task-calendar-weekend {
           grid-template-columns: 1fr;
         }
         .task-calendar-day {
@@ -1582,10 +1616,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   startOfWeek(date) {
     const result = new Date(date);
     const day = result.getDay();
-    const offset = day === 0 ? -6 : 1 - day;
+    const sundayFirst = this.plugin.settings.calendarFirstDayOfWeek === "sunday";
+    const offset = sundayFirst ? -day : day === 0 ? -6 : 1 - day;
     result.setDate(result.getDate() + offset);
     result.setHours(0, 0, 0, 0);
     return result;
+  }
+  getWeekdayOrder() {
+    return this.plugin.settings.calendarFirstDayOfWeek === "sunday" ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  }
+  getWeekdayLabel(weekday) {
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return labels[weekday] ?? "";
   }
   toCalendarIso(date) {
     const copy = new Date(date);
@@ -1688,15 +1730,17 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderCalendarMonth(parent, itemsByDate, todayIso) {
     const showWeekends = this.plugin.settings.showCalendarMonthWeekends;
-    const weekdays = showWeekends ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const weekdayOrder = this.getWeekdayOrder();
+    const visibleWeekdays = showWeekends ? weekdayOrder : weekdayOrder.filter((weekday) => weekday !== 0 && weekday !== 6);
     const monthWrap = parent.createDiv({ cls: "task-calendar-month" });
     const heads = monthWrap.createDiv({ cls: "task-calendar-heads" });
-    heads.style.gridTemplateColumns = `repeat(${weekdays.length}, minmax(0, 1fr))`;
-    for (const weekday of weekdays) {
-      heads.createEl("div", { text: weekday, cls: "task-calendar-head" });
+    heads.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
+    for (const weekday of visibleWeekdays) {
+      const head = heads.createEl("div", { text: this.getWeekdayLabel(weekday), cls: "task-calendar-head" });
+      if (weekday === 0 || weekday === 6) head.addClass("weekend");
     }
     const grid = monthWrap.createDiv({ cls: "task-calendar-month-grid" });
-    grid.style.gridTemplateColumns = `repeat(${weekdays.length}, minmax(0, 1fr))`;
+    grid.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
     const cursor = this.startOfWeek(monthStart);
@@ -1709,7 +1753,8 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       }
       const isoDate = this.toCalendarIso(day);
       const inCurrentMonth = day.getMonth() === monthStart.getMonth();
-      const dayEl = grid.createDiv({ cls: `task-calendar-day${inCurrentMonth ? "" : " outside"}${isoDate === todayIso ? " today" : ""}` });
+      const isWeekend = weekday === 0 || weekday === 6;
+      const dayEl = grid.createDiv({ cls: `task-calendar-day${isWeekend ? " weekend-day" : ""}${inCurrentMonth ? "" : " outside"}${isoDate === todayIso ? " today" : ""}` });
       dayEl.createEl("div", { text: String(day.getDate()), cls: "task-calendar-date" });
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       const dayItems = itemsByDate[isoDate] ?? [];
@@ -1723,19 +1768,40 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderCalendarWeek(parent, itemsByDate, todayIso) {
     const showWeekends = this.plugin.settings.showCalendarWeekends;
-    const weekdays = showWeekends ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Mon", "Tue", "Wed", "Thu", "Fri"];
-    const weekGrid = parent.createDiv({ cls: "task-calendar-week" });
-    weekGrid.style.gridTemplateColumns = `repeat(${weekdays.length}, minmax(160px, 1fr))`;
+    const weekdayOrder = this.getWeekdayOrder();
     const start = this.startOfWeek(this.calendarDate);
-    for (let index = 0; index < weekdays.length; index++) {
+    const renderDayCard = async (container, index, isWeekend) => {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       const isoDate = this.toCalendarIso(day);
-      const dayEl = weekGrid.createDiv({ cls: `task-calendar-day week-day${isoDate === todayIso ? " today" : ""}` });
-      dayEl.createEl("div", { text: `${weekdays[index]} ${day.getDate()}`, cls: "task-calendar-date" });
+      const dayEl = container.createDiv({ cls: `task-calendar-day week-day${isWeekend ? " weekend-day" : ""}${isoDate === todayIso ? " today" : ""}` });
+      dayEl.createEl("div", { text: `${this.getWeekdayLabel(day.getDay())} ${day.getDate()}`, cls: "task-calendar-date" });
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       for (const entry of itemsByDate[isoDate] ?? []) {
         await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+      }
+    };
+    if (!showWeekends) {
+      const weekGrid = parent.createDiv({ cls: "task-calendar-week task-calendar-week-compact" });
+      for (let index = 0; index < 7; index++) {
+        const weekday = weekdayOrder[index];
+        if (weekday === 0 || weekday === 6) continue;
+        await renderDayCard(weekGrid, index, false);
+      }
+      return;
+    }
+    const weekSplit = parent.createDiv({ cls: "task-calendar-week-split" });
+    const weekdayGrid = weekSplit.createDiv({ cls: "task-calendar-week task-calendar-week-main" });
+    for (let index = 0; index < 7; index++) {
+      const weekday = weekdayOrder[index];
+      if (weekday === 0 || weekday === 6) continue;
+      await renderDayCard(weekdayGrid, index, false);
+    }
+    const weekendGrid = weekSplit.createDiv({ cls: "task-calendar-weekend" });
+    for (const weekendWeekday of [6, 0]) {
+      const index = weekdayOrder.indexOf(weekendWeekday);
+      if (index >= 0) {
+        await renderDayCard(weekendGrid, index, true);
       }
     }
   }
@@ -2434,6 +2500,13 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar week mode.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
         this.plugin.settings.showCalendarWeekends = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether Calendar weeks start on Monday or Sunday.").addDropdown(
+      (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange(async (value) => {
+        this.plugin.settings.calendarFirstDayOfWeek = value;
         await this.plugin.saveSettings();
         await this.plugin.refreshTasks();
       })

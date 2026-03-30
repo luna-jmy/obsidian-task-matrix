@@ -3,6 +3,10 @@
 ## Unreleased
 - Fix: Calendar `Summary` now excludes completed/cancelled tasks from `Due`, `Overdue`, `Start`, `Scheduled`, and `Recurrence` counts
 - Fix: `Done` count in Calendar `Summary` remains accurate even when global `Include completed tasks` is disabled
+- New: Calendar setting `First day of week` (`Monday` or `Sunday`)
+- Change: Calendar week view layout now places weekends (`Sat`, `Sun`) on a separate bottom row when weekend display is enabled
+- Improve: Calendar visual style refreshed (toolbar, cards, summary popup, task chips, responsive behavior)
+- Fix: `Today` highlight now has higher priority than weekend styling (including when today is Saturday/Sunday)
 
 ## 0.1.8
 - New: Matrix view quick move buttons on task cards (`Move to 1/2/3/4`)
