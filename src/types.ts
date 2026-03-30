@@ -1,4 +1,4 @@
-export type ViewMode = "list" | "gtd" | "eisenhower";
+export type ViewMode = "list" | "gtd" | "eisenhower" | "calendar";
 export type OpenLocation = "sidebar" | "tab";
 
 // User-defined task status display type
@@ -21,6 +21,7 @@ export interface ParsedTask {
   filePath: string;
   lineNumber: number;
   lineText: string;
+  sectionHeading?: string;
   description: string;
   // The actual checkbox status in the markdown
   checkboxStatus: CheckboxStatus;
@@ -63,6 +64,14 @@ export interface TaskMatrixSettings {
   trackCompletionDate: boolean;
   // Urgent days range (1-7, default 1 means today only)
   urgentDaysRange: number;
+  // Calendar setting: show weekends in week view
+  showCalendarWeekends: boolean;
+  // Calendar setting: show weekends in month view
+  showCalendarMonthWeekends: boolean;
+  // Calendar list setting: show every day of month, or only dates with tasks
+  calendarListShowFullMonth: boolean;
+  // Calendar setting: show in-process tasks on every day between start and due
+  showCalendarInProcessTasks: boolean;
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -79,4 +88,8 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   newTaskTargetHeading: "",
   trackCompletionDate: false,
   urgentDaysRange: 1,
+  showCalendarWeekends: true,
+  showCalendarMonthWeekends: true,
+  calendarListShowFullMonth: false,
+  showCalendarInProcessTasks: false,
 };

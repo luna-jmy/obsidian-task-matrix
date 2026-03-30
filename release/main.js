@@ -228,7 +228,8 @@ var ICONS = {
   refresh: "\u21BB",
   list: "List",
   gtd: "GTD",
-  eisenhower: "Matrix"
+  eisenhower: "Matrix",
+  calendar: "Calendar"
 };
 var TaskMatrixPlugin = class extends import_obsidian.Plugin {
   constructor() {
@@ -733,9 +734,141 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
       }
+      .task-calendar {
+        background: var(--background-secondary);
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .task-calendar-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .task-calendar-segmented {
+        display: flex;
+        gap: 4px;
+      }
+      .task-calendar-mode-btn,
+      .task-calendar-nav-btn {
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .task-calendar-mode-btn.active {
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+      }
+      .task-calendar-nav {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .task-calendar-title {
+        min-width: 130px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .task-calendar-month {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+      }
+      .task-calendar-head {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+      .task-calendar-day {
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        border-radius: 6px;
+        min-height: 110px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .task-calendar-day.outside {
+        opacity: 0.45;
+      }
+      .task-calendar-day.today {
+        border-color: var(--interactive-accent);
+      }
+      .task-calendar-date {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .task-calendar-items {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .task-calendar-item {
+        display: block;
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-size: 10px;
+        line-height: 1.35;
+        color: var(--text-normal);
+        background: var(--background-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-calendar-item.type-due { border-left: 2px solid #f59e0b; }
+      .task-calendar-item.type-start { border-left: 2px solid #3b82f6; }
+      .task-calendar-item.type-scheduled { border-left: 2px solid #8b5cf6; }
+      .task-calendar-item.type-done { border-left: 2px solid #22c55e; }
+      .task-calendar-item.type-overdue { border-left: 2px solid #ef4444; }
+      .task-calendar-week {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+      }
+      .task-calendar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .task-calendar-list-day {
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--background-primary);
+      }
+      .task-calendar-list-day > summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--background-modifier-border);
+      }
+      .task-calendar-list-content {
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
       @media (max-width: 800px) {
         .task-matrix-grid {
           grid-template-columns: 1fr;
+        }
+        .task-calendar-month,
+        .task-calendar-week {
+          grid-template-columns: 1fr;
+        }
+        .task-calendar-day {
+          min-height: auto;
         }
       }
       .task-matrix-column, .task-matrix-cell {
@@ -1030,6 +1163,8 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
+    this.calendarMode = "month";
+    this.calendarDate = /* @__PURE__ */ new Date();
     this.searchQuery = "";
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
@@ -1113,6 +1248,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.renderModeButton(segmented, "list", ICONS.list);
     this.renderModeButton(segmented, "gtd", ICONS.gtd);
     this.renderModeButton(segmented, "eisenhower", ICONS.eisenhower);
+    this.renderModeButton(segmented, "calendar", ICONS.calendar);
     const refreshButton = toolbar.createEl("button", {
       text: ICONS.refresh,
       cls: "task-matrix-refresh"
@@ -1148,6 +1284,10 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     }
     if (this.currentView === "gtd") {
       await this.renderGtd(parent, tasks);
+      return;
+    }
+    if (this.currentView === "calendar") {
+      await this.renderCalendar(parent, tasks);
       return;
     }
     await this.renderEisenhower(parent, tasks);
@@ -1287,6 +1427,175 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         await this.createTaskCard(columnEl, task, this.describeTask(task));
       }
     }
+  }
+  async renderCalendar(parent, tasks) {
+    const wrap = parent.createDiv({ cls: "task-calendar" });
+    const toolbar = wrap.createDiv({ cls: "task-calendar-toolbar" });
+    const modes = toolbar.createDiv({ cls: "task-calendar-segmented" });
+    const monthBtn = modes.createEl("button", { text: "Month", cls: `task-calendar-mode-btn${this.calendarMode === "month" ? " active" : ""}` });
+    const weekBtn = modes.createEl("button", { text: "Week", cls: `task-calendar-mode-btn${this.calendarMode === "week" ? " active" : ""}` });
+    const listBtn = modes.createEl("button", { text: "List", cls: `task-calendar-mode-btn${this.calendarMode === "list" ? " active" : ""}` });
+    monthBtn.addEventListener("click", async () => {
+      this.calendarMode = "month";
+      await this.render();
+    });
+    weekBtn.addEventListener("click", async () => {
+      this.calendarMode = "week";
+      await this.render();
+    });
+    listBtn.addEventListener("click", async () => {
+      this.calendarMode = "list";
+      await this.render();
+    });
+    const nav = toolbar.createDiv({ cls: "task-calendar-nav" });
+    const prevBtn = nav.createEl("button", { text: "\u2190", cls: "task-calendar-nav-btn" });
+    const titleEl = nav.createEl("div", { cls: "task-calendar-title" });
+    const todayBtn = nav.createEl("button", { text: "Today", cls: "task-calendar-nav-btn" });
+    const nextBtn = nav.createEl("button", { text: "\u2192", cls: "task-calendar-nav-btn" });
+    const allItems = this.collectCalendarItems(tasks);
+    const todayIso = this.toCalendarIso(/* @__PURE__ */ new Date());
+    const shiftCalendar = async (delta) => {
+      const next = new Date(this.calendarDate);
+      if (this.calendarMode === "week") {
+        next.setDate(next.getDate() + delta * 7);
+      } else {
+        next.setMonth(next.getMonth() + delta);
+      }
+      this.calendarDate = next;
+      await this.render();
+    };
+    prevBtn.addEventListener("click", async () => shiftCalendar(-1));
+    nextBtn.addEventListener("click", async () => shiftCalendar(1));
+    todayBtn.addEventListener("click", async () => {
+      this.calendarDate = /* @__PURE__ */ new Date();
+      await this.render();
+    });
+    if (this.calendarMode === "month") {
+      titleEl.setText(this.formatCalendarTitle(this.calendarDate, "month"));
+      await this.renderCalendarMonth(wrap, allItems, todayIso);
+      return;
+    }
+    if (this.calendarMode === "week") {
+      titleEl.setText(this.formatCalendarTitle(this.calendarDate, "week"));
+      await this.renderCalendarWeek(wrap, allItems, todayIso);
+      return;
+    }
+    titleEl.setText(this.formatCalendarTitle(this.calendarDate, "list"));
+    await this.renderCalendarList(wrap, allItems, todayIso);
+  }
+  formatCalendarTitle(date, mode) {
+    if (mode === "month" || mode === "list") {
+      return date.toLocaleDateString(void 0, { year: "numeric", month: "long" });
+    }
+    const weekStart = this.startOfWeek(date);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    return `${weekStart.toLocaleDateString()} - ${weekEnd.toLocaleDateString()}`;
+  }
+  startOfWeek(date) {
+    const result = new Date(date);
+    const day = result.getDay();
+    const offset = day === 0 ? -6 : 1 - day;
+    result.setDate(result.getDate() + offset);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  }
+  toCalendarIso(date) {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy.toISOString().slice(0, 10);
+  }
+  isValidIso(value) {
+    return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+  }
+  collectCalendarItems(tasks) {
+    const byDate = {};
+    const todayIso = this.toCalendarIso(/* @__PURE__ */ new Date());
+    const pushItem = (dateKey, task, type) => {
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push({ task, type });
+    };
+    for (const task of tasks) {
+      if (this.isValidIso(task.dueDate)) pushItem(task.dueDate, task, "due");
+      if (this.isValidIso(task.startDate)) pushItem(task.startDate, task, "start");
+      if (this.isValidIso(task.scheduledDate)) pushItem(task.scheduledDate, task, "scheduled");
+      if (this.isValidIso(task.doneDate)) pushItem(task.doneDate, task, "done");
+      if (task.displayStatus === "overdue" && this.isValidIso(task.dueDate) && task.dueDate < todayIso) {
+        pushItem(todayIso, task, "overdue");
+      }
+    }
+    return byDate;
+  }
+  async renderCalendarMonth(parent, itemsByDate, todayIso) {
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    for (const weekday of weekdays) {
+      parent.createEl("div", { text: weekday, cls: "task-calendar-head" });
+    }
+    const grid = parent.createDiv({ cls: "task-calendar-month" });
+    const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
+    const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
+    const cursor = this.startOfWeek(monthStart);
+    for (let index = 0; index < 42; index++) {
+      const day = new Date(cursor);
+      day.setDate(cursor.getDate() + index);
+      const isoDate = this.toCalendarIso(day);
+      const inCurrentMonth = day.getMonth() === monthStart.getMonth();
+      const dayEl = grid.createDiv({ cls: `task-calendar-day${inCurrentMonth ? "" : " outside"}${isoDate === todayIso ? " today" : ""}` });
+      dayEl.createEl("div", { text: String(day.getDate()), cls: "task-calendar-date" });
+      const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
+      const dayItems = itemsByDate[isoDate] ?? [];
+      for (const entry of dayItems.slice(0, 4)) {
+        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+      }
+      if (dayItems.length > 4) {
+        itemsEl.createEl("span", { text: `+${dayItems.length - 4} more`, cls: "task-calendar-item" });
+      }
+      if (day > monthEnd && day.getDay() === 0) break;
+    }
+  }
+  async renderCalendarWeek(parent, itemsByDate, todayIso) {
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const weekGrid = parent.createDiv({ cls: "task-calendar-week" });
+    const start = this.startOfWeek(this.calendarDate);
+    for (let index = 0; index < 7; index++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + index);
+      const isoDate = this.toCalendarIso(day);
+      const dayEl = weekGrid.createDiv({ cls: `task-calendar-day${isoDate === todayIso ? " today" : ""}` });
+      dayEl.createEl("div", { text: `${weekdays[index]} ${day.getDate()}`, cls: "task-calendar-date" });
+      const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
+      for (const entry of itemsByDate[isoDate] ?? []) {
+        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+      }
+    }
+  }
+  async renderCalendarList(parent, itemsByDate, todayIso) {
+    const list = parent.createDiv({ cls: "task-calendar-list" });
+    const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
+    const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
+    for (let date = new Date(monthStart); date <= monthEnd; date.setDate(date.getDate() + 1)) {
+      const isoDate = this.toCalendarIso(date);
+      const dayItems = itemsByDate[isoDate] ?? [];
+      if (dayItems.length === 0) continue;
+      const details = list.createEl("details", { cls: "task-calendar-list-day" });
+      if (isoDate === todayIso) details.open = true;
+      details.createEl("summary", { text: `${date.toLocaleDateString(void 0, { weekday: "long", month: "short", day: "numeric" })} (${dayItems.length})` });
+      const content = details.createDiv({ cls: "task-calendar-list-content" });
+      for (const entry of dayItems) {
+        await this.renderCalendarItem(content, entry.task, entry.type);
+      }
+    }
+  }
+  async renderCalendarItem(parent, task, type) {
+    const item = parent.createEl("a", {
+      cls: `task-calendar-item type-${type}`,
+      text: `${type.toUpperCase()} ${task.description}`
+    });
+    item.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await this.openTask(task);
+    });
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
@@ -1875,7 +2184,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName("Default view").setDesc("Choose which dashboard opens first.").addDropdown(
-      (dropdown) => dropdown.addOption("eisenhower", "Eisenhower").addOption("gtd", "GTD").addOption("list", "List").setValue(this.plugin.settings.defaultView).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("eisenhower", "Eisenhower").addOption("calendar", "Calendar").addOption("gtd", "GTD").addOption("list", "List").setValue(this.plugin.settings.defaultView).onChange(async (value) => {
         this.plugin.settings.defaultView = value;
         await this.plugin.saveSettings();
       })
