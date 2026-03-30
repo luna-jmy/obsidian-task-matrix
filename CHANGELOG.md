@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Fix: Calendar `Summary` now excludes completed/cancelled tasks from `Due`, `Overdue`, `Start`, `Scheduled`, and `Recurrence` counts
+- Fix: `Done` count in Calendar `Summary` remains accurate even when global `Include completed tasks` is disabled
+
 ## 0.1.8
 - New: Matrix view quick move buttons on task cards (`Move to 1/2/3/4`)
 - New: GTD view quick move buttons on task cards (`Move to I/P/W`)
