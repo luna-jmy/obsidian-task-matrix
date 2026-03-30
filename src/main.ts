@@ -578,6 +578,7 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-shell {
         max-width: 1400px;
         margin: 0 auto;
+        width: 100%;
       }
       .task-matrix-header {
         margin-bottom: 16px;
@@ -619,10 +620,13 @@ export default class TaskMatrixPlugin extends Plugin {
         border-radius: 6px;
         background: var(--background-primary);
         color: var(--text-normal);
+        width: 100%;
+        box-sizing: border-box;
       }
       .task-matrix-segmented {
         display: flex;
         gap: 4px;
+        flex-wrap: wrap;
       }
       .task-matrix-mode-button {
         padding: 6px 12px;
@@ -632,6 +636,7 @@ export default class TaskMatrixPlugin extends Plugin {
         border-radius: 6px;
         cursor: pointer;
         font-size: 12px;
+        min-height: 34px;
       }
       .task-matrix-mode-button.is-active {
         background: var(--interactive-accent);
@@ -643,6 +648,7 @@ export default class TaskMatrixPlugin extends Plugin {
         background: var(--background-primary);
         border-radius: 6px;
         cursor: pointer;
+        min-height: 34px;
       }
       .task-matrix-empty {
         text-align: center;
@@ -658,6 +664,7 @@ export default class TaskMatrixPlugin extends Plugin {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 16px;
+        align-items: start;
       }
       .task-matrix-grid {
         display: grid;
@@ -741,12 +748,14 @@ export default class TaskMatrixPlugin extends Plugin {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        min-width: 0;
       }
       .task-calendar-heads,
       .task-calendar-month-grid {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
         gap: 6px;
+        min-width: 0;
       }
       .task-calendar-head {
         font-size: 11px;
@@ -871,21 +880,141 @@ export default class TaskMatrixPlugin extends Plugin {
         gap: 4px;
       }
       @media (max-width: 800px) {
+        .task-matrix-view {
+          padding: 10px;
+        }
+        .task-matrix-header {
+          margin-bottom: 12px;
+        }
+        .task-matrix-title {
+          font-size: 20px;
+        }
+        .task-matrix-subtitle {
+          font-size: 12px;
+        }
+        .task-matrix-toolbar {
+          align-items: stretch;
+          gap: 10px;
+          padding: 10px;
+        }
+        .task-matrix-search {
+          min-width: 0;
+        }
+        .task-matrix-segmented {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          width: 100%;
+        }
+        .task-matrix-mode-button,
+        .task-matrix-refresh {
+          width: 100%;
+          min-height: 38px;
+        }
+        .task-matrix-board {
+          display: flex;
+          gap: 12px;
+          overflow-x: auto;
+          padding-bottom: 6px;
+          scroll-snap-type: x proximity;
+          -webkit-overflow-scrolling: touch;
+        }
+        .task-matrix-column {
+          min-width: min(84vw, 320px);
+          flex: 0 0 min(84vw, 320px);
+          scroll-snap-align: start;
+        }
         .task-matrix-grid {
           grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .task-matrix-cell {
+          min-height: 0;
+        }
+        .task-matrix-card {
+          padding: 12px;
+        }
+        .task-matrix-card-top {
+          flex-direction: column;
+        }
+        .task-matrix-badge {
+          align-self: flex-start;
+        }
+        .task-matrix-card-actions {
+          gap: 6px;
+        }
+        .task-matrix-action-btn {
+          min-height: 32px;
+        }
+        .task-calendar-toolbar {
+          align-items: stretch;
+        }
+        .task-calendar-segmented,
+        .task-calendar-nav {
+          width: 100%;
+        }
+        .task-calendar-segmented {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .task-calendar-nav {
+          flex-wrap: wrap;
+          justify-content: space-between;
+        }
+        .task-calendar-title {
+          order: -1;
+          width: 100%;
+          min-width: 0;
+          text-align: left;
+        }
+        .task-calendar-summary-wrap {
+          margin-left: auto;
+        }
+        .task-calendar-month {
+          overflow-x: auto;
+          padding-bottom: 4px;
+          -webkit-overflow-scrolling: touch;
         }
         .task-calendar-heads,
-        .task-calendar-month-grid,
-        .task-calendar-week {
-          grid-template-columns: 1fr;
+        .task-calendar-month-grid {
+          min-width: 560px;
         }
+        .task-calendar-week,
         .task-calendar-week-main,
         .task-calendar-week-compact,
         .task-calendar-weekend {
-          grid-template-columns: 1fr;
+          display: flex;
+          overflow-x: auto;
+          width: 100%;
+          padding-bottom: 4px;
+          -webkit-overflow-scrolling: touch;
+        }
+        .task-calendar-week .task-calendar-day,
+        .task-calendar-weekend .task-calendar-day {
+          min-width: min(78vw, 240px);
+          flex: 0 0 min(78vw, 240px);
         }
         .task-calendar-day {
           min-height: auto;
+        }
+        .task-calendar-summary-popup {
+          right: 0;
+          left: auto;
+          max-width: min(88vw, 260px);
+        }
+        .task-matrix-modal {
+          padding: 16px;
+        }
+        .task-matrix-input-row {
+          align-items: stretch;
+        }
+        .task-matrix-input-row > * {
+          width: 100%;
+        }
+        .task-matrix-modal-buttons {
+          justify-content: stretch;
+        }
+        .task-matrix-modal-buttons button {
+          flex: 1 1 100%;
         }
       }
       .task-matrix-column, .task-matrix-cell {
@@ -901,11 +1030,14 @@ export default class TaskMatrixPlugin extends Plugin {
         margin-bottom: 12px;
         padding-bottom: 8px;
         border-bottom: 1px solid var(--background-modifier-border);
+        gap: 8px;
+        flex-wrap: wrap;
       }
       .task-matrix-column-header h3 {
         font-size: 14px;
         margin: 0;
         font-weight: 600;
+        min-width: 0;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);
@@ -964,6 +1096,10 @@ export default class TaskMatrixPlugin extends Plugin {
         font-weight: 500;
         line-height: 1.4;
         flex: 1;
+        min-width: 0;
+      }
+      .task-matrix-card-title p {
+        margin: 0;
       }
       .task-matrix-badge {
         font-size: 10px;
@@ -1042,6 +1178,7 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-card-meta {
         font-size: 11px;
         color: var(--text-muted);
+        word-break: break-word;
       }
       .task-matrix-card-actions {
         display: flex;
@@ -1049,6 +1186,7 @@ export default class TaskMatrixPlugin extends Plugin {
         margin-top: 8px;
         padding-top: 8px;
         border-top: 1px solid var(--background-modifier-border);
+        flex-wrap: wrap;
       }
       .task-matrix-action-btn {
         font-size: 11px;
@@ -1134,12 +1272,15 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-input-row {
         display: flex;
         align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
       }
       .task-matrix-modal-buttons {
         display: flex;
         gap: 8px;
         justify-content: flex-end;
         margin-top: 20px;
+        flex-wrap: wrap;
       }
       .task-matrix-folder-group {
         margin-bottom: 16px;

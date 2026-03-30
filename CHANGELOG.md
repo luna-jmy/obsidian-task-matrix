@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.10
+- Improve: Mobile layout for toolbar, GTD board, Eisenhower cards, calendar views, and edit modal without changing core task behavior
+
 ## 0.1.9
 - Fix: Calendar `Summary` now excludes completed/cancelled tasks from `Due`, `Overdue`, `Start`, `Scheduled`, and `Recurrence` counts
 - Fix: `Done` count in Calendar `Summary` remains accurate even when global `Include completed tasks` is disabled
