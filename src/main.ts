@@ -752,7 +752,19 @@ export default class TaskMatrixPlugin extends Plugin {
       .task-matrix-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+      }
+      .task-matrix-list-toolbar {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .task-matrix-list-toggle-all {
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
       }
       .task-matrix-board {
         display: grid;
@@ -1419,26 +1431,34 @@ export default class TaskMatrixPlugin extends Plugin {
         flex-wrap: wrap;
       }
       .task-matrix-folder-group {
-        margin-bottom: 16px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--background-primary);
       }
       .task-matrix-folder-header {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         color: var(--text-muted);
-        padding: 8px 12px;
-        background: var(--background-secondary);
-        border-radius: 6px 6px 0 0;
-        margin: 0 0 4px 0;
+        padding: 8px 10px;
+        background: var(--background-primary);
+        margin: 0;
         border-bottom: 1px solid var(--background-modifier-border);
       }
       .task-matrix-folder-header.task-matrix-folder-toggle {
         width: 100%;
         text-align: left;
-        border: 1px solid var(--background-modifier-border);
+        border: none;
         cursor: pointer;
       }
       .task-matrix-folder-header.task-matrix-folder-toggle:hover {
         background: var(--background-modifier-hover);
+      }
+      .task-matrix-folder-content {
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
       .task-matrix-folder-content.is-collapsed {
         display: none;
@@ -1776,8 +1796,31 @@ class TaskMatrixView extends ItemView {
     if (this.plugin.settings.listGroupByFolder) {
       // Group tasks by folder
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
+      const groupEntries = Object.entries(grouped);
+      const listToolbar = wrap.createDiv({ cls: "task-matrix-list-toolbar" });
+      const toggleAllButton = listToolbar.createEl("button", { cls: "task-matrix-list-toggle-all" });
+      const updateToggleAllButton = (): void => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
+      };
+      updateToggleAllButton();
+      toggleAllButton.addEventListener("click", async () => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        if (allCollapsed) {
+          this.collapsedFolderGroups.clear();
+        } else {
+          this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
+        }
+        await this.refreshBody();
+      });
 
-      for (const [folderPath, folderTasks] of Object.entries(grouped)) {
+      for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
         const groupKey = folderPath || "Root";
         const toggle = groupEl.createEl("button", {
@@ -1802,6 +1845,7 @@ class TaskMatrixView extends ItemView {
             this.collapsedFolderGroups.add(groupKey);
           }
           renderToggleLabel();
+          updateToggleAllButton();
         });
 
         for (const task of folderTasks) {
@@ -1810,8 +1854,11 @@ class TaskMatrixView extends ItemView {
       }
     } else {
       // Flat list
+      const flatGroup = wrap.createDiv({ cls: "task-matrix-folder-group" });
+      flatGroup.createDiv({ cls: "task-matrix-folder-header", text: `All tasks (${tasks.length})` });
+      const flatContent = flatGroup.createDiv({ cls: "task-matrix-folder-content" });
       for (const task of tasks) {
-        await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+        await this.createTaskCard(flatContent, task, `${task.filePath}:${task.lineNumber}`);
       }
     }
   }
