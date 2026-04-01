@@ -250,21 +250,21 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       VIEW_TYPE_TASK_MATRIX,
       (leaf) => new TaskMatrixView(leaf, this)
     );
-    this.addRibbonIcon("kanban-square", "Open Task Matrix", async () => {
-      await this.activateView();
+    this.addRibbonIcon("kanban-square", "Open task matrix", () => {
+      void this.activateView();
     });
     this.addCommand({
-      id: "open-task-matrix",
-      name: "Open task matrix",
-      callback: async () => {
-        await this.activateView();
+      id: "open-view",
+      name: "Open view",
+      callback: () => {
+        void this.activateView();
       }
     });
     this.addCommand({
-      id: "refresh-task-matrix",
-      name: "Refresh task matrix",
-      callback: async () => {
-        await this.refreshTasks(true);
+      id: "refresh-view",
+      name: "Refresh view",
+      callback: () => {
+        void this.refreshTasks(true);
       }
     });
     this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
@@ -272,11 +272,8 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
-    this.addStyles();
   }
   onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TASK_MATRIX);
-    this.removeStyles();
   }
   async loadSettings() {
     this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
@@ -298,7 +295,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       }
     }
     if (leaf) {
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
     }
   }
   scheduleRefresh() {
@@ -314,7 +311,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     this.tasks = await this.collectTasks();
     await this.refreshOpenViews();
     if (showNotice) {
-      new import_obsidian.Notice(`Task Matrix refreshed: ${this.tasks.length} tasks`);
+      new import_obsidian.Notice(`Task matrix refreshed: ${this.tasks.length} tasks`);
     }
   }
   async refreshOpenViews() {
@@ -543,16 +540,18 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         this.app,
         effectiveStartDate,
         effectiveDueDate,
-        async (result) => {
-          if (result.adjustDueDate) {
-            updates.dueDate = today;
-            new import_obsidian.Notice("Due date adjusted to today");
-          } else if (result.addConflictTag) {
-            new import_obsidian.Notice("Date conflict tag added");
-          } else {
-            return;
-          }
-          await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+        (result) => {
+          void (async () => {
+            if (result.adjustDueDate) {
+              updates.dueDate = today;
+              new import_obsidian.Notice("Due date adjusted to today");
+            } else if (result.addConflictTag) {
+              new import_obsidian.Notice("Date conflict tag added");
+            } else {
+              return;
+            }
+            await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+          })();
         }
       ).open();
       return;
@@ -613,7 +612,6 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     let priorityMarker = "";
     let shouldAddDueDate = false;
-    let shouldClearDueDate = false;
     switch (newQuadrant) {
       case "Q1":
         priorityMarker = "\u{1F53C}";
@@ -621,7 +619,6 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         break;
       case "Q2":
         priorityMarker = "\u{1F53C}";
-        shouldClearDueDate = true;
         break;
       case "Q3":
         priorityMarker = "\u{1F53D}";
@@ -629,7 +626,6 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         break;
       case "Q4":
         priorityMarker = "\u23EC";
-        shouldClearDueDate = true;
         break;
     }
     line = line.replace(/⏫|🔼|🔽|⏬/gu, "").trim();
@@ -646,896 +642,6 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
     lines[lineIndex] = line;
     await this.app.vault.modify(file, lines.join("\n"));
     new import_obsidian.Notice(`Moved to ${newQuadrant}`);
-  }
-  addStyles() {
-    const styleEl = document.createElement("style");
-    styleEl.id = "task-matrix-styles";
-    styleEl.textContent = `
-      .task-matrix-view {
-        padding: 16px;
-        height: 100%;
-        overflow: auto;
-      }
-      .task-matrix-shell {
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-      }
-      .task-matrix-header {
-        margin-bottom: 16px;
-      }
-      .task-matrix-title-block {
-        margin-bottom: 12px;
-      }
-      .task-matrix-kicker {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-      }
-      .task-matrix-title {
-        font-size: 24px;
-        font-weight: 600;
-        margin: 0 0 4px 0;
-      }
-      .task-matrix-subtitle {
-        font-size: 13px;
-        color: var(--text-muted);
-        margin: 0;
-      }
-      .task-matrix-toolbar {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-        padding: 12px;
-        background: var(--background-secondary);
-        border-radius: 8px;
-      }
-      .task-matrix-search {
-        flex: 1;
-        min-width: 200px;
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        background: var(--background-primary);
-        color: var(--text-normal);
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .task-matrix-segmented {
-        display: flex;
-        gap: 4px;
-        flex-wrap: wrap;
-      }
-      .task-matrix-filter-wrap {
-        position: relative;
-      }
-      .task-matrix-filter-btn {
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        cursor: pointer;
-        min-height: 34px;
-      }
-      .task-matrix-filter-btn.is-active {
-        background: var(--background-modifier-hover);
-        border-color: var(--interactive-accent);
-      }
-      .task-matrix-filter-panel {
-        position: absolute;
-        top: calc(100% + 8px);
-        right: 0;
-        z-index: 20;
-        width: min(360px, 90vw);
-        padding: 12px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 8px;
-        background: var(--background-primary);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-      }
-      .task-matrix-filter-panel[hidden] {
-        display: none;
-      }
-      .task-matrix-filter-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-matrix-filter-row {
-        display: grid;
-        grid-template-columns: 88px 1fr 1fr;
-        gap: 8px;
-        align-items: center;
-      }
-      .task-matrix-filter-row label {
-        font-size: 12px;
-        color: var(--text-muted);
-        font-weight: 600;
-      }
-      .task-matrix-filter-row select,
-      .task-matrix-filter-row input {
-        width: 100%;
-        min-height: 34px;
-        padding: 6px 8px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        background: var(--background-secondary);
-        color: var(--text-normal);
-        box-sizing: border-box;
-      }
-      .task-matrix-filter-row input:disabled {
-        background: var(--background-modifier-hover);
-        color: var(--text-faint);
-        border-color: var(--background-modifier-border);
-        cursor: not-allowed;
-        opacity: 0.75;
-      }
-      .task-matrix-filter-actions {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: 10px;
-      }
-      .task-matrix-filter-clear {
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        background: var(--background-secondary);
-        color: var(--text-normal);
-        cursor: pointer;
-      }
-      .task-matrix-mode-button {
-        padding: 6px 12px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 12px;
-        min-height: 34px;
-      }
-      .task-matrix-mode-button.is-active {
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-      }
-      .task-matrix-refresh {
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        border-radius: 6px;
-        cursor: pointer;
-        min-height: 34px;
-      }
-      .task-matrix-empty {
-        text-align: center;
-        padding: 48px;
-        color: var(--text-muted);
-      }
-      .task-matrix-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .task-matrix-list-toolbar {
-        display: flex;
-        justify-content: flex-end;
-      }
-      .task-matrix-list-toggle-all {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        padding: 6px 10px;
-        cursor: pointer;
-      }
-      .task-matrix-board {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
-        align-items: start;
-      }
-      .task-matrix-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16px;
-      }
-      .task-calendar {
-        background: var(--background-secondary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 8px;
-        padding: 12px;
-      }
-      .task-calendar-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 10px;
-        flex-wrap: wrap;
-      }
-      .task-calendar-segmented {
-        display: flex;
-        gap: 4px;
-      }
-      .task-calendar-mode-btn,
-      .task-calendar-nav-btn {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        padding: 4px 8px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .task-calendar-mode-btn.active {
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-      }
-      .task-calendar-nav {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .task-calendar-summary-wrap {
-        position: relative;
-      }
-      .task-calendar-summary-popup {
-        position: absolute;
-        right: 0;
-        top: calc(100% + 6px);
-        z-index: 15;
-        min-width: 180px;
-        background: var(--background-primary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 8px;
-        padding: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-      }
-      .task-calendar-summary-popup[hidden] {
-        display: none;
-      }
-      .task-calendar-summary-popup ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .task-calendar-summary-popup li {
-        font-size: 12px;
-        color: var(--text-normal);
-      }
-      .task-calendar-title {
-        min-width: 130px;
-        text-align: center;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .task-calendar-month {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        min-width: 0;
-      }
-      .task-calendar-heads,
-      .task-calendar-month-grid {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 6px;
-        min-width: 0;
-      }
-      .task-calendar-head {
-        font-size: 11px;
-        color: var(--text-muted);
-        text-align: center;
-      }
-      .task-calendar-head.weekend {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-day {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        border-radius: 6px;
-        min-height: 110px;
-        padding: 6px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .task-calendar-day.weekend-day {
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-day.weekend-day .task-calendar-date {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-day.outside {
-        opacity: 0.45;
-      }
-      .task-calendar-day.today {
-        border: 2px solid var(--interactive-accent);
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-day.weekend-day.today {
-        background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-      }
-      .task-calendar-day.today .task-calendar-date {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-date {
-        font-size: 11px;
-        font-weight: 600;
-      }
-      .task-calendar-items {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-      }
-      .task-calendar-item {
-        display: block;
-        padding: 2px 4px;
-        border-radius: 4px;
-        font-size: 10px;
-        line-height: 1.35;
-        color: var(--text-normal);
-        background: var(--background-secondary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .task-calendar-item.type-due { border-left: 2px solid #f59e0b; }
-      .task-calendar-item.type-start { border-left: 2px solid #3b82f6; }
-      .task-calendar-item.type-scheduled { border-left: 2px solid #8b5cf6; }
-      .task-calendar-item.type-done { border-left: 2px solid #22c55e; }
-      .task-calendar-item.type-overdue { border-left: 2px solid #ef4444; }
-      .task-calendar-item.type-process { border-left: 2px solid #0ea5e9; }
-      .task-calendar-week {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-        gap: 8px;
-        overflow-x: auto;
-      }
-      .task-calendar-week-split {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-calendar-week-main {
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-      }
-      .task-calendar-week-compact {
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-      }
-      .task-calendar-weekend {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(160px, 1fr));
-        gap: 8px;
-      }
-      .task-calendar-day.week-day {
-        min-height: 180px;
-      }
-      .task-calendar-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-calendar-list-day {
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        overflow: hidden;
-        background: var(--background-primary);
-      }
-      .task-calendar-list-day.today {
-        border-color: var(--interactive-accent);
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-list-day.today > summary {
-        color: var(--interactive-accent);
-        font-weight: 700;
-      }
-      .task-calendar-list-day > summary {
-        cursor: pointer;
-        list-style: none;
-        padding: 8px 10px;
-        font-size: 12px;
-        color: var(--text-muted);
-        border-bottom: 1px solid var(--background-modifier-border);
-      }
-      .task-calendar-list-content {
-        padding: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      @media (max-width: 800px) {
-        .task-matrix-view {
-          padding: 10px;
-        }
-        .task-matrix-header {
-          margin-bottom: 12px;
-        }
-        .task-matrix-title {
-          font-size: 20px;
-        }
-        .task-matrix-subtitle {
-          font-size: 12px;
-        }
-        .task-matrix-toolbar {
-          align-items: stretch;
-          gap: 10px;
-          padding: 10px;
-        }
-        .task-matrix-search {
-          min-width: 0;
-        }
-        .task-matrix-segmented {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          width: 100%;
-        }
-        .task-matrix-filter-wrap {
-          width: 100%;
-        }
-        .task-matrix-filter-btn {
-          width: 100%;
-          min-height: 38px;
-        }
-        .task-matrix-mode-button,
-        .task-matrix-refresh {
-          width: 100%;
-          min-height: 38px;
-        }
-        .task-matrix-filter-panel {
-          position: static;
-          width: 100%;
-          margin-top: 8px;
-        }
-        .task-matrix-filter-row {
-          grid-template-columns: 1fr;
-        }
-        .task-matrix-board {
-          display: flex;
-          gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 6px;
-          scroll-snap-type: x proximity;
-          -webkit-overflow-scrolling: touch;
-        }
-        .task-matrix-column {
-          min-width: min(84vw, 320px);
-          flex: 0 0 min(84vw, 320px);
-          scroll-snap-align: start;
-        }
-        .task-matrix-grid {
-          grid-template-columns: 1fr;
-          gap: 12px;
-        }
-        .task-matrix-cell {
-          min-height: 0;
-        }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
-          display: inline-flex;
-        }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
-          margin-bottom: 0;
-        }
-        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
-          margin-bottom: 12px;
-        }
-        .task-matrix-card {
-          padding: 12px;
-        }
-        .task-matrix-card-top {
-          flex-direction: column;
-        }
-        .task-matrix-badge {
-          align-self: flex-start;
-        }
-        .task-matrix-card-actions {
-          gap: 6px;
-        }
-        .task-matrix-action-btn {
-          min-height: 32px;
-        }
-        .task-calendar-toolbar {
-          align-items: stretch;
-        }
-        .task-calendar-segmented,
-        .task-calendar-nav {
-          width: 100%;
-        }
-        .task-calendar-segmented {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-        .task-calendar-nav {
-          flex-wrap: wrap;
-          justify-content: space-between;
-        }
-        .task-calendar-title {
-          order: -1;
-          width: 100%;
-          min-width: 0;
-          text-align: left;
-        }
-        .task-calendar-summary-wrap {
-          margin-left: auto;
-        }
-        .task-calendar-month {
-          overflow-x: auto;
-          padding-bottom: 4px;
-          -webkit-overflow-scrolling: touch;
-        }
-        .task-calendar-heads,
-        .task-calendar-month-grid {
-          min-width: 560px;
-        }
-        .task-calendar-week,
-        .task-calendar-week-main,
-        .task-calendar-week-compact,
-        .task-calendar-weekend {
-          display: flex;
-          overflow-x: auto;
-          width: 100%;
-          padding-bottom: 4px;
-          -webkit-overflow-scrolling: touch;
-        }
-        .task-calendar-week .task-calendar-day,
-        .task-calendar-weekend .task-calendar-day {
-          min-width: min(78vw, 240px);
-          flex: 0 0 min(78vw, 240px);
-        }
-        .task-calendar-day {
-          min-height: auto;
-        }
-        .task-calendar-summary-popup {
-          right: 0;
-          left: auto;
-          max-width: min(88vw, 260px);
-        }
-        .task-matrix-modal {
-          padding: 16px;
-        }
-        .task-matrix-input-row {
-          align-items: stretch;
-        }
-        .task-matrix-input-row > * {
-          width: 100%;
-        }
-        .task-matrix-modal-buttons {
-          justify-content: stretch;
-        }
-        .task-matrix-modal-buttons button {
-          flex: 1 1 100%;
-        }
-      }
-      .task-matrix-column, .task-matrix-cell {
-        background: var(--background-secondary);
-        border-radius: 8px;
-        padding: 12px;
-        min-height: 200px;
-      }
-      .task-matrix-column-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--background-modifier-border);
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .task-matrix-column-header h3 {
-        font-size: 14px;
-        margin: 0;
-        font-weight: 600;
-        min-width: 0;
-      }
-      .task-matrix-column-header.is-collapsible {
-        cursor: pointer;
-      }
-      .task-matrix-column-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 0;
-      }
-      .task-matrix-collapse-indicator {
-        display: none;
-        font-size: 12px;
-        color: var(--text-muted);
-        flex: 0 0 auto;
-      }
-      .task-matrix-cell-body.is-collapsed {
-        display: none;
-      }
-      .task-matrix-count {
-        background: var(--background-modifier-border);
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-      }
-      .task-matrix-header-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .task-matrix-add-btn {
-        width: 24px;
-        height: 24px;
-        border: none;
-        border-radius: 50%;
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-        font-size: 16px;
-        line-height: 1;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: opacity 0.2s;
-      }
-      .task-matrix-add-btn:hover {
-        opacity: 0.8;
-      }
-      .task-matrix-card {
-        background: var(--background-primary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        padding: 10px;
-        margin-bottom: 8px;
-        cursor: pointer;
-        transition: box-shadow 0.2s;
-        position: relative;
-      }
-      .task-matrix-card:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      }
-      .task-matrix-card.dragging {
-        opacity: 0.5;
-      }
-      .task-matrix-card-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
-      .task-matrix-card-title {
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.4;
-        flex: 1;
-        min-width: 0;
-      }
-      .task-matrix-card-title p {
-        margin: 0;
-      }
-      .task-matrix-badge {
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        white-space: nowrap;
-      }
-      .task-matrix-badge.status-open {
-        background: var(--background-modifier-border);
-        color: var(--text-muted);
-      }
-      .task-matrix-badge.status-completed {
-        background: #22c55e;
-        color: white;
-      }
-      .task-matrix-badge.status-cancelled {
-        background: #ef4444;
-        color: white;
-      }
-      .task-matrix-badge.status-in-progress {
-        background: #3b82f6;
-        color: white;
-      }
-      .task-matrix-badge.status-to-be-started {
-        background: #8b5cf6;
-        color: white;
-      }
-      .task-matrix-badge.status-overdue {
-        background: #dc2626;
-        color: white;
-      }
-      /* Eisenhower Quadrant Colors */
-      .task-matrix-cell[data-quadrant="Q1"] .task-matrix-column-header h3 {
-        color: #dc2626;
-        border-left: 3px solid #dc2626;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q2"] .task-matrix-column-header h3 {
-        color: #059669;
-        border-left: 3px solid #059669;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q3"] .task-matrix-column-header h3 {
-        color: #d97706;
-        border-left: 3px solid #d97706;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q4"] .task-matrix-column-header h3 {
-        color: #6b7280;
-        border-left: 3px solid #6b7280;
-        padding-left: 8px;
-      }
-      .task-matrix-chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-bottom: 6px;
-      }
-      .task-matrix-chip {
-        font-size: 10px;
-        padding: 2px 6px;
-        background: var(--background-secondary);
-        border-radius: 4px;
-        color: var(--text-muted);
-      }
-      .task-matrix-chip.warning {
-        background: #fef3c7;
-        color: #92400e;
-      }
-      .task-matrix-chip.conflict {
-        background: #fee2e2;
-        color: #dc2626;
-        font-weight: 600;
-        border: 1px solid #fecaca;
-      }
-      .task-matrix-card-meta {
-        font-size: 11px;
-        color: var(--text-muted);
-        word-break: break-word;
-      }
-      .task-matrix-card-actions {
-        display: flex;
-        gap: 4px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--background-modifier-border);
-        flex-wrap: wrap;
-      }
-      .task-matrix-action-btn {
-        font-size: 11px;
-        padding: 2px 6px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-secondary);
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      .task-matrix-action-btn:hover {
-        background: var(--background-modifier-hover);
-      }
-      .task-matrix-action-btn.quadrant-move {
-        min-width: 24px;
-        text-align: center;
-        font-weight: 600;
-        padding: 2px 4px;
-      }
-      .task-matrix-action-separator {
-        font-size: 12px;
-        color: var(--text-muted);
-        align-self: center;
-        margin: 0 2px 0 4px;
-      }
-      .task-matrix-action-label {
-        font-size: 11px;
-        color: var(--text-muted);
-        align-self: center;
-        margin-right: 2px;
-      }
-      .task-matrix-drag-over {
-        background: var(--background-modifier-hover) !important;
-        border: 2px dashed var(--interactive-accent);
-      }
-      .task-matrix-card.blocked {
-        opacity: 0.7;
-        border-left: 3px solid #ef4444;
-      }
-      .task-matrix-modal {
-        padding: 20px;
-      }
-      .task-matrix-modal h2 {
-        margin-top: 0;
-      }
-      .task-matrix-form-row {
-        margin-bottom: 16px;
-      }
-      .task-matrix-form-row label {
-        display: block;
-        font-size: 12px;
-        font-weight: 600;
-        margin-bottom: 4px;
-        color: var(--text-muted);
-      }
-      .task-matrix-form-row input,
-      .task-matrix-form-row select,
-      .task-matrix-form-row textarea {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 4px;
-        background: var(--background-primary);
-        color: var(--text-normal);
-        min-height: 36px;
-        line-height: 1.4;
-      }
-      .task-matrix-form-row select {
-        height: 36px;
-        padding: 6px 8px;
-      }
-      .task-matrix-form-row input[type="date"] {
-        font-family: inherit;
-        cursor: pointer;
-      }
-      .task-matrix-form-row input[type="date"]::-webkit-calendar-picker-indicator {
-        filter: var(--calendar-picker-filter, none);
-        cursor: pointer;
-      }
-      .task-matrix-form-row textarea {
-        min-height: 80px;
-        resize: vertical;
-      }
-      .task-matrix-input-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .task-matrix-modal-buttons {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-        margin-top: 20px;
-        flex-wrap: wrap;
-      }
-      .task-matrix-folder-group {
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        overflow: hidden;
-        background: var(--background-primary);
-      }
-      .task-matrix-folder-header {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text-muted);
-        padding: 8px 10px;
-        background: var(--background-primary);
-        margin: 0;
-        border-bottom: 1px solid var(--background-modifier-border);
-      }
-      .task-matrix-folder-header.task-matrix-folder-toggle {
-        width: 100%;
-        text-align: left;
-        border: none;
-        cursor: pointer;
-      }
-      .task-matrix-folder-header.task-matrix-folder-toggle:hover {
-        background: var(--background-modifier-hover);
-      }
-      .task-matrix-folder-content {
-        padding: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-matrix-folder-content.is-collapsed {
-        display: none;
-      }
-    `;
-    document.head.appendChild(styleEl);
-  }
-  removeStyles() {
-    const styleEl = document.getElementById("task-matrix-styles");
-    if (styleEl) {
-      styleEl.remove();
-    }
   }
 };
 var TaskMatrixView = class extends import_obsidian.ItemView {
@@ -1561,7 +667,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     return VIEW_TYPE_TASK_MATRIX;
   }
   getDisplayText() {
-    return "Task Matrix";
+    return "Task matrix";
   }
   getIcon() {
     return "kanban-square";
@@ -1569,11 +675,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   async onOpen() {
     await this.render();
   }
-  async onClose() {
+  onClose() {
     if (this.searchDebounceTimer) {
       window.clearTimeout(this.searchDebounceTimer);
     }
     this.contentEl.empty();
+    return Promise.resolve();
   }
   async render() {
     const root = this.contentEl;
@@ -1671,18 +778,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         window.clearTimeout(this.searchDebounceTimer);
       }
       this.searchDebounceTimer = window.setTimeout(() => {
-        this.refreshBody();
+        void this.refreshBody();
       }, 150);
     });
     const filterWrap = toolbar.createDiv({ cls: "task-matrix-filter-wrap" });
     const activeDateFilterCount = this.getActiveDateFilterCount();
     const filterButton = filterWrap.createEl("button", {
-      text: activeDateFilterCount > 0 ? `Date Filters (${activeDateFilterCount})` : "Date Filters",
+      text: activeDateFilterCount > 0 ? `Date filters (${activeDateFilterCount})` : "Date filters",
       cls: `task-matrix-filter-btn${activeDateFilterCount > 0 ? " is-active" : ""}`
     });
     const updateFilterButtonState = () => {
       const count = this.getActiveDateFilterCount();
-      filterButton.setText(count > 0 ? `Date Filters (${count})` : "Date Filters");
+      filterButton.setText(count > 0 ? `Date filters (${count})` : "Date filters");
       filterButton.toggleClass("is-active", count > 0);
     };
     filterButton.addEventListener("click", () => {
@@ -1751,12 +858,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       text: "Clear filters",
       cls: "task-matrix-filter-clear"
     });
-    clearButton.addEventListener("click", async () => {
+    clearButton.addEventListener("click", () => {
       this.startDateFilter = { operator: "any", value: "" };
       this.dueDateFilter = { operator: "any", value: "" };
       this.dateFiltersOpen = false;
       updateFilterButtonState();
-      await this.render();
+      void this.render();
     });
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
     this.renderModeButton(segmented, "list", ICONS.list);
@@ -1768,8 +875,8 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       cls: "task-matrix-refresh"
     });
     refreshButton.title = "Refresh task index";
-    refreshButton.addEventListener("click", async () => {
-      await this.plugin.refreshTasks(true);
+    refreshButton.addEventListener("click", () => {
+      void this.plugin.refreshTasks(true);
     });
   }
   renderModeButton(parent, mode, label) {
@@ -1777,9 +884,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       text: label,
       cls: `task-matrix-mode-button${this.currentView === mode ? " is-active" : ""}`
     });
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       this.currentView = mode;
-      await this.render();
+      void this.render();
     });
   }
   async renderBodyContent(parent) {
@@ -1821,7 +928,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
       };
       updateToggleAllButton();
-      toggleAllButton.addEventListener("click", async () => {
+      toggleAllButton.addEventListener("click", () => {
         const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
           const groupKey = folderPath || "Root";
           return this.collapsedFolderGroups.has(groupKey);
@@ -1831,7 +938,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         } else {
           this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
         }
-        await this.refreshBody();
+        void this.refreshBody();
       });
       for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
@@ -1913,12 +1020,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const simpleFlow = !this.plugin.settings.includeCompleted;
     const columns = simpleFlow ? [
       { title: "Inbox", state: "Inbox" },
-      { title: "In Progress", state: "In Progress" },
+      { title: "In progress", state: "In Progress" },
       { title: "Waiting", state: "Waiting" }
     ] : [
       { title: "Inbox", state: "Inbox" },
-      { title: "To be Started", state: "To be Started" },
-      { title: "In Progress", state: "In Progress" },
+      { title: "To be started", state: "To be Started" },
+      { title: "In progress", state: "In Progress" },
       { title: "Waiting", state: "Waiting" },
       { title: "Overdue", state: "Overdue" },
       { title: "Done", state: "Done" }
@@ -1933,14 +1040,14 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       columnEl.addEventListener("dragleave", () => {
         columnEl.removeClass("task-matrix-drag-over");
       });
-      columnEl.addEventListener("drop", async (e) => {
+      columnEl.addEventListener("drop", (e) => {
         e.preventDefault();
         columnEl.removeClass("task-matrix-drag-over");
         const taskId = e.dataTransfer?.getData("text/task-id");
         if (taskId) {
           const task = this.plugin.tasks.find((t) => t.id === taskId);
           if (task) {
-            await this.plugin.moveTaskToGTDState(task, column.state);
+            void this.plugin.moveTaskToGTDState(task, column.state);
           }
         }
       });
@@ -1976,17 +1083,17 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const listBtn = modes.createEl("button", { text: "List", cls: `task-calendar-mode-btn${this.calendarMode === "list" ? " active" : ""}` });
     const monthBtn = modes.createEl("button", { text: "Month", cls: `task-calendar-mode-btn${this.calendarMode === "month" ? " active" : ""}` });
     const weekBtn = modes.createEl("button", { text: "Week", cls: `task-calendar-mode-btn${this.calendarMode === "week" ? " active" : ""}` });
-    listBtn.addEventListener("click", async () => {
+    listBtn.addEventListener("click", () => {
       this.calendarMode = "list";
-      await this.render();
+      void this.render();
     });
-    monthBtn.addEventListener("click", async () => {
+    monthBtn.addEventListener("click", () => {
       this.calendarMode = "month";
-      await this.render();
+      void this.render();
     });
-    weekBtn.addEventListener("click", async () => {
+    weekBtn.addEventListener("click", () => {
       this.calendarMode = "week";
-      await this.render();
+      void this.render();
     });
     const nav = toolbar.createDiv({ cls: "task-calendar-nav" });
     const prevBtn = nav.createEl("button", { text: "\u2190", cls: "task-calendar-nav-btn" });
@@ -2008,7 +1115,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     summaryList.createEl("li", { text: `Start: ${summary.start}` });
     summaryList.createEl("li", { text: `Scheduled: ${summary.scheduled}` });
     summaryList.createEl("li", { text: `Recurrence: ${summary.recurrence}` });
-    summaryList.createEl("li", { text: `Daily Notes: ${summary.dailyNotes}` });
+    summaryList.createEl("li", { text: `Daily notes: ${summary.dailyNotes}` });
     const shiftCalendar = async (delta) => {
       const next = new Date(this.calendarDate);
       if (this.calendarMode === "week") {
@@ -2019,11 +1126,15 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       this.calendarDate = next;
       await this.render();
     };
-    prevBtn.addEventListener("click", async () => shiftCalendar(-1));
-    nextBtn.addEventListener("click", async () => shiftCalendar(1));
-    todayBtn.addEventListener("click", async () => {
+    prevBtn.addEventListener("click", () => {
+      void shiftCalendar(-1);
+    });
+    nextBtn.addEventListener("click", () => {
+      void shiftCalendar(1);
+    });
+    todayBtn.addEventListener("click", () => {
       this.calendarDate = /* @__PURE__ */ new Date();
-      await this.render();
+      void this.render();
     });
     summaryBtn.addEventListener("click", () => {
       this.calendarSummaryOpen = !this.calendarSummaryOpen;
@@ -2176,13 +1287,17 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const visibleWeekdays = showWeekends ? weekdayOrder : weekdayOrder.filter((weekday) => weekday !== 0 && weekday !== 6);
     const monthWrap = parent.createDiv({ cls: "task-calendar-month" });
     const heads = monthWrap.createDiv({ cls: "task-calendar-heads" });
-    heads.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
+    if (visibleWeekdays.length === 5) {
+      heads.addClass("is-workweek");
+    }
     for (const weekday of visibleWeekdays) {
       const head = heads.createEl("div", { text: this.getWeekdayLabel(weekday), cls: "task-calendar-head" });
       if (weekday === 0 || weekday === 6) head.addClass("weekend");
     }
     const grid = monthWrap.createDiv({ cls: "task-calendar-month-grid" });
-    grid.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
+    if (visibleWeekdays.length === 5) {
+      grid.addClass("is-workweek");
+    }
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
     const cursor = this.startOfWeek(monthStart);
@@ -2201,7 +1316,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       const dayItems = itemsByDate[isoDate] ?? [];
       for (const entry of dayItems.slice(0, 4)) {
-        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+        this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
       if (dayItems.length > 4) {
         itemsEl.createEl("span", { text: `+${dayItems.length - 4} more`, cls: "task-calendar-item" });
@@ -2220,7 +1335,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       dayEl.createEl("div", { text: `${this.getWeekdayLabel(day.getDay())} ${day.getDate()}`, cls: "task-calendar-date" });
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       for (const entry of itemsByDate[isoDate] ?? []) {
-        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+        this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
     };
     if (!showWeekends) {
@@ -2265,12 +1380,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         content.createEl("span", { text: "No tasks", cls: "task-calendar-item" });
       } else {
         for (const entry of dayItems) {
-          await this.renderCalendarItem(content, entry.task, entry.type);
+          this.renderCalendarItem(content, entry.task, entry.type);
         }
       }
     }
   }
-  async renderCalendarItem(parent, task, type) {
+  renderCalendarItem(parent, task, type) {
     const linkTarget = task.sectionHeading ? `${task.filePath}#${task.sectionHeading}` : task.filePath;
     const item = parent.createEl("a", {
       cls: `task-calendar-item type-${type} internal-link`,
@@ -2288,19 +1403,19 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         linktext: linkTarget
       });
     });
-    item.addEventListener("click", async (event) => {
+    item.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      await this.openTask(task);
+      void this.openTask(task);
     });
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
     const isMobile = this.isMobileLayout();
     const columns = [
-      { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
-      { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
-      { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
+      { title: "Q1", quadrant: "Q1", subtitle: "Important + urgent" },
+      { title: "Q2", quadrant: "Q2", subtitle: "Important + not urgent" },
+      { title: "Q3", quadrant: "Q3", subtitle: "Urgent + lower importance" },
       { title: "Q4", quadrant: "Q4", subtitle: "Delegated or discard" }
     ];
     for (const column of columns) {
@@ -2316,14 +1431,14 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       cell.addEventListener("dragleave", () => {
         cell.removeClass("task-matrix-drag-over");
       });
-      cell.addEventListener("drop", async (e) => {
+      cell.addEventListener("drop", (e) => {
         e.preventDefault();
         cell.removeClass("task-matrix-drag-over");
         const taskId = e.dataTransfer?.getData("text/task-id");
         if (taskId) {
           const task = this.plugin.tasks.find((t) => t.id === taskId);
           if (task) {
-            await this.plugin.moveTaskToQuadrant(task, column.quadrant);
+            void this.plugin.moveTaskToQuadrant(task, column.quadrant);
           }
         }
       });
@@ -2399,9 +1514,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     card.addEventListener("dragend", () => {
       card.removeClass("dragging");
     });
-    card.addEventListener("click", async (e) => {
+    card.addEventListener("click", (e) => {
       if (e.target.closest(".task-matrix-action-btn")) return;
-      await this.openTask(task);
+      void this.openTask(task);
     });
     const top = card.createDiv({ cls: "task-matrix-card-top" });
     const titleEl = top.createDiv({ cls: "task-matrix-card-title" });
@@ -2414,7 +1529,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     }
     top.createEl("div", { text: this.statusBadge(task.displayStatus), cls: `task-matrix-badge status-${task.displayStatus}` });
     const chips = card.createDiv({ cls: "task-matrix-chip-row" });
-    if (task.priority !== "none") {
+    if (task.priority !== "none" /* None */) {
       chips.createEl("span", { text: `Priority ${task.priority}`, cls: "task-matrix-chip" });
     }
     if (task.dueDate) {
@@ -2431,7 +1546,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
     }
     if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
-      chips.createEl("span", { text: "\u26A0\uFE0F Due Date Conflict", cls: "task-matrix-chip conflict" });
+      chips.createEl("span", { text: "\u26A0\uFE0F Due date conflict", cls: "task-matrix-chip conflict" });
     }
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
     const actions = card.createDiv({ cls: "task-matrix-card-actions" });
@@ -2439,35 +1554,43 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const completeBtn = actions.createEl("button", {
         text: "\u2713",
         cls: "task-matrix-action-btn",
-        title: "Complete"
+        title: "Complete task"
       });
-      completeBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+      completeBtn.addEventListener("click", () => {
+        void this.plugin.toggleTaskStatus(task);
+      });
       if (!task.startDate || task.displayStatus === "to-be-started") {
         const startBtn = actions.createEl("button", {
           text: "\u25B6",
           cls: "task-matrix-action-btn",
-          title: "Start"
+          title: "Start task"
         });
-        startBtn.addEventListener("click", () => this.plugin.startTask(task));
+        startBtn.addEventListener("click", () => {
+          void this.plugin.startTask(task);
+        });
       }
       const cancelBtn = actions.createEl("button", {
         text: "\u2715",
         cls: "task-matrix-action-btn",
-        title: "Cancel"
+        title: "Cancel task"
       });
-      cancelBtn.addEventListener("click", () => this.plugin.cancelTask(task));
+      cancelBtn.addEventListener("click", () => {
+        void this.plugin.cancelTask(task);
+      });
     } else {
       const reopenBtn = actions.createEl("button", {
         text: "\u21BA",
         cls: "task-matrix-action-btn",
-        title: "Reopen"
+        title: "Reopen task"
       });
-      reopenBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+      reopenBtn.addEventListener("click", () => {
+        void this.plugin.toggleTaskStatus(task);
+      });
     }
     const editBtn = actions.createEl("button", {
       text: "\u270E",
       cls: "task-matrix-action-btn",
-      title: "Edit"
+      title: "Edit task"
     });
     editBtn.addEventListener("click", () => {
       new TaskEditModal(this.app, task, this.plugin).open();
@@ -2475,12 +1598,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const deleteBtn = actions.createEl("button", {
       text: "\u{1F5D1}",
       cls: "task-matrix-action-btn",
-      title: "Delete"
+      title: "Delete task"
     });
     deleteBtn.addEventListener("click", () => {
-      if (confirm("Delete this task?")) {
-        this.plugin.deleteTask(task);
-      }
+      new DeleteTaskModal(this.app, () => {
+        void this.plugin.deleteTask(task);
+      }).open();
     });
     if (this.currentView === "eisenhower") {
       actions.createEl("span", { text: "|", cls: "task-matrix-action-separator" });
@@ -2494,7 +1617,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           cls: "task-matrix-action-btn quadrant-move",
           title: `Move to ${targetQuadrant}`
         });
-        moveBtn.addEventListener("click", () => this.plugin.moveTaskToQuadrant(task, targetQuadrant));
+        moveBtn.addEventListener("click", () => {
+          void this.plugin.moveTaskToQuadrant(task, targetQuadrant);
+        });
       }
     }
     if (this.currentView === "gtd") {
@@ -2516,7 +1641,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             cls: "task-matrix-action-btn quadrant-move",
             title: `Move to ${targetState}`
           });
-          moveBtn.addEventListener("click", () => this.plugin.moveTaskToGTDState(task, targetState));
+          moveBtn.addEventListener("click", () => {
+            void this.plugin.moveTaskToGTDState(task, targetState);
+          });
         }
       }
     }
@@ -2528,9 +1655,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       case "cancelled":
         return "Cancelled";
       case "in-progress":
-        return "Doing";
+        return "In progress";
       case "to-be-started":
-        return "To be Started";
+        return "To be started";
       case "overdue":
         return "Overdue";
       default:
@@ -2562,10 +1689,10 @@ var TaskEditModal = class extends import_obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
-    contentEl.createEl("h2", { text: this.isCreateMode ? "Add Task" : "Edit Task" });
+    contentEl.createEl("h2", { text: this.isCreateMode ? "Add task" : "Edit task" });
     const form = contentEl.createDiv();
     const description = this.isCreateMode ? "" : this.task.description;
-    const priority = this.isCreateMode ? this.defaultValues.priority ?? "none" : this.task.priority;
+    const priority = this.isCreateMode ? this.defaultValues.priority ?? "none" /* None */ : this.task.priority;
     const dueDate = this.isCreateMode ? this.defaultValues.dueDate ?? "" : this.task.dueDate || "";
     const startDate = this.isCreateMode ? this.defaultValues.startDate ?? "" : this.task.startDate || "";
     const taskId = this.isCreateMode ? "" : this.task.taskId || "";
@@ -2586,14 +1713,14 @@ var TaskEditModal = class extends import_obsidian.Modal {
     prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dueRow.createEl("label", { text: "Due Date" });
+    dueRow.createEl("label", { text: "Due date" });
     const dueInput = dueRow.createEl("input", {
       type: "date",
       cls: "task-matrix-date-input",
       value: dueDate
     });
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
-    startRow.createEl("label", { text: "Start Date" });
+    startRow.createEl("label", { text: "Start date" });
     const startInput = startRow.createEl("input", {
       type: "date",
       cls: "task-matrix-date-input",
@@ -2605,15 +1732,15 @@ var TaskEditModal = class extends import_obsidian.Modal {
     const idInputRow = idRow.createDiv({ cls: "task-matrix-input-row" });
     const idInput = new import_obsidian.TextComponent(idInputRow);
     idInput.setValue(taskId);
-    idInput.inputEl.style.flex = "1";
+    idInput.inputEl.addClass("task-matrix-grow-input");
     const generateIdBtn = new import_obsidian.ButtonComponent(idInputRow).setButtonText("\u{1F3B2}").setTooltip("Generate random ID").onClick(() => {
       idInput.setValue(generateShortId());
     });
-    generateIdBtn.buttonEl.style.marginLeft = "8px";
+    generateIdBtn.buttonEl.addClass("task-matrix-inline-action-btn");
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dependsRow.createEl("label", { text: "Depends On" });
+    dependsRow.createEl("label", { text: "Depends on" });
     const dependsSelect = new import_obsidian.DropdownComponent(dependsRow);
-    dependsSelect.addOption("", "-- None --");
+    dependsSelect.addOption("", "-- none --");
     const availableTasks = this.plugin.tasks.filter((t) => t.displayStatus !== "completed" && t.displayStatus !== "cancelled" && t.taskId && t.taskId !== taskId).sort((a, b) => {
       if (!a.dueDate && !b.dueDate) return 0;
       if (!a.dueDate) return 1;
@@ -2621,52 +1748,56 @@ var TaskEditModal = class extends import_obsidian.Modal {
       return a.dueDate.localeCompare(b.dueDate);
     });
     for (const t of availableTasks) {
-      const dueLabel = t.dueDate ? ` (Due: ${t.dueDate})` : "";
+      const dueLabel = t.dueDate ? ` (due: ${t.dueDate})` : "";
       const label = `${t.taskId}${dueLabel}: ${t.description.slice(0, 40)}${t.description.length > 40 ? "..." : ""}`;
       dependsSelect.addOption(t.taskId, label);
     }
     dependsSelect.setValue(dependsOn);
     const buttons = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
     new import_obsidian.ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
-    new import_obsidian.ButtonComponent(buttons).setButtonText(this.isCreateMode ? "Create" : "Save").setCta().onClick(async () => {
-      const updates = {
-        description: descInput.getValue(),
-        priority: prioritySelect.getValue(),
-        dueDate: dueInput.value || void 0,
-        startDate: startInput.value || void 0,
-        taskId: idInput.getValue() || void 0,
-        dependsOn: dependsSelect.getValue() || void 0
-      };
-      if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
-        new DateConflictModal(
-          this.app,
-          updates.startDate,
-          updates.dueDate,
-          async (result) => {
-            if (result.adjustDueDate) {
-              const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-              updates.dueDate = today;
-              new import_obsidian.Notice("Due date adjusted to today");
-            } else if (result.addConflictTag) {
-            } else {
-              return;
+    new import_obsidian.ButtonComponent(buttons).setButtonText(this.isCreateMode ? "Create" : "Save").setCta().onClick(() => {
+      void (async () => {
+        const updates = {
+          description: descInput.getValue(),
+          priority: prioritySelect.getValue(),
+          dueDate: dueInput.value || void 0,
+          startDate: startInput.value || void 0,
+          taskId: idInput.getValue() || void 0,
+          dependsOn: dependsSelect.getValue() || void 0
+        };
+        if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
+          new DateConflictModal(
+            this.app,
+            updates.startDate,
+            updates.dueDate,
+            (result) => {
+              void (async () => {
+                if (result.adjustDueDate) {
+                  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+                  updates.dueDate = today;
+                  new import_obsidian.Notice("Due date adjusted to today");
+                } else if (result.addConflictTag) {
+                } else {
+                  return;
+                }
+                if (this.isCreateMode) {
+                  await this.createTask(updates, result.addConflictTag);
+                } else {
+                  await this.saveTask(updates, result.addConflictTag);
+                }
+                this.close();
+              })();
             }
-            if (this.isCreateMode) {
-              await this.createTask(updates, result.addConflictTag);
-            } else {
-              await this.saveTask(updates, result.addConflictTag);
-            }
-            this.close();
-          }
-        ).open();
-        return;
-      }
-      if (this.isCreateMode) {
-        await this.createTask(updates, false);
-      } else {
-        await this.saveTask(updates, false);
-      }
-      this.close();
+          ).open();
+          return;
+        }
+        if (this.isCreateMode) {
+          await this.createTask(updates, false);
+        } else {
+          await this.saveTask(updates, false);
+        }
+        this.close();
+      })();
     });
   }
   async createTask(updates, addConflictTag = false) {
@@ -2689,19 +1820,20 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure Target note path in settings or open a markdown file.");
+        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure the target note path in settings or open a markdown file.");
         return;
       }
     }
     let taskLine = `- [ ] ${desc}`;
-    if (updates.priority && updates.priority !== "none") {
+    if (updates.priority && updates.priority !== "none" /* None */) {
       const priorityEmoji = {
-        critical: "\u{1F53A}",
-        highest: "\u23EB",
-        high: "\u{1F53C}",
-        medium: "",
-        low: "\u{1F53D}",
-        lowest: "\u23EC"
+        ["critical" /* Critical */]: "\u{1F53A}",
+        ["highest" /* Highest */]: "\u23EB",
+        ["high" /* High */]: "\u{1F53C}",
+        ["medium" /* Medium */]: "",
+        ["low" /* Low */]: "\u{1F53D}",
+        ["lowest" /* Lowest */]: "\u23EC",
+        ["none" /* None */]: ""
       }[updates.priority];
       if (priorityEmoji) {
         taskLine = taskLine.replace(/^(- \[ \] )/, `$1${priorityEmoji} `);
@@ -2814,11 +1946,11 @@ var TaskEditModal = class extends import_obsidian.Modal {
     }
     if (updates.priority !== void 0) {
       line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
-      if (updates.priority === "critical") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53A} ");
-      else if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
-      else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53C} ");
-      else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53D} ");
-      else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EC ");
+      if (updates.priority === "critical" /* Critical */) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53A} ");
+      else if (updates.priority === "highest" /* Highest */) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EB ");
+      else if (updates.priority === "high" /* High */) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53C} ");
+      else if (updates.priority === "low" /* Low */) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u{1F53D} ");
+      else if (updates.priority === "lowest" /* Lowest */) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1\u23EC ");
     }
     if (updates.dueDate !== void 0) {
       line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
@@ -2867,9 +1999,16 @@ var DateConflictModal = class extends import_obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
-    contentEl.createEl("h2", { text: "Date Conflict Detected" });
+    contentEl.createEl("h2", { text: "Date conflict detected" });
     const message = contentEl.createEl("p");
-    message.innerHTML = `Start date (<strong>${this.startDate}</strong>) is later than due date (<strong>${this.dueDate}</strong>).<br><br>Would you like to adjust the due date to today?`;
+    message.appendText("Start date (");
+    message.createEl("strong", { text: this.startDate });
+    message.appendText(") is later than due date (");
+    message.createEl("strong", { text: this.dueDate });
+    message.appendText(").");
+    message.createEl("br");
+    message.createEl("br");
+    message.appendText("Would you like to adjust the due date to today?");
     const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
     new import_obsidian.ButtonComponent(buttonRow).setButtonText("No, add conflict tag").onClick(() => {
       this.result = { adjustDueDate: false, addConflictTag: true };
@@ -2890,140 +2029,158 @@ var DateConflictModal = class extends import_obsidian.Modal {
     }
   }
 };
+var DeleteTaskModal = class extends import_obsidian.Modal {
+  constructor(app, onConfirm) {
+    super(app);
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+    contentEl.createEl("h2", { text: "Delete task" });
+    contentEl.createEl("p", { text: "Are you sure you want to delete this task?" });
+    const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("Cancel").onClick(() => this.close());
+    new import_obsidian.ButtonComponent(buttonRow).setButtonText("Delete").setWarning().onClick(() => {
+      this.onConfirm();
+      this.close();
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
+  persistSettings(refreshTasks = false) {
+    void (async () => {
+      await this.plugin.saveSettings();
+      if (refreshTasks) {
+        await this.plugin.refreshTasks();
+      }
+    })();
+  }
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Task Matrix settings" });
+    new import_obsidian.Setting(containerEl).setName("Task matrix settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("Scan folders").setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.").addText(
-      (text) => text.setPlaceholder("Projects/Tasks, Inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange(async (value) => {
+      (text) => text.setPlaceholder("Projects/Tasks, Inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange((value) => {
         this.plugin.settings.scanFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
     new import_obsidian.Setting(containerEl).setName("Default view").setDesc("Choose which dashboard opens first.").addDropdown(
-      (dropdown) => dropdown.addOption("eisenhower", "Eisenhower").addOption("calendar", "Calendar").addOption("gtd", "GTD").addOption("list", "List").setValue(this.plugin.settings.defaultView).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("eisenhower", "Eisenhower matrix").addOption("calendar", "Calendar").addOption("gtd", "GTD").addOption("list", "List").setValue(this.plugin.settings.defaultView).onChange((value) => {
         this.plugin.settings.defaultView = value;
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Exclude folders").setDesc("Comma-separated list of folder paths to exclude from task scanning.").addText(
-      (text) => text.setPlaceholder("Archive, Templates, Daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange(async (value) => {
+      (text) => text.setPlaceholder("Archive, Templates, Daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange((value) => {
         this.plugin.settings.excludeFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Open location").setDesc("Where to open the Task Matrix view.").addDropdown(
-      (dropdown) => dropdown.addOption("sidebar", "Right Sidebar").addOption("tab", "New Tab").setValue(this.plugin.settings.openLocation).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Open location").setDesc("Where to open the Task matrix view.").addDropdown(
+      (dropdown) => dropdown.addOption("sidebar", "Right sidebar").addOption("tab", "New tab").setValue(this.plugin.settings.openLocation).onChange((value) => {
         this.plugin.settings.openLocation = value;
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X").addText(
-      (text) => text.setPlaceholder("x, X, done, \u5B8C\u6210").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange(async (value) => {
+      (text) => text.setPlaceholder("x, X, done, \u5B8C\u6210").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
           this.plugin.settings.completionMarkers = ["x", "X"];
         }
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
     new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -").addText(
-      (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange(async (value) => {
+      (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.cancelledMarkers.length === 0) {
           this.plugin.settings.cancelledMarkers = ["-"];
         }
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
     new import_obsidian.Setting(containerEl).setName("Include completed tasks").setDesc("Show completed tasks in the matrix.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.includeCompleted).onChange(async (value) => {
+      (toggle) => toggle.setValue(this.plugin.settings.includeCompleted).onChange((value) => {
         this.plugin.settings.includeCompleted = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
     new import_obsidian.Setting(containerEl).setName("Track completion date").setDesc("When enabled, automatically add \u2705 yyyy-mm-dd to tasks when they are marked as completed.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.trackCompletionDate).onChange(async (value) => {
+      (toggle) => toggle.setValue(this.plugin.settings.trackCompletionDate).onChange((value) => {
         this.plugin.settings.trackCompletionDate = value;
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Urgent days range").setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.").addSlider(
-      (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange(async (value) => {
+      (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange((value) => {
         this.plugin.settings.urgentDaysRange = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar week mode.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in calendar week mode.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange((value) => {
         this.plugin.settings.showCalendarWeekends = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether Calendar weeks start on Monday or Sunday.").addDropdown(
-      (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether calendar weeks start on Monday or Sunday.").addDropdown(
+      (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange((value) => {
         this.plugin.settings.calendarFirstDayOfWeek = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar month mode.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show Saturday and Sunday columns in calendar month mode.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange((value) => {
         this.plugin.settings.showCalendarMonthWeekends = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
     new import_obsidian.Setting(containerEl).setName("Calendar list: show full month").setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
+      (toggle) => toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange((value) => {
         this.plugin.settings.calendarListShowFullMonth = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar: show in-process tasks").setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Calendar: show in-progress tasks").setDesc("For tasks with both start and due dates, show them on each day between start and due in calendar views.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange((value) => {
         this.plugin.settings.showCalendarInProcessTasks = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
+        this.persistSettings(true);
       })
     );
-    containerEl.createEl("h3", { text: "New Task Settings" });
+    new import_obsidian.Setting(containerEl).setName("New task settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("Target note path").setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.").addText(
-      (text) => text.setPlaceholder("Daily/YYYY-MM-DD.md").setValue(this.plugin.settings.newTaskTargetPath).onChange(async (value) => {
+      (text) => text.setPlaceholder("Daily/YYYY-MM-DD.md").setValue(this.plugin.settings.newTaskTargetPath).onChange((value) => {
         this.plugin.settings.newTaskTargetPath = value.trim();
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Target heading").setDesc("Insert new tasks under this heading. Leave empty to append at end of file.").addText(
-      (text) => text.setPlaceholder("## \u{1F440} GTD\u4EFB\u52A1\u770B\u677F").setValue(this.plugin.settings.newTaskTargetHeading).onChange(async (value) => {
+      (text) => text.setPlaceholder("## \u{1F440} GTD\u4EFB\u52A1\u770B\u677F").setValue(this.plugin.settings.newTaskTargetHeading).onChange((value) => {
         this.plugin.settings.newTaskTargetHeading = value.trim();
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
-    containerEl.createEl("h3", { text: "List View Settings" });
+    new import_obsidian.Setting(containerEl).setName("List view settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("Group by folder").setDesc("Group tasks by their containing folder in list view.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.listGroupByFolder).onChange(async (value) => {
+      (toggle) => toggle.setValue(this.plugin.settings.listGroupByFolder).onChange((value) => {
         this.plugin.settings.listGroupByFolder = value;
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Folder grouping depth").setDesc("How many folder levels to display for grouping (1 = top level only, 2 = two levels, etc.).").addSlider(
-      (slider) => slider.setLimits(1, 5, 1).setValue(this.plugin.settings.listGroupByFolderDepth).setDynamicTooltip().onChange(async (value) => {
+      (slider) => slider.setLimits(1, 5, 1).setValue(this.plugin.settings.listGroupByFolderDepth).setDynamicTooltip().onChange((value) => {
         this.plugin.settings.listGroupByFolderDepth = value;
-        await this.plugin.saveSettings();
+        this.persistSettings();
       })
     );
   }

@@ -4,7 +4,6 @@ import {
   TaskStatusDisplay,
   GTDState,
   EisenhowerQuadrant,
-  CheckboxStatus,
   TaskMatrixSettings,
 } from "./types";
 
@@ -214,7 +213,7 @@ export function parseTaskLine(
     lineNumber,
     lineText: line,
     description,
-    checkboxStatus: checkboxContent as CheckboxStatus,
+    checkboxStatus: checkboxContent,
     displayStatus,
     priority,
     dueDate,
