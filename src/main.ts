@@ -88,7 +88,8 @@ export default class TaskMatrixPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    const savedSettings = (await this.loadData()) as Partial<TaskMatrixSettings> | null;
+    this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings ?? {}) };
   }
 
   async saveSettings(): Promise<void> {
@@ -379,7 +380,7 @@ export default class TaskMatrixPlugin extends Plugin {
   async moveTaskToGTDState(task: ParsedTask, newState: ParsedTask["gtdState"]): Promise<void> {
     // Determine what changes are needed for this GTD state transition
     const today = new Date().toISOString().slice(0, 10);
-    let updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
+    const updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
     let tagToAdd = "";
     let removeTags: string[] = [];
     let shouldComplete = false;

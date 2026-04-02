@@ -276,7 +276,8 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
   onunload() {
   }
   async loadSettings() {
-    this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
+    const savedSettings = await this.loadData();
+    this.settings = { ...DEFAULT_SETTINGS, ...savedSettings ?? {} };
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -503,7 +504,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
   // Drag and drop: move task to different state/quadrant
   async moveTaskToGTDState(task, newState) {
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    let updates = {};
+    const updates = {};
     let tagToAdd = "";
     let removeTags = [];
     let shouldComplete = false;
@@ -2091,7 +2092,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, x.").addText(
+    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X.").addText(
       (text) => text.setPlaceholder("X, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
@@ -2100,7 +2101,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -.").addText(
+    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -").addText(
       (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.cancelledMarkers.length === 0) {
