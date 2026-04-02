@@ -1146,16 +1146,16 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
     if (this.calendarMode === "month") {
       titleEl.setText(this.formatCalendarTitle(this.calendarDate, "month"));
-      await this.renderCalendarMonth(wrap, allItems, todayIso);
+      this.renderCalendarMonth(wrap, allItems, todayIso);
       return;
     }
     if (this.calendarMode === "week") {
       titleEl.setText(this.formatCalendarTitle(this.calendarDate, "week"));
-      await this.renderCalendarWeek(wrap, allItems, todayIso);
+      this.renderCalendarWeek(wrap, allItems, todayIso);
       return;
     }
     titleEl.setText(this.formatCalendarTitle(this.calendarDate, "list"));
-    await this.renderCalendarList(wrap, allItems, todayIso);
+    this.renderCalendarList(wrap, allItems, todayIso);
   }
   formatCalendarTitle(date, mode) {
     if (mode === "month" || mode === "list") {
@@ -1820,7 +1820,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure the target note path in the plugin options or open a markdown file.");
+        new import_obsidian.Notice("Open a markdown file or set a target note path in the options.");
         return;
       }
     }
@@ -2066,9 +2066,9 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("General").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Scanning and views").setHeading();
     new import_obsidian.Setting(containerEl).setName("Scan folders").setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.").addText(
-      (text) => text.setPlaceholder("projects/tasks, inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange((value) => {
+      (text) => text.setPlaceholder("Projects/tasks, inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange((value) => {
         this.plugin.settings.scanFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         this.persistSettings(true);
       })
@@ -2080,7 +2080,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName("Exclude folders").setDesc("Comma-separated list of folder paths to exclude from task scanning.").addText(
-      (text) => text.setPlaceholder("archive, templates, daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange((value) => {
+      (text) => text.setPlaceholder("Archive, templates, daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange((value) => {
         this.plugin.settings.excludeFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         this.persistSettings(true);
       })
@@ -2091,8 +2091,8 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). default: x, x").addText(
-      (text) => text.setPlaceholder("x, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
+    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, x.").addText(
+      (text) => text.setPlaceholder("X, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
           this.plugin.settings.completionMarkers = ["x", "X"];
@@ -2100,7 +2100,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). default: -").addText(
+    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -.").addText(
       (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.cancelledMarkers.length === 0) {
