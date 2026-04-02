@@ -759,7 +759,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   renderHeader(parent) {
     const header = parent.createDiv({ cls: "task-matrix-header" });
     const titleBlock = header.createDiv({ cls: "task-matrix-title-block" });
-    titleBlock.createEl("div", { text: "Obsidian Task Matrix", cls: "task-matrix-kicker" });
+    titleBlock.createEl("div", { text: "Obsidian task matrix", cls: "task-matrix-kicker" });
     titleBlock.createEl("h2", { text: "Vault task dashboards", cls: "task-matrix-title" });
     titleBlock.createEl("p", {
       text: `${this.plugin.tasks.length} tasks across ${new Set(this.plugin.tasks.map((task) => task.filePath)).size} files`,
@@ -1281,7 +1281,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     }
     return byDate;
   }
-  async renderCalendarMonth(parent, itemsByDate, todayIso) {
+  renderCalendarMonth(parent, itemsByDate, todayIso) {
     const showWeekends = this.plugin.settings.showCalendarMonthWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const visibleWeekdays = showWeekends ? weekdayOrder : weekdayOrder.filter((weekday) => weekday !== 0 && weekday !== 6);
@@ -1323,11 +1323,11 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       }
     }
   }
-  async renderCalendarWeek(parent, itemsByDate, todayIso) {
+  renderCalendarWeek(parent, itemsByDate, todayIso) {
     const showWeekends = this.plugin.settings.showCalendarWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const start = this.startOfWeek(this.calendarDate);
-    const renderDayCard = async (container, index, isWeekend) => {
+    const renderDayCard = (container, index, isWeekend) => {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       const isoDate = this.toCalendarIso(day);
@@ -1343,7 +1343,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       for (let index = 0; index < 7; index++) {
         const weekday = weekdayOrder[index];
         if (weekday === 0 || weekday === 6) continue;
-        await renderDayCard(weekGrid, index, false);
+        renderDayCard(weekGrid, index, false);
       }
       return;
     }
@@ -1352,17 +1352,17 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     for (let index = 0; index < 7; index++) {
       const weekday = weekdayOrder[index];
       if (weekday === 0 || weekday === 6) continue;
-      await renderDayCard(weekdayGrid, index, false);
+      renderDayCard(weekdayGrid, index, false);
     }
     const weekendGrid = weekSplit.createDiv({ cls: "task-calendar-weekend" });
     for (const weekendWeekday of [6, 0]) {
       const index = weekdayOrder.indexOf(weekendWeekday);
       if (index >= 0) {
-        await renderDayCard(weekendGrid, index, true);
+        renderDayCard(weekendGrid, index, true);
       }
     }
   }
-  async renderCalendarList(parent, itemsByDate, todayIso) {
+  renderCalendarList(parent, itemsByDate, todayIso) {
     const list = parent.createDiv({ cls: "task-calendar-list" });
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
@@ -1546,7 +1546,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       chips.createEl("span", { text: `ID ${task.taskId}`, cls: "task-matrix-chip" });
     }
     if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
-      chips.createEl("span", { text: "\u26A0\uFE0F Due date conflict", cls: "task-matrix-chip conflict" });
+      chips.createEl("span", { text: "\u26A0\uFE0F due date conflict", cls: "task-matrix-chip conflict" });
     }
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
     const actions = card.createDiv({ cls: "task-matrix-card-actions" });
@@ -1820,7 +1820,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure the target note path in settings or open a markdown file.");
+        new import_obsidian.Notice("No target note configured and no active markdown file. Please configure the target note path in the plugin options or open a markdown file.");
         return;
       }
     }
@@ -2066,9 +2066,9 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("Task matrix settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("General").setHeading();
     new import_obsidian.Setting(containerEl).setName("Scan folders").setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.").addText(
-      (text) => text.setPlaceholder("Projects/Tasks, Inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange((value) => {
+      (text) => text.setPlaceholder("projects/tasks, inbox").setValue(this.plugin.settings.scanFolders.join(", ")).onChange((value) => {
         this.plugin.settings.scanFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         this.persistSettings(true);
       })
@@ -2080,19 +2080,19 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName("Exclude folders").setDesc("Comma-separated list of folder paths to exclude from task scanning.").addText(
-      (text) => text.setPlaceholder("Archive, Templates, Daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange((value) => {
+      (text) => text.setPlaceholder("archive, templates, daily").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange((value) => {
         this.plugin.settings.excludeFolders = value.split(",").map((s) => s.trim()).filter(Boolean);
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Open location").setDesc("Where to open the Task matrix view.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Open location").setDesc("Where to open the task matrix view.").addDropdown(
       (dropdown) => dropdown.addOption("sidebar", "Right sidebar").addOption("tab", "New tab").setValue(this.plugin.settings.openLocation).onChange((value) => {
         this.plugin.settings.openLocation = value;
         this.persistSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X").addText(
-      (text) => text.setPlaceholder("x, X, done, \u5B8C\u6210").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
+    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). default: x, x").addText(
+      (text) => text.setPlaceholder("x, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
           this.plugin.settings.completionMarkers = ["x", "X"];
@@ -2100,7 +2100,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -").addText(
+    new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). default: -").addText(
       (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.cancelledMarkers.length === 0) {
@@ -2127,19 +2127,19 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in calendar week mode.").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show saturday and sunday columns in calendar week mode.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange((value) => {
         this.plugin.settings.showCalendarWeekends = value;
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether calendar weeks start on Monday or Sunday.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether calendar weeks start on monday or sunday.").addDropdown(
       (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange((value) => {
         this.plugin.settings.calendarFirstDayOfWeek = value;
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show Saturday and Sunday columns in calendar month mode.").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show saturday and sunday columns in calendar month mode.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange((value) => {
         this.plugin.settings.showCalendarMonthWeekends = value;
         this.persistSettings(true);
@@ -2157,20 +2157,20 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
-    new import_obsidian.Setting(containerEl).setName("New task settings").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Target note path").setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.").addText(
+    new import_obsidian.Setting(containerEl).setName("New tasks").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Target note path").setDesc("Path template for new tasks. Use yyyy, mm, dd for date substitution. Leave empty to use fallback logic.").addText(
       (text) => text.setPlaceholder("Daily/YYYY-MM-DD.md").setValue(this.plugin.settings.newTaskTargetPath).onChange((value) => {
         this.plugin.settings.newTaskTargetPath = value.trim();
         this.persistSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Target heading").setDesc("Insert new tasks under this heading. Leave empty to append at end of file.").addText(
-      (text) => text.setPlaceholder("## \u{1F440} GTD\u4EFB\u52A1\u770B\u677F").setValue(this.plugin.settings.newTaskTargetHeading).onChange((value) => {
+      (text) => text.setPlaceholder("## tasks").setValue(this.plugin.settings.newTaskTargetHeading).onChange((value) => {
         this.plugin.settings.newTaskTargetHeading = value.trim();
         this.persistSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("List view settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("List view").setHeading();
     new import_obsidian.Setting(containerEl).setName("Group by folder").setDesc("Group tasks by their containing folder in list view.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.listGroupByFolder).onChange((value) => {
         this.plugin.settings.listGroupByFolder = value;

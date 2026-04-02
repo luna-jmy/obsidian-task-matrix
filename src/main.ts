@@ -714,7 +714,7 @@ class TaskMatrixView extends ItemView {
   private renderHeader(parent: HTMLElement): void {
     const header = parent.createDiv({ cls: "task-matrix-header" });
     const titleBlock = header.createDiv({ cls: "task-matrix-title-block" });
-    titleBlock.createEl("div", { text: "Obsidian Task Matrix", cls: "task-matrix-kicker" });
+    titleBlock.createEl("div", { text: "Obsidian task matrix", cls: "task-matrix-kicker" });
     titleBlock.createEl("h2", { text: "Vault task dashboards", cls: "task-matrix-title" });
     titleBlock.createEl("p", {
       text: `${this.plugin.tasks.length} tasks across ${new Set(this.plugin.tasks.map((task) => task.filePath)).size} files`,
@@ -1313,11 +1313,11 @@ class TaskMatrixView extends ItemView {
     return byDate;
   }
 
-  private async renderCalendarMonth(
+  private renderCalendarMonth(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const showWeekends = this.plugin.settings.showCalendarMonthWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const visibleWeekdays = showWeekends
@@ -1364,16 +1364,16 @@ class TaskMatrixView extends ItemView {
     }
   }
 
-  private async renderCalendarWeek(
+  private renderCalendarWeek(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const showWeekends = this.plugin.settings.showCalendarWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const start = this.startOfWeek(this.calendarDate);
 
-    const renderDayCard = async (container: HTMLElement, index: number, isWeekend: boolean): Promise<void> => {
+    const renderDayCard = (container: HTMLElement, index: number, isWeekend: boolean): void => {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       const isoDate = this.toCalendarIso(day);
@@ -1390,7 +1390,7 @@ class TaskMatrixView extends ItemView {
       for (let index = 0; index < 7; index++) {
         const weekday = weekdayOrder[index];
         if (weekday === 0 || weekday === 6) continue;
-        await renderDayCard(weekGrid, index, false);
+        renderDayCard(weekGrid, index, false);
       }
       return;
     }
@@ -1400,23 +1400,23 @@ class TaskMatrixView extends ItemView {
     for (let index = 0; index < 7; index++) {
       const weekday = weekdayOrder[index];
       if (weekday === 0 || weekday === 6) continue;
-      await renderDayCard(weekdayGrid, index, false);
+      renderDayCard(weekdayGrid, index, false);
     }
 
     const weekendGrid = weekSplit.createDiv({ cls: "task-calendar-weekend" });
     for (const weekendWeekday of [6, 0]) {
       const index = weekdayOrder.indexOf(weekendWeekday);
       if (index >= 0) {
-        await renderDayCard(weekendGrid, index, true);
+        renderDayCard(weekendGrid, index, true);
       }
     }
   }
 
-  private async renderCalendarList(
+  private renderCalendarList(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const list = parent.createDiv({ cls: "task-calendar-list" });
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
@@ -1640,7 +1640,7 @@ class TaskMatrixView extends ItemView {
     }
     // Check for date conflict tag in the original task line
     if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
-      chips.createEl("span", { text: "⚠️ Due date conflict", cls: "task-matrix-chip conflict" });
+      chips.createEl("span", { text: "⚠️ due date conflict", cls: "task-matrix-chip conflict" });
     }
 
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
@@ -1989,7 +1989,7 @@ class TaskEditModal extends Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new Notice("No target note configured and no active markdown file. Please configure the target note path in settings or open a markdown file.");
+        new Notice("No target note configured and no active markdown file. Please configure the target note path in the plugin options or open a markdown file.");
         return;
       }
     }
@@ -2331,14 +2331,14 @@ class TaskMatrixSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName("Task matrix settings").setHeading();
+    new Setting(containerEl).setName("General").setHeading();
 
     new Setting(containerEl)
       .setName("Scan folders")
       .setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.")
       .addText((text) =>
         text
-          .setPlaceholder("Projects/Tasks, Inbox")
+          .setPlaceholder("projects/tasks, inbox")
           .setValue(this.plugin.settings.scanFolders.join(", "))
           .onChange((value) => {
             this.plugin.settings.scanFolders = value.split(",").map(s => s.trim()).filter(Boolean);
@@ -2367,7 +2367,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setDesc("Comma-separated list of folder paths to exclude from task scanning.")
       .addText((text) =>
         text
-          .setPlaceholder("Archive, Templates, Daily")
+          .setPlaceholder("archive, templates, daily")
           .setValue(this.plugin.settings.excludeFolders.join(", "))
           .onChange((value) => {
             this.plugin.settings.excludeFolders = value.split(",").map(s => s.trim()).filter(Boolean);
@@ -2377,7 +2377,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Open location")
-      .setDesc("Where to open the Task matrix view.")
+      .setDesc("Where to open the task matrix view.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("sidebar", "Right sidebar")
@@ -2391,10 +2391,10 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Completion markers")
-      .setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X")
+      .setDesc("Checkbox contents that indicate a completed task (comma-separated). default: x, x")
       .addText((text) =>
         text
-          .setPlaceholder("x, X, done, 完成")
+          .setPlaceholder("x, done")
           .setValue(this.plugin.settings.completionMarkers.join(", "))
           .onChange((value) => {
             this.plugin.settings.completionMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
@@ -2407,7 +2407,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Cancelled markers")
-      .setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -")
+      .setDesc("Checkbox contents that indicate a cancelled task (comma-separated). default: -")
       .addText((text) =>
         text
           .setPlaceholder("-, cancelled, skip")
@@ -2457,7 +2457,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Calendar week view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in calendar week mode.")
+      .setDesc("Show saturday and sunday columns in calendar week mode.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange((value) => {
           this.plugin.settings.showCalendarWeekends = value;
@@ -2467,7 +2467,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Calendar: first day of week")
-      .setDesc("Choose whether calendar weeks start on Monday or Sunday.")
+      .setDesc("Choose whether calendar weeks start on monday or sunday.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("monday", "Monday")
@@ -2481,7 +2481,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Calendar month view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in calendar month mode.")
+      .setDesc("Show saturday and sunday columns in calendar month mode.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange((value) => {
           this.plugin.settings.showCalendarMonthWeekends = value;
@@ -2509,11 +2509,11 @@ class TaskMatrixSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("New task settings").setHeading();
+    new Setting(containerEl).setName("New tasks").setHeading();
 
     new Setting(containerEl)
       .setName("Target note path")
-      .setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.")
+      .setDesc("Path template for new tasks. Use yyyy, mm, dd for date substitution. Leave empty to use fallback logic.")
       .addText((text) =>
         text
           .setPlaceholder("Daily/YYYY-MM-DD.md")
@@ -2529,7 +2529,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setDesc("Insert new tasks under this heading. Leave empty to append at end of file.")
       .addText((text) =>
         text
-          .setPlaceholder("## 👀 GTD任务看板")
+          .setPlaceholder("## tasks")
           .setValue(this.plugin.settings.newTaskTargetHeading)
           .onChange((value) => {
             this.plugin.settings.newTaskTargetHeading = value.trim();
@@ -2537,7 +2537,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl).setName("List view settings").setHeading();
+    new Setting(containerEl).setName("List view").setHeading();
 
     new Setting(containerEl)
       .setName("Group by folder")
