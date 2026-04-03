@@ -1990,7 +1990,7 @@ class TaskEditModal extends Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new Notice("Open a markdown file or set a target note path in the options.");
+        new Notice("Open a markdown file, or set a target note path in the options.");
         return;
       }
     }
@@ -2392,10 +2392,10 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Completion markers")
-      .setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X.")
+      .setDesc("Checkbox contents that indicate a completed task (comma-separated). Example: x, X.")
       .addText((text) =>
         text
-          .setPlaceholder("X, done")
+          .setPlaceholder("x, done")
           .setValue(this.plugin.settings.completionMarkers.join(", "))
           .onChange((value) => {
             this.plugin.settings.completionMarkers = value.split(",").map(s => s.trim()).filter(Boolean);

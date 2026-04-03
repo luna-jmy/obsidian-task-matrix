@@ -1821,7 +1821,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("Open a markdown file or set a target note path in the options.");
+        new import_obsidian.Notice("Open a markdown file, or set a target note path in the options.");
         return;
       }
     }
@@ -2092,8 +2092,8 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X.").addText(
-      (text) => text.setPlaceholder("X, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
+    new import_obsidian.Setting(containerEl).setName("Completion markers").setDesc("Checkbox contents that indicate a completed task (comma-separated). Example: x, X.").addText(
+      (text) => text.setPlaceholder("x, done").setValue(this.plugin.settings.completionMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.completionMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
         if (this.plugin.settings.completionMarkers.length === 0) {
           this.plugin.settings.completionMarkers = ["x", "X"];
