@@ -1990,7 +1990,7 @@ class TaskEditModal extends Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new Notice("Set a target note path in the options or open a markdown file.");
+        new Notice("Please set a target note path, or open a markdown file.");
         return;
       }
     }

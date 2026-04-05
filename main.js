@@ -1821,7 +1821,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("Set a target note path in the options or open a markdown file.");
+        new import_obsidian.Notice("Please set a target note path, or open a markdown file.");
         return;
       }
     }
