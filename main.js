@@ -1807,7 +1807,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       new import_obsidian.Notice("Task description is required");
       return;
     }
-    let targetFile = null;
+    let targetFile;
     const { newTaskTargetPath } = this.plugin.settings;
     if (newTaskTargetPath) {
       const resolvedPath = this.resolveDateTemplate(newTaskTargetPath);
@@ -1821,7 +1821,7 @@ var TaskEditModal = class extends import_obsidian.Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new import_obsidian.Notice("Set the target note path or open a markdown file.");
+        new import_obsidian.Notice("Set the target note path or open a Markdown file.");
         return;
       }
     }

@@ -18,14 +18,16 @@
   "author": "Luna Jiang",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.14.0",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
     "builtin-modules": "^4.0.0",
     "esbuild": "^0.25.3",
-    "eslint": "^8.57.1",
-    "eslint-plugin-obsidian": "^2.29.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.1.9",
     "obsidian": "^1.8.10",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.58.0"
   }
 }

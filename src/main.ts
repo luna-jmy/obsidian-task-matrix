@@ -1973,7 +1973,7 @@ class TaskEditModal extends Modal {
     }
 
     // Determine target file
-    let targetFile: TFile | null = null;
+    let targetFile: TFile | null;
     const { newTaskTargetPath } = this.plugin.settings;
 
     // Use configured target path with date template
@@ -1990,7 +1990,7 @@ class TaskEditModal extends Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new Notice("Set the target note path or open a markdown file.");
+        new Notice("Set the target note path or open a Markdown file.");
         return;
       }
     }
