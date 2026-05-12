@@ -657,6 +657,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.startDateFilter = { operator: "any", value: "" };
     this.dueDateFilter = { operator: "any", value: "" };
     this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set();
+    this.collapsedGtdColumns = /* @__PURE__ */ new Set();
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
@@ -1071,9 +1072,23 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       this.createColumnHeader(columnEl, column.title, group.length, () => {
         const defaults = getGtdDefaults(column.state);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      }, true, this.collapsedGtdColumns.has(column.state));
+      if (this.collapsedGtdColumns.has(column.state)) {
+        columnEl.addClass("is-collapsed");
+      }
+      const header = columnEl.querySelector(".task-matrix-column-header");
+      header.addEventListener("click", (event) => {
+        if (event.target.closest(".task-matrix-add-btn")) return;
+        if (this.collapsedGtdColumns.has(column.state)) {
+          this.collapsedGtdColumns.delete(column.state);
+        } else {
+          this.collapsedGtdColumns.add(column.state);
+        }
+        void this.render();
       });
+      const body = columnEl.createDiv({ cls: `task-matrix-column-body${this.collapsedGtdColumns.has(column.state) ? " is-collapsed" : ""}` });
       for (const task of group) {
-        await this.createTaskCard(columnEl, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
@@ -1412,7 +1427,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
-    const isMobile = this.isMobileLayout();
     const columns = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + not urgent" },
@@ -1422,9 +1436,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
-      if (isMobile) {
-        cell.addClass("is-mobile-collapsible");
-      }
+      cell.addClass("is-collapsible");
       cell.addEventListener("dragover", (e) => {
         e.preventDefault();
         cell.addClass("task-matrix-drag-over");
@@ -1459,26 +1471,24 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             return {};
         }
       };
-      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      const isCollapsed = this.collapsedMatrixQuadrants.has(column.quadrant);
       if (isCollapsed) {
         cell.addClass("is-collapsed");
       }
       const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      }, isMobile, isCollapsed);
+      }, true, isCollapsed);
       const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
-      if (isMobile) {
-        header.addEventListener("click", (event) => {
-          if (event.target.closest(".task-matrix-add-btn")) return;
-          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
-            this.collapsedMatrixQuadrants.delete(column.quadrant);
-          } else {
-            this.collapsedMatrixQuadrants.add(column.quadrant);
-          }
-          void this.render();
-        });
-      }
+      header.addEventListener("click", (event) => {
+        if (event.target.closest(".task-matrix-add-btn")) return;
+        if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+          this.collapsedMatrixQuadrants.delete(column.quadrant);
+        } else {
+          this.collapsedMatrixQuadrants.add(column.quadrant);
+        }
+        void this.render();
+      });
       for (const task of group) {
         await this.createTaskCard(body, task, this.describeTask(task));
       }

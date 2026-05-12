@@ -464,13 +464,10 @@
         .task-matrix-cell {
           min-height: 0;
         }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
-          display: inline-flex;
-        }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
+        .task-matrix-cell.is-collapsible .task-matrix-column-header {
           margin-bottom: 0;
         }
-        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
+        .task-matrix-cell.is-collapsible:not(.is-collapsed) .task-matrix-column-header {
           margin-bottom: 12px;
         }
         .task-matrix-card {
@@ -597,8 +594,25 @@
         color: var(--text-muted);
         flex: 0 0 auto;
       }
+      .task-matrix-column-header.is-collapsible .task-matrix-collapse-indicator {
+        display: inline-flex;
+      }
       .task-matrix-cell-body.is-collapsed {
         display: none;
+      }
+      .task-matrix-column-body.is-collapsed {
+        display: none;
+      }
+      .task-matrix-cell.is-collapsed,
+      .task-matrix-column.is-collapsed {
+        min-height: 0;
+        padding-bottom: 12px;
+      }
+      .task-matrix-cell.is-collapsed .task-matrix-column-header,
+      .task-matrix-column.is-collapsed .task-matrix-column-header {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);

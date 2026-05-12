@@ -589,6 +589,7 @@ class TaskMatrixView extends ItemView {
   private startDateFilter: DateFilterConfig = { operator: "any", value: "" };
   private dueDateFilter: DateFilterConfig = { operator: "any", value: "" };
   private collapsedMatrixQuadrants = new Set<ParsedTask["quadrant"]>();
+  private collapsedGtdColumns = new Set<ParsedTask["gtdState"]>();
   private collapsedFolderGroups = new Set<string>();
   private shellEl: HTMLElement | null = null;
   private bodyEl: HTMLElement | null = null;
@@ -1079,10 +1080,27 @@ class TaskMatrixView extends ItemView {
       this.createColumnHeader(columnEl, column.title, group.length, () => {
         const defaults = getGtdDefaults(column.state);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      }, true, this.collapsedGtdColumns.has(column.state));
+
+      if (this.collapsedGtdColumns.has(column.state)) {
+        columnEl.addClass("is-collapsed");
+      }
+
+      const header = columnEl.querySelector(".task-matrix-column-header") as HTMLElement;
+      header.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement).closest(".task-matrix-add-btn")) return;
+        if (this.collapsedGtdColumns.has(column.state)) {
+          this.collapsedGtdColumns.delete(column.state);
+        } else {
+          this.collapsedGtdColumns.add(column.state);
+        }
+        void this.render();
       });
 
+      const body = columnEl.createDiv({ cls: `task-matrix-column-body${this.collapsedGtdColumns.has(column.state) ? " is-collapsed" : ""}` });
+
       for (const task of group) {
-        await this.createTaskCard(columnEl, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
@@ -1472,7 +1490,6 @@ class TaskMatrixView extends ItemView {
 
   private async renderEisenhower(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
-    const isMobile = this.isMobileLayout();
     const columns: Array<{ title: string; quadrant: ParsedTask["quadrant"]; subtitle: string }> = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + not urgent" },
@@ -1483,9 +1500,7 @@ class TaskMatrixView extends ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
-      if (isMobile) {
-        cell.addClass("is-mobile-collapsible");
-      }
+      cell.addClass("is-collapsible");
 
       // Drag and drop handlers
       cell.addEventListener("dragover", (e) => {
@@ -1526,7 +1541,7 @@ class TaskMatrixView extends ItemView {
         }
       };
 
-      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      const isCollapsed = this.collapsedMatrixQuadrants.has(column.quadrant);
       if (isCollapsed) {
         cell.addClass("is-collapsed");
       }
@@ -1534,20 +1549,18 @@ class TaskMatrixView extends ItemView {
       const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      }, isMobile, isCollapsed);
+      }, true, isCollapsed);
       const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
 
-      if (isMobile) {
-        header.addEventListener("click", (event) => {
-          if ((event.target as HTMLElement).closest(".task-matrix-add-btn")) return;
-          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
-            this.collapsedMatrixQuadrants.delete(column.quadrant);
-          } else {
-            this.collapsedMatrixQuadrants.add(column.quadrant);
-          }
-          void this.render();
-        });
-      }
+      header.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement).closest(".task-matrix-add-btn")) return;
+        if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+          this.collapsedMatrixQuadrants.delete(column.quadrant);
+        } else {
+          this.collapsedMatrixQuadrants.add(column.quadrant);
+        }
+        void this.render();
+      });
 
       for (const task of group) {
         await this.createTaskCard(body, task, this.describeTask(task));

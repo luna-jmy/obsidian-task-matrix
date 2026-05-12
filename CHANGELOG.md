@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.16
+- New: Eisenhower Matrix columns now support collapse/expand on desktop (previously mobile-only)
+- New: GTD view columns now support collapse/expand on both desktop and mobile
+- Fix: Collapsed Eisenhower quadrants on mobile no longer leave excessive empty space
+
 ## 0.1.15
 - Fix: Clearing due date, start date, task ID, and depends-on in the edit modal now works correctly
 - Improve: Start date field now appears above due date in the edit modal
