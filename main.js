@@ -2117,19 +2117,19 @@ var TaskEditModal = class extends import_obsidian.Modal {
     prioritySelect.addOption("highest", "Highest");
     prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
-    const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dueRow.createEl("label", { text: "Due Date" });
-    const dueInput = dueRow.createEl("input", {
-      type: "date",
-      cls: "task-matrix-date-input",
-      value: dueDate
-    });
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
     const startInput = startRow.createEl("input", {
       type: "date",
       cls: "task-matrix-date-input",
       value: startDate
+    });
+    const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
+    dueRow.createEl("label", { text: "Due Date" });
+    const dueInput = dueRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: dueDate
     });
     const idRow = form.createDiv({ cls: "task-matrix-form-row" });
     const idLabelRow = idRow.createDiv({ cls: "task-matrix-label-row" });
@@ -2164,10 +2164,10 @@ var TaskEditModal = class extends import_obsidian.Modal {
       const updates = {
         description: descInput.getValue(),
         priority: prioritySelect.getValue(),
-        dueDate: dueInput.value || void 0,
-        startDate: startInput.value || void 0,
-        taskId: idInput.getValue() || void 0,
-        dependsOn: dependsSelect.getValue() || void 0
+        dueDate: dueInput.value,
+        startDate: startInput.value,
+        taskId: idInput.getValue(),
+        dependsOn: dependsSelect.getValue()
       };
       if (updates.startDate && updates.dueDate && updates.startDate > updates.dueDate) {
         new DateConflictModal(
@@ -2497,41 +2497,6 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.refreshTasks();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar week mode.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
-        this.plugin.settings.showCalendarWeekends = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether Calendar weeks start on Monday or Sunday.").addDropdown(
-      (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange(async (value) => {
-        this.plugin.settings.calendarFirstDayOfWeek = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar month mode.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
-        this.plugin.settings.showCalendarMonthWeekends = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Calendar list: show full month").setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
-        this.plugin.settings.calendarListShowFullMonth = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Calendar: show in-process tasks").setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
-        this.plugin.settings.showCalendarInProcessTasks = value;
-        await this.plugin.saveSettings();
-        await this.plugin.refreshTasks();
-      })
-    );
     containerEl.createEl("h3", { text: "New Task Settings" });
     new import_obsidian.Setting(containerEl).setName("Target note path").setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.").addText(
       (text) => text.setPlaceholder("Daily/YYYY-MM-DD.md").setValue(this.plugin.settings.newTaskTargetPath).onChange(async (value) => {
@@ -2556,6 +2521,42 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       (slider) => slider.setLimits(1, 5, 1).setValue(this.plugin.settings.listGroupByFolderDepth).setDynamicTooltip().onChange(async (value) => {
         this.plugin.settings.listGroupByFolderDepth = value;
         await this.plugin.saveSettings();
+      })
+    );
+    containerEl.createEl("h3", { text: "Calendar View Settings" });
+    new import_obsidian.Setting(containerEl).setName("Calendar: first day of week").setDesc("Choose whether Calendar weeks start on Monday or Sunday.").addDropdown(
+      (dropdown) => dropdown.addOption("monday", "Monday").addOption("sunday", "Sunday").setValue(this.plugin.settings.calendarFirstDayOfWeek).onChange(async (value) => {
+        this.plugin.settings.calendarFirstDayOfWeek = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Calendar week view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar week mode.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
+        this.plugin.settings.showCalendarWeekends = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Calendar month view: show weekends").setDesc("Show Saturday and Sunday columns in Calendar month mode.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
+        this.plugin.settings.showCalendarMonthWeekends = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Calendar: show in-process tasks").setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
+        this.plugin.settings.showCalendarInProcessTasks = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Calendar list: show full month").setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
+        this.plugin.settings.calendarListShowFullMonth = value;
+        await this.plugin.saveSettings();
+        await this.plugin.refreshTasks();
       })
     );
   }

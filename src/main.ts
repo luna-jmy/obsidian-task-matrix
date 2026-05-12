@@ -2215,15 +2215,6 @@ class TaskEditModal extends Modal {
     prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
 
-    // Due Date
-    const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dueRow.createEl("label", { text: "Due Date" });
-    const dueInput = dueRow.createEl("input", {
-      type: "date",
-      cls: "task-matrix-date-input",
-      value: dueDate,
-    });
-
     // Start Date
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
     startRow.createEl("label", { text: "Start Date" });
@@ -2231,6 +2222,15 @@ class TaskEditModal extends Modal {
       type: "date",
       cls: "task-matrix-date-input",
       value: startDate,
+    });
+
+    // Due Date
+    const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
+    dueRow.createEl("label", { text: "Due Date" });
+    const dueInput = dueRow.createEl("input", {
+      type: "date",
+      cls: "task-matrix-date-input",
+      value: dueDate,
     });
 
     // Task ID with auto-generate button
@@ -2289,10 +2289,10 @@ class TaskEditModal extends Modal {
         const updates = {
           description: descInput.getValue(),
           priority: prioritySelect.getValue() as ParsedTask["priority"],
-          dueDate: dueInput.value || undefined,
-          startDate: startInput.value || undefined,
-          taskId: idInput.getValue() || undefined,
-          dependsOn: dependsSelect.getValue() || undefined,
+          dueDate: dueInput.value,
+          startDate: startInput.value,
+          taskId: idInput.getValue(),
+          dependsOn: dependsSelect.getValue(),
         };
 
         // Check for date conflict
@@ -2552,6 +2552,8 @@ class TaskEditModal extends Modal {
       if (updates.startDate) line += ` 🛫 ${updates.startDate}`;
     }
 
+    // Update created date
+
     // Update created date - make date optional in regex to handle orphaned emojis
     if (updates.createdDate !== undefined) {
       line = line.replace(/\s*➕(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
@@ -2783,65 +2785,6 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName("Calendar week view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in Calendar week mode.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
-          this.plugin.settings.showCalendarWeekends = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Calendar: first day of week")
-      .setDesc("Choose whether Calendar weeks start on Monday or Sunday.")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("monday", "Monday")
-          .addOption("sunday", "Sunday")
-          .setValue(this.plugin.settings.calendarFirstDayOfWeek)
-          .onChange(async (value) => {
-            this.plugin.settings.calendarFirstDayOfWeek = value as "monday" | "sunday";
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Calendar month view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in Calendar month mode.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
-          this.plugin.settings.showCalendarMonthWeekends = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Calendar list: show full month")
-      .setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
-          this.plugin.settings.calendarListShowFullMonth = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Calendar: show in-process tasks")
-      .setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
-          this.plugin.settings.showCalendarInProcessTasks = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
-        }),
-      );
-
     containerEl.createEl("h3", { text: "New Task Settings" });
 
     new Setting(containerEl)
@@ -2894,6 +2837,67 @@ class TaskMatrixSettingTab extends PluginSettingTab {
             this.plugin.settings.listGroupByFolderDepth = value;
             await this.plugin.saveSettings();
           }),
+      );
+
+    containerEl.createEl("h3", { text: "Calendar View Settings" });
+
+    new Setting(containerEl)
+      .setName("Calendar: first day of week")
+      .setDesc("Choose whether Calendar weeks start on Monday or Sunday.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("monday", "Monday")
+          .addOption("sunday", "Sunday")
+          .setValue(this.plugin.settings.calendarFirstDayOfWeek)
+          .onChange(async (value) => {
+            this.plugin.settings.calendarFirstDayOfWeek = value as "monday" | "sunday";
+            await this.plugin.saveSettings();
+            await this.plugin.refreshTasks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Calendar week view: show weekends")
+      .setDesc("Show Saturday and Sunday columns in Calendar week mode.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
+          this.plugin.settings.showCalendarWeekends = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshTasks();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Calendar month view: show weekends")
+      .setDesc("Show Saturday and Sunday columns in Calendar month mode.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
+          this.plugin.settings.showCalendarMonthWeekends = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshTasks();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Calendar: show in-process tasks")
+      .setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
+          this.plugin.settings.showCalendarInProcessTasks = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshTasks();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Calendar list: show full month")
+      .setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
+          this.plugin.settings.calendarListShowFullMonth = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshTasks();
+        }),
       );
   }
 }
