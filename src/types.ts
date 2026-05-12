@@ -43,7 +43,7 @@ export interface ParsedTask {
   quadrant: EisenhowerQuadrant;
 }
 
-export type CheckboxStatus = " " | "/" | "-" | "x" | string;
+export type CheckboxStatus = string;
 
 export interface TaskMatrixSettings {
   scanFolders: string[];

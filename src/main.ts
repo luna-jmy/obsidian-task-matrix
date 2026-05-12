@@ -9,13 +9,12 @@ import {
   WorkspaceLeaf,
   Modal,
   TextComponent,
-  ToggleComponent,
   DropdownComponent,
   ButtonComponent,
   MarkdownRenderer,
 } from "obsidian";
 import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode, Priority } from "./types";
-import { parseTaskLine, sortTasks, computeGtdState, computeQuadrant, generateShortId } from "./task-parser";
+import { parseTaskLine, sortTasks, computeGtdState, generateShortId } from "./task-parser";
 
 const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
 const ICONS = {
@@ -24,6 +23,22 @@ const ICONS = {
   gtd: "GTD",
   eisenhower: "Matrix",
   calendar: "Calendar",
+};
+
+type DateFilterOperator =
+  | "any"
+  | "not-on"
+  | "on"
+  | "before"
+  | "on-or-before"
+  | "after"
+  | "on-or-after"
+  | "is-empty"
+  | "is-not-empty";
+
+type DateFilterConfig = {
+  operator: DateFilterOperator;
+  value: string;
 };
 
 export default class TaskMatrixPlugin extends Plugin {
@@ -40,23 +55,23 @@ export default class TaskMatrixPlugin extends Plugin {
       (leaf) => new TaskMatrixView(leaf, this),
     );
 
-    this.addRibbonIcon("kanban-square", "Open Task Matrix", async () => {
-      await this.activateView();
+    this.addRibbonIcon("kanban-square", "Open task matrix", () => {
+      void this.activateView();
     });
 
     this.addCommand({
-      id: "open-task-matrix",
-      name: "Open task matrix",
-      callback: async () => {
-        await this.activateView();
+      id: "open-view",
+      name: "Open view",
+      callback: () => {
+        void this.activateView();
       },
     });
 
     this.addCommand({
-      id: "refresh-task-matrix",
-      name: "Refresh task matrix",
-      callback: async () => {
-        await this.refreshTasks(true);
+      id: "refresh-view",
+      name: "Refresh view",
+      callback: () => {
+        void this.refreshTasks(true);
       },
     });
 
@@ -67,17 +82,14 @@ export default class TaskMatrixPlugin extends Plugin {
 
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
 
-    // Add CSS
-    this.addStyles();
   }
 
   onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TASK_MATRIX);
-    this.removeStyles();
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    const savedSettings = (await this.loadData()) as Partial<TaskMatrixSettings> | null;
+    this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings ?? {}) };
   }
 
   async saveSettings(): Promise<void> {
@@ -100,7 +112,7 @@ export default class TaskMatrixPlugin extends Plugin {
     }
 
     if (leaf) {
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
     }
   }
 
@@ -119,7 +131,7 @@ export default class TaskMatrixPlugin extends Plugin {
     this.tasks = await this.collectTasks();
     await this.refreshOpenViews();
     if (showNotice) {
-      new Notice(`Task Matrix refreshed: ${this.tasks.length} tasks`);
+      new Notice(`Task matrix refreshed: ${this.tasks.length} tasks`);
     }
   }
 
@@ -368,7 +380,7 @@ export default class TaskMatrixPlugin extends Plugin {
   async moveTaskToGTDState(task: ParsedTask, newState: ParsedTask["gtdState"]): Promise<void> {
     // Determine what changes are needed for this GTD state transition
     const today = new Date().toISOString().slice(0, 10);
-    let updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
+    const updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
     let tagToAdd = "";
     let removeTags: string[] = [];
     let shouldComplete = false;
@@ -410,7 +422,8 @@ export default class TaskMatrixPlugin extends Plugin {
         this.app,
         effectiveStartDate!,
         effectiveDueDate!,
-        async (result) => {
+        (result) => {
+          void (async () => {
           if (result.adjustDueDate) {
             updates.dueDate = today;
             new Notice("Due date adjusted to today");
@@ -422,6 +435,7 @@ export default class TaskMatrixPlugin extends Plugin {
             return;
           }
           await this.applyGtdStateChanges(task, newState, updates, tagToAdd, removeTags, shouldComplete, result.addConflictTag);
+          })();
         }
       ).open();
       return;
@@ -522,7 +536,6 @@ export default class TaskMatrixPlugin extends Plugin {
     // Update priority and due date based on quadrant
     let priorityMarker = "";
     let shouldAddDueDate = false;
-    let shouldClearDueDate = false;
 
     switch (newQuadrant) {
       case "Q1":
@@ -531,7 +544,6 @@ export default class TaskMatrixPlugin extends Plugin {
         break;
       case "Q2":
         priorityMarker = "🔼"; // High priority
-        shouldClearDueDate = true;
         break;
       case "Q3":
         priorityMarker = "🔽"; // Low priority
@@ -539,7 +551,6 @@ export default class TaskMatrixPlugin extends Plugin {
         break;
       case "Q4":
         priorityMarker = "⏬"; // Lowest priority
-        shouldClearDueDate = true;
         break;
     }
 
@@ -566,616 +577,6 @@ export default class TaskMatrixPlugin extends Plugin {
     new Notice(`Moved to ${newQuadrant}`);
   }
 
-  private addStyles(): void {
-    const styleEl = document.createElement("style");
-    styleEl.id = "task-matrix-styles";
-    styleEl.textContent = `
-      .task-matrix-view {
-        padding: 16px;
-        height: 100%;
-        overflow: auto;
-      }
-      .task-matrix-shell {
-        max-width: 1400px;
-        margin: 0 auto;
-      }
-      .task-matrix-header {
-        margin-bottom: 16px;
-      }
-      .task-matrix-title-block {
-        margin-bottom: 12px;
-      }
-      .task-matrix-kicker {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-      }
-      .task-matrix-title {
-        font-size: 24px;
-        font-weight: 600;
-        margin: 0 0 4px 0;
-      }
-      .task-matrix-subtitle {
-        font-size: 13px;
-        color: var(--text-muted);
-        margin: 0;
-      }
-      .task-matrix-toolbar {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-        padding: 12px;
-        background: var(--background-secondary);
-        border-radius: 8px;
-      }
-      .task-matrix-search {
-        flex: 1;
-        min-width: 200px;
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        background: var(--background-primary);
-        color: var(--text-normal);
-      }
-      .task-matrix-segmented {
-        display: flex;
-        gap: 4px;
-      }
-      .task-matrix-mode-button {
-        padding: 6px 12px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .task-matrix-mode-button.is-active {
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-      }
-      .task-matrix-refresh {
-        padding: 6px 10px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      .task-matrix-empty {
-        text-align: center;
-        padding: 48px;
-        color: var(--text-muted);
-      }
-      .task-matrix-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-matrix-board {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
-      }
-      .task-matrix-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16px;
-      }
-      .task-calendar {
-        background: var(--background-secondary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 8px;
-        padding: 12px;
-      }
-      .task-calendar-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 10px;
-        flex-wrap: wrap;
-      }
-      .task-calendar-segmented {
-        display: flex;
-        gap: 4px;
-      }
-      .task-calendar-mode-btn,
-      .task-calendar-nav-btn {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        padding: 4px 8px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .task-calendar-mode-btn.active {
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-      }
-      .task-calendar-nav {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .task-calendar-summary-wrap {
-        position: relative;
-      }
-      .task-calendar-summary-popup {
-        position: absolute;
-        right: 0;
-        top: calc(100% + 6px);
-        z-index: 15;
-        min-width: 180px;
-        background: var(--background-primary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 8px;
-        padding: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-      }
-      .task-calendar-summary-popup[hidden] {
-        display: none;
-      }
-      .task-calendar-summary-popup ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .task-calendar-summary-popup li {
-        font-size: 12px;
-        color: var(--text-normal);
-      }
-      .task-calendar-title {
-        min-width: 130px;
-        text-align: center;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .task-calendar-month {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .task-calendar-heads,
-      .task-calendar-month-grid {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 6px;
-      }
-      .task-calendar-head {
-        font-size: 11px;
-        color: var(--text-muted);
-        text-align: center;
-      }
-      .task-calendar-head.weekend {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-day {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        border-radius: 6px;
-        min-height: 110px;
-        padding: 6px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .task-calendar-day.weekend-day {
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-day.weekend-day .task-calendar-date {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-day.outside {
-        opacity: 0.45;
-      }
-      .task-calendar-day.today {
-        border: 2px solid var(--interactive-accent);
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-day.weekend-day.today {
-        background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-      }
-      .task-calendar-day.today .task-calendar-date {
-        color: var(--interactive-accent);
-      }
-      .task-calendar-date {
-        font-size: 11px;
-        font-weight: 600;
-      }
-      .task-calendar-items {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-      }
-      .task-calendar-item {
-        display: block;
-        padding: 2px 4px;
-        border-radius: 4px;
-        font-size: 10px;
-        line-height: 1.35;
-        color: var(--text-normal);
-        background: var(--background-secondary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .task-calendar-item.type-due { border-left: 2px solid #f59e0b; }
-      .task-calendar-item.type-start { border-left: 2px solid #3b82f6; }
-      .task-calendar-item.type-scheduled { border-left: 2px solid #8b5cf6; }
-      .task-calendar-item.type-done { border-left: 2px solid #22c55e; }
-      .task-calendar-item.type-overdue { border-left: 2px solid #ef4444; }
-      .task-calendar-item.type-process { border-left: 2px solid #0ea5e9; }
-      .task-calendar-week {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-        gap: 8px;
-        overflow-x: auto;
-      }
-      .task-calendar-week-split {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-calendar-week-main {
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-      }
-      .task-calendar-week-compact {
-        grid-template-columns: repeat(5, minmax(160px, 1fr));
-      }
-      .task-calendar-weekend {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(160px, 1fr));
-        gap: 8px;
-      }
-      .task-calendar-day.week-day {
-        min-height: 180px;
-      }
-      .task-calendar-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .task-calendar-list-day {
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        overflow: hidden;
-        background: var(--background-primary);
-      }
-      .task-calendar-list-day.today {
-        border-color: var(--interactive-accent);
-        background: var(--background-modifier-active-hover);
-      }
-      .task-calendar-list-day.today > summary {
-        color: var(--interactive-accent);
-        font-weight: 700;
-      }
-      .task-calendar-list-day > summary {
-        cursor: pointer;
-        list-style: none;
-        padding: 8px 10px;
-        font-size: 12px;
-        color: var(--text-muted);
-        border-bottom: 1px solid var(--background-modifier-border);
-      }
-      .task-calendar-list-content {
-        padding: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      @media (max-width: 800px) {
-        .task-matrix-grid {
-          grid-template-columns: 1fr;
-        }
-        .task-calendar-heads,
-        .task-calendar-month-grid,
-        .task-calendar-week {
-          grid-template-columns: 1fr;
-        }
-        .task-calendar-week-main,
-        .task-calendar-week-compact,
-        .task-calendar-weekend {
-          grid-template-columns: 1fr;
-        }
-        .task-calendar-day {
-          min-height: auto;
-        }
-      }
-      .task-matrix-column, .task-matrix-cell {
-        background: var(--background-secondary);
-        border-radius: 8px;
-        padding: 12px;
-        min-height: 200px;
-      }
-      .task-matrix-column-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--background-modifier-border);
-      }
-      .task-matrix-column-header h3 {
-        font-size: 14px;
-        margin: 0;
-        font-weight: 600;
-      }
-      .task-matrix-count {
-        background: var(--background-modifier-border);
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-      }
-      .task-matrix-header-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .task-matrix-add-btn {
-        width: 24px;
-        height: 24px;
-        border: none;
-        border-radius: 50%;
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-        font-size: 16px;
-        line-height: 1;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: opacity 0.2s;
-      }
-      .task-matrix-add-btn:hover {
-        opacity: 0.8;
-      }
-      .task-matrix-card {
-        background: var(--background-primary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 6px;
-        padding: 10px;
-        margin-bottom: 8px;
-        cursor: pointer;
-        transition: box-shadow 0.2s;
-        position: relative;
-      }
-      .task-matrix-card:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      }
-      .task-matrix-card.dragging {
-        opacity: 0.5;
-      }
-      .task-matrix-card-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
-      .task-matrix-card-title {
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.4;
-        flex: 1;
-      }
-      .task-matrix-badge {
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        white-space: nowrap;
-      }
-      .task-matrix-badge.status-open {
-        background: var(--background-modifier-border);
-        color: var(--text-muted);
-      }
-      .task-matrix-badge.status-completed {
-        background: #22c55e;
-        color: white;
-      }
-      .task-matrix-badge.status-cancelled {
-        background: #ef4444;
-        color: white;
-      }
-      .task-matrix-badge.status-in-progress {
-        background: #3b82f6;
-        color: white;
-      }
-      .task-matrix-badge.status-to-be-started {
-        background: #8b5cf6;
-        color: white;
-      }
-      .task-matrix-badge.status-overdue {
-        background: #dc2626;
-        color: white;
-      }
-      /* Eisenhower Quadrant Colors */
-      .task-matrix-cell[data-quadrant="Q1"] .task-matrix-column-header h3 {
-        color: #dc2626;
-        border-left: 3px solid #dc2626;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q2"] .task-matrix-column-header h3 {
-        color: #059669;
-        border-left: 3px solid #059669;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q3"] .task-matrix-column-header h3 {
-        color: #d97706;
-        border-left: 3px solid #d97706;
-        padding-left: 8px;
-      }
-      .task-matrix-cell[data-quadrant="Q4"] .task-matrix-column-header h3 {
-        color: #6b7280;
-        border-left: 3px solid #6b7280;
-        padding-left: 8px;
-      }
-      .task-matrix-chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-bottom: 6px;
-      }
-      .task-matrix-chip {
-        font-size: 10px;
-        padding: 2px 6px;
-        background: var(--background-secondary);
-        border-radius: 4px;
-        color: var(--text-muted);
-      }
-      .task-matrix-chip.warning {
-        background: #fef3c7;
-        color: #92400e;
-      }
-      .task-matrix-chip.conflict {
-        background: #fee2e2;
-        color: #dc2626;
-        font-weight: 600;
-        border: 1px solid #fecaca;
-      }
-      .task-matrix-card-meta {
-        font-size: 11px;
-        color: var(--text-muted);
-      }
-      .task-matrix-card-actions {
-        display: flex;
-        gap: 4px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--background-modifier-border);
-      }
-      .task-matrix-action-btn {
-        font-size: 11px;
-        padding: 2px 6px;
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-secondary);
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      .task-matrix-action-btn:hover {
-        background: var(--background-modifier-hover);
-      }
-      .task-matrix-action-btn.quadrant-move {
-        min-width: 24px;
-        text-align: center;
-        font-weight: 600;
-        padding: 2px 4px;
-      }
-      .task-matrix-action-separator {
-        font-size: 12px;
-        color: var(--text-muted);
-        align-self: center;
-        margin: 0 2px 0 4px;
-      }
-      .task-matrix-action-label {
-        font-size: 11px;
-        color: var(--text-muted);
-        align-self: center;
-        margin-right: 2px;
-      }
-      .task-matrix-drag-over {
-        background: var(--background-modifier-hover) !important;
-        border: 2px dashed var(--interactive-accent);
-      }
-      .task-matrix-card.blocked {
-        opacity: 0.7;
-        border-left: 3px solid #ef4444;
-      }
-      .task-matrix-modal {
-        padding: 20px;
-      }
-      .task-matrix-modal h2 {
-        margin-top: 0;
-      }
-      .task-matrix-form-row {
-        margin-bottom: 16px;
-      }
-      .task-matrix-form-row label {
-        display: block;
-        font-size: 12px;
-        font-weight: 600;
-        margin-bottom: 4px;
-        color: var(--text-muted);
-      }
-      .task-matrix-form-row input,
-      .task-matrix-form-row select,
-      .task-matrix-form-row textarea {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 4px;
-        background: var(--background-primary);
-        color: var(--text-normal);
-        min-height: 36px;
-        line-height: 1.4;
-      }
-      .task-matrix-form-row select {
-        height: 36px;
-        padding: 6px 8px;
-      }
-      .task-matrix-form-row input[type="date"] {
-        font-family: inherit;
-        cursor: pointer;
-      }
-      .task-matrix-form-row input[type="date"]::-webkit-calendar-picker-indicator {
-        filter: var(--calendar-picker-filter, none);
-        cursor: pointer;
-      }
-      .task-matrix-form-row textarea {
-        min-height: 80px;
-        resize: vertical;
-      }
-      .task-matrix-input-row {
-        display: flex;
-        align-items: center;
-      }
-      .task-matrix-modal-buttons {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-        margin-top: 20px;
-      }
-      .task-matrix-folder-group {
-        margin-bottom: 16px;
-      }
-      .task-matrix-folder-header {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text-muted);
-        padding: 8px 12px;
-        background: var(--background-secondary);
-        border-radius: 6px 6px 0 0;
-        margin: 0 0 4px 0;
-        border-bottom: 1px solid var(--background-modifier-border);
-      }
-      .task-matrix-folder-header.task-matrix-folder-toggle {
-        width: 100%;
-        text-align: left;
-        border: 1px solid var(--background-modifier-border);
-        cursor: pointer;
-      }
-      .task-matrix-folder-header.task-matrix-folder-toggle:hover {
-        background: var(--background-modifier-hover);
-      }
-      .task-matrix-folder-content.is-collapsed {
-        display: none;
-      }
-    `;
-    document.head.appendChild(styleEl);
-  }
-
-  private removeStyles(): void {
-    const styleEl = document.getElementById("task-matrix-styles");
-    if (styleEl) {
-      styleEl.remove();
-    }
-  }
 }
 
 class TaskMatrixView extends ItemView {
@@ -1184,6 +585,10 @@ class TaskMatrixView extends ItemView {
   private calendarDate = new Date();
   private calendarSummaryOpen = false;
   private searchQuery = "";
+  private dateFiltersOpen = false;
+  private startDateFilter: DateFilterConfig = { operator: "any", value: "" };
+  private dueDateFilter: DateFilterConfig = { operator: "any", value: "" };
+  private collapsedMatrixQuadrants = new Set<ParsedTask["quadrant"]>();
   private collapsedFolderGroups = new Set<string>();
   private shellEl: HTMLElement | null = null;
   private bodyEl: HTMLElement | null = null;
@@ -1200,7 +605,7 @@ class TaskMatrixView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Task Matrix";
+    return "Task matrix";
   }
 
   getIcon(): string {
@@ -1211,11 +616,12 @@ class TaskMatrixView extends ItemView {
     await this.render();
   }
 
-  async onClose(): Promise<void> {
+  onClose(): Promise<void> {
     if (this.searchDebounceTimer) {
       window.clearTimeout(this.searchDebounceTimer);
     }
     this.contentEl.empty();
+    return Promise.resolve();
   }
 
   async render(): Promise<void> {
@@ -1248,16 +654,68 @@ class TaskMatrixView extends ItemView {
     const query = this.searchQuery.trim().toLowerCase();
     if (!query) return this.plugin.tasks;
     return this.plugin.tasks.filter((task) => {
-      return [task.description, task.filePath, task.taskId, task.dependsOn]
+      const matchesQuery = [task.description, task.filePath, task.taskId, task.dependsOn]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
+      return matchesQuery;
     });
+  }
+
+  private get visibleTasks(): ParsedTask[] {
+    return this.filteredTasks.filter((task) => {
+      return this.matchesDateFilter(task.startDate, this.startDateFilter)
+        && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
+    });
+  }
+
+  private matchesDateFilter(dateValue: string | undefined, filter: DateFilterConfig): boolean {
+    switch (filter.operator) {
+      case "any":
+        return true;
+      case "is-empty":
+        return !dateValue;
+      case "is-not-empty":
+        return Boolean(dateValue);
+      default:
+        if (!dateValue || !filter.value) return true;
+        switch (filter.operator) {
+          case "not-on":
+            return dateValue !== filter.value;
+          case "on":
+            return dateValue === filter.value;
+          case "before":
+            return dateValue < filter.value;
+          case "on-or-before":
+            return dateValue <= filter.value;
+          case "after":
+            return dateValue > filter.value;
+          case "on-or-after":
+            return dateValue >= filter.value;
+          default:
+            return true;
+        }
+    }
+  }
+
+  private usesDateValue(operator: DateFilterOperator): boolean {
+    return !["any", "is-empty", "is-not-empty"].includes(operator);
+  }
+
+  private isMobileLayout(): boolean {
+    return window.matchMedia("(max-width: 800px)").matches;
+  }
+
+  private getActiveDateFilterCount(): number {
+    let count = 0;
+    if (this.startDateFilter.operator !== "any") count++;
+    if (this.dueDateFilter.operator !== "any") count++;
+    return count;
   }
 
   private renderHeader(parent: HTMLElement): void {
     const header = parent.createDiv({ cls: "task-matrix-header" });
     const titleBlock = header.createDiv({ cls: "task-matrix-title-block" });
-    titleBlock.createEl("div", { text: "Obsidian Task Matrix", cls: "task-matrix-kicker" });
+    titleBlock.createEl("div", { text: "Obsidian task matrix", cls: "task-matrix-kicker" });
     titleBlock.createEl("h2", { text: "Vault task dashboards", cls: "task-matrix-title" });
     titleBlock.createEl("p", {
       text: `${this.plugin.tasks.length} tasks across ${new Set(this.plugin.tasks.map((task) => task.filePath)).size} files`,
@@ -1278,8 +736,105 @@ class TaskMatrixView extends ItemView {
         window.clearTimeout(this.searchDebounceTimer);
       }
       this.searchDebounceTimer = window.setTimeout(() => {
-        this.refreshBody();
+        void this.refreshBody();
       }, 150);
+    });
+
+    const filterWrap = toolbar.createDiv({ cls: "task-matrix-filter-wrap" });
+    const activeDateFilterCount = this.getActiveDateFilterCount();
+    const filterButton = filterWrap.createEl("button", {
+      text: activeDateFilterCount > 0 ? `Date filters (${activeDateFilterCount})` : "Date filters",
+      cls: `task-matrix-filter-btn${activeDateFilterCount > 0 ? " is-active" : ""}`,
+    });
+    const updateFilterButtonState = (): void => {
+      const count = this.getActiveDateFilterCount();
+      filterButton.setText(count > 0 ? `Date filters (${count})` : "Date filters");
+      filterButton.toggleClass("is-active", count > 0);
+    };
+    filterButton.addEventListener("click", () => {
+      this.dateFiltersOpen = !this.dateFiltersOpen;
+      if (this.dateFiltersOpen) {
+        filterPanel.removeAttribute("hidden");
+      } else {
+        filterPanel.setAttribute("hidden", "hidden");
+      }
+    });
+
+    const filterPanel = filterWrap.createDiv({ cls: "task-matrix-filter-panel" });
+    if (!this.dateFiltersOpen) {
+      filterPanel.setAttribute("hidden", "hidden");
+    }
+    const filterGroup = filterPanel.createDiv({ cls: "task-matrix-filter-group" });
+
+    const renderDateFilterRow = (
+      label: string,
+      filter: DateFilterConfig,
+      onChange: (next: DateFilterConfig) => void
+    ): void => {
+      const row = filterGroup.createDiv({ cls: "task-matrix-filter-row" });
+      row.createEl("label", { text: label });
+
+      const selectEl = row.createEl("select");
+      const options: Array<{ value: DateFilterOperator; label: string }> = [
+        { value: "any", label: "Any" },
+        { value: "not-on", label: "Not on" },
+        { value: "on", label: "On" },
+        { value: "before", label: "Before" },
+        { value: "on-or-before", label: "On or before" },
+        { value: "after", label: "After" },
+        { value: "on-or-after", label: "On or after" },
+        { value: "is-empty", label: "Is empty" },
+        { value: "is-not-empty", label: "Is not empty" },
+      ];
+      for (const option of options) {
+        selectEl.createEl("option", { value: option.value, text: option.label });
+      }
+      selectEl.value = filter.operator;
+
+      const dateInput = row.createEl("input", { type: "date" });
+      dateInput.value = filter.value;
+      const syncDateInputState = (): void => {
+        const needsDate = this.usesDateValue(selectEl.value as DateFilterOperator);
+        dateInput.disabled = !needsDate;
+        if (!needsDate) {
+          dateInput.value = "";
+        }
+      };
+      syncDateInputState();
+
+      const updateFilter = (): void => {
+        const operator = selectEl.value as DateFilterOperator;
+        const value = this.usesDateValue(operator) ? dateInput.value : "";
+        onChange({ operator, value });
+        updateFilterButtonState();
+        void this.refreshBody();
+      };
+
+      selectEl.addEventListener("change", () => {
+        syncDateInputState();
+        updateFilter();
+      });
+      dateInput.addEventListener("change", updateFilter);
+    };
+
+    renderDateFilterRow("Start date", this.startDateFilter, (next) => {
+      this.startDateFilter = next;
+    });
+    renderDateFilterRow("Due date", this.dueDateFilter, (next) => {
+      this.dueDateFilter = next;
+    });
+
+    const filterActions = filterPanel.createDiv({ cls: "task-matrix-filter-actions" });
+    const clearButton = filterActions.createEl("button", {
+      text: "Clear filters",
+      cls: "task-matrix-filter-clear",
+    });
+    clearButton.addEventListener("click", () => {
+      this.startDateFilter = { operator: "any", value: "" };
+      this.dueDateFilter = { operator: "any", value: "" };
+      this.dateFiltersOpen = false;
+      updateFilterButtonState();
+      void this.render();
     });
 
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
@@ -1293,8 +848,8 @@ class TaskMatrixView extends ItemView {
       cls: "task-matrix-refresh",
     });
     refreshButton.title = "Refresh task index";
-    refreshButton.addEventListener("click", async () => {
-      await this.plugin.refreshTasks(true);
+    refreshButton.addEventListener("click", () => {
+      void this.plugin.refreshTasks(true);
     });
   }
 
@@ -1303,20 +858,20 @@ class TaskMatrixView extends ItemView {
       text: label,
       cls: `task-matrix-mode-button${this.currentView === mode ? " is-active" : ""}`,
     });
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       this.currentView = mode;
-      await this.render();
+      void this.render();
     });
   }
 
   private async renderBodyContent(parent: HTMLElement): Promise<void> {
-    const tasks = this.filteredTasks;
+    const tasks = this.visibleTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
       empty.createEl("h3", { text: "No tasks found" });
       empty.createEl("p", {
-        text: this.searchQuery
-          ? "The current search did not match any tasks."
+        text: this.searchQuery || this.getActiveDateFilterCount() > 0
+          ? "The current search or date filters did not match any tasks."
           : "Create markdown tasks in your vault, then refresh this view.",
       });
       return;
@@ -1346,8 +901,31 @@ class TaskMatrixView extends ItemView {
     if (this.plugin.settings.listGroupByFolder) {
       // Group tasks by folder
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
+      const groupEntries = Object.entries(grouped);
+      const listToolbar = wrap.createDiv({ cls: "task-matrix-list-toolbar" });
+      const toggleAllButton = listToolbar.createEl("button", { cls: "task-matrix-list-toggle-all" });
+      const updateToggleAllButton = (): void => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
+      };
+      updateToggleAllButton();
+      toggleAllButton.addEventListener("click", () => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        if (allCollapsed) {
+          this.collapsedFolderGroups.clear();
+        } else {
+          this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
+        }
+        void this.refreshBody();
+      });
 
-      for (const [folderPath, folderTasks] of Object.entries(grouped)) {
+      for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
         const groupKey = folderPath || "Root";
         const toggle = groupEl.createEl("button", {
@@ -1372,6 +950,7 @@ class TaskMatrixView extends ItemView {
             this.collapsedFolderGroups.add(groupKey);
           }
           renderToggleLabel();
+          updateToggleAllButton();
         });
 
         for (const task of folderTasks) {
@@ -1380,8 +959,11 @@ class TaskMatrixView extends ItemView {
       }
     } else {
       // Flat list
+      const flatGroup = wrap.createDiv({ cls: "task-matrix-folder-group" });
+      flatGroup.createDiv({ cls: "task-matrix-folder-header", text: `All tasks (${tasks.length})` });
+      const flatContent = flatGroup.createDiv({ cls: "task-matrix-folder-content" });
       for (const task of tasks) {
-        await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+        await this.createTaskCard(flatContent, task, `${task.filePath}:${task.lineNumber}`);
       }
     }
   }
@@ -1439,13 +1021,13 @@ class TaskMatrixView extends ItemView {
     const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = simpleFlow
       ? [
           { title: "Inbox", state: "Inbox" },
-          { title: "In Progress", state: "In Progress" },
+          { title: "In progress", state: "In Progress" },
           { title: "Waiting", state: "Waiting" },
         ]
       : [
           { title: "Inbox", state: "Inbox" },
-          { title: "To be Started", state: "To be Started" },
-          { title: "In Progress", state: "In Progress" },
+          { title: "To be started", state: "To be Started" },
+          { title: "In progress", state: "In Progress" },
           { title: "Waiting", state: "Waiting" },
           { title: "Overdue", state: "Overdue" },
           { title: "Done", state: "Done" },
@@ -1463,14 +1045,14 @@ class TaskMatrixView extends ItemView {
       columnEl.addEventListener("dragleave", () => {
         columnEl.removeClass("task-matrix-drag-over");
       });
-      columnEl.addEventListener("drop", async (e) => {
+      columnEl.addEventListener("drop", (e) => {
         e.preventDefault();
         columnEl.removeClass("task-matrix-drag-over");
         const taskId = e.dataTransfer?.getData("text/task-id");
         if (taskId) {
           const task = this.plugin.tasks.find((t) => t.id === taskId);
           if (task) {
-            await this.plugin.moveTaskToGTDState(task, column.state);
+            void this.plugin.moveTaskToGTDState(task, column.state);
           }
         }
       });
@@ -1512,9 +1094,9 @@ class TaskMatrixView extends ItemView {
     const listBtn = modes.createEl("button", { text: "List", cls: `task-calendar-mode-btn${this.calendarMode === "list" ? " active" : ""}` });
     const monthBtn = modes.createEl("button", { text: "Month", cls: `task-calendar-mode-btn${this.calendarMode === "month" ? " active" : ""}` });
     const weekBtn = modes.createEl("button", { text: "Week", cls: `task-calendar-mode-btn${this.calendarMode === "week" ? " active" : ""}` });
-    listBtn.addEventListener("click", async () => { this.calendarMode = "list"; await this.render(); });
-    monthBtn.addEventListener("click", async () => { this.calendarMode = "month"; await this.render(); });
-    weekBtn.addEventListener("click", async () => { this.calendarMode = "week"; await this.render(); });
+    listBtn.addEventListener("click", () => { this.calendarMode = "list"; void this.render(); });
+    monthBtn.addEventListener("click", () => { this.calendarMode = "month"; void this.render(); });
+    weekBtn.addEventListener("click", () => { this.calendarMode = "week"; void this.render(); });
 
     const nav = toolbar.createDiv({ cls: "task-calendar-nav" });
     const prevBtn = nav.createEl("button", { text: "←", cls: "task-calendar-nav-btn" });
@@ -1539,7 +1121,7 @@ class TaskMatrixView extends ItemView {
     summaryList.createEl("li", { text: `Start: ${summary.start}` });
     summaryList.createEl("li", { text: `Scheduled: ${summary.scheduled}` });
     summaryList.createEl("li", { text: `Recurrence: ${summary.recurrence}` });
-    summaryList.createEl("li", { text: `Daily Notes: ${summary.dailyNotes}` });
+    summaryList.createEl("li", { text: `Daily notes: ${summary.dailyNotes}` });
 
     const shiftCalendar = async (delta: number): Promise<void> => {
       const next = new Date(this.calendarDate);
@@ -1551,9 +1133,9 @@ class TaskMatrixView extends ItemView {
       this.calendarDate = next;
       await this.render();
     };
-    prevBtn.addEventListener("click", async () => shiftCalendar(-1));
-    nextBtn.addEventListener("click", async () => shiftCalendar(1));
-    todayBtn.addEventListener("click", async () => { this.calendarDate = new Date(); await this.render(); });
+    prevBtn.addEventListener("click", () => { void shiftCalendar(-1); });
+    nextBtn.addEventListener("click", () => { void shiftCalendar(1); });
+    todayBtn.addEventListener("click", () => { this.calendarDate = new Date(); void this.render(); });
     summaryBtn.addEventListener("click", () => {
       this.calendarSummaryOpen = !this.calendarSummaryOpen;
       if (this.calendarSummaryOpen) {
@@ -1565,16 +1147,16 @@ class TaskMatrixView extends ItemView {
 
     if (this.calendarMode === "month") {
       titleEl.setText(this.formatCalendarTitle(this.calendarDate, "month"));
-      await this.renderCalendarMonth(wrap, allItems, todayIso);
+      this.renderCalendarMonth(wrap, allItems, todayIso);
       return;
     }
     if (this.calendarMode === "week") {
       titleEl.setText(this.formatCalendarTitle(this.calendarDate, "week"));
-      await this.renderCalendarWeek(wrap, allItems, todayIso);
+      this.renderCalendarWeek(wrap, allItems, todayIso);
       return;
     }
     titleEl.setText(this.formatCalendarTitle(this.calendarDate, "list"));
-    await this.renderCalendarList(wrap, allItems, todayIso);
+    this.renderCalendarList(wrap, allItems, todayIso);
   }
 
   private formatCalendarTitle(date: Date, mode: "month" | "week" | "list"): string {
@@ -1732,11 +1314,11 @@ class TaskMatrixView extends ItemView {
     return byDate;
   }
 
-  private async renderCalendarMonth(
+  private renderCalendarMonth(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const showWeekends = this.plugin.settings.showCalendarMonthWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const visibleWeekdays = showWeekends
@@ -1744,13 +1326,17 @@ class TaskMatrixView extends ItemView {
       : weekdayOrder.filter((weekday) => weekday !== 0 && weekday !== 6);
     const monthWrap = parent.createDiv({ cls: "task-calendar-month" });
     const heads = monthWrap.createDiv({ cls: "task-calendar-heads" });
-    heads.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
+    if (visibleWeekdays.length === 5) {
+      heads.addClass("is-workweek");
+    }
     for (const weekday of visibleWeekdays) {
       const head = heads.createEl("div", { text: this.getWeekdayLabel(weekday), cls: "task-calendar-head" });
       if (weekday === 0 || weekday === 6) head.addClass("weekend");
     }
     const grid = monthWrap.createDiv({ cls: "task-calendar-month-grid" });
-    grid.style.gridTemplateColumns = `repeat(${visibleWeekdays.length}, minmax(0, 1fr))`;
+    if (visibleWeekdays.length === 5) {
+      grid.addClass("is-workweek");
+    }
 
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
@@ -1771,7 +1357,7 @@ class TaskMatrixView extends ItemView {
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       const dayItems = itemsByDate[isoDate] ?? [];
       for (const entry of dayItems.slice(0, 4)) {
-        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+        this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
       if (dayItems.length > 4) {
         itemsEl.createEl("span", { text: `+${dayItems.length - 4} more`, cls: "task-calendar-item" });
@@ -1779,16 +1365,16 @@ class TaskMatrixView extends ItemView {
     }
   }
 
-  private async renderCalendarWeek(
+  private renderCalendarWeek(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const showWeekends = this.plugin.settings.showCalendarWeekends;
     const weekdayOrder = this.getWeekdayOrder();
     const start = this.startOfWeek(this.calendarDate);
 
-    const renderDayCard = async (container: HTMLElement, index: number, isWeekend: boolean): Promise<void> => {
+    const renderDayCard = (container: HTMLElement, index: number, isWeekend: boolean): void => {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       const isoDate = this.toCalendarIso(day);
@@ -1796,7 +1382,7 @@ class TaskMatrixView extends ItemView {
       dayEl.createEl("div", { text: `${this.getWeekdayLabel(day.getDay())} ${day.getDate()}`, cls: "task-calendar-date" });
       const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
       for (const entry of itemsByDate[isoDate] ?? []) {
-        await this.renderCalendarItem(itemsEl, entry.task, entry.type);
+        this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
     };
 
@@ -1805,7 +1391,7 @@ class TaskMatrixView extends ItemView {
       for (let index = 0; index < 7; index++) {
         const weekday = weekdayOrder[index];
         if (weekday === 0 || weekday === 6) continue;
-        await renderDayCard(weekGrid, index, false);
+        renderDayCard(weekGrid, index, false);
       }
       return;
     }
@@ -1815,23 +1401,23 @@ class TaskMatrixView extends ItemView {
     for (let index = 0; index < 7; index++) {
       const weekday = weekdayOrder[index];
       if (weekday === 0 || weekday === 6) continue;
-      await renderDayCard(weekdayGrid, index, false);
+      renderDayCard(weekdayGrid, index, false);
     }
 
     const weekendGrid = weekSplit.createDiv({ cls: "task-calendar-weekend" });
     for (const weekendWeekday of [6, 0]) {
       const index = weekdayOrder.indexOf(weekendWeekday);
       if (index >= 0) {
-        await renderDayCard(weekendGrid, index, true);
+        renderDayCard(weekendGrid, index, true);
       }
     }
   }
 
-  private async renderCalendarList(
+  private renderCalendarList(
     parent: HTMLElement,
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
-  ): Promise<void> {
+  ): void {
     const list = parent.createDiv({ cls: "task-calendar-list" });
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
@@ -1849,17 +1435,17 @@ class TaskMatrixView extends ItemView {
         content.createEl("span", { text: "No tasks", cls: "task-calendar-item" });
       } else {
         for (const entry of dayItems) {
-          await this.renderCalendarItem(content, entry.task, entry.type);
+          this.renderCalendarItem(content, entry.task, entry.type);
         }
       }
     }
   }
 
-  private async renderCalendarItem(
+  private renderCalendarItem(
     parent: HTMLElement,
     task: ParsedTask,
     type: "due" | "start" | "scheduled" | "done" | "overdue" | "process"
-  ): Promise<void> {
+  ): void {
     const linkTarget = task.sectionHeading ? `${task.filePath}#${task.sectionHeading}` : task.filePath;
     const item = parent.createEl("a", {
       cls: `task-calendar-item type-${type} internal-link`,
@@ -1869,7 +1455,7 @@ class TaskMatrixView extends ItemView {
     item.setAttribute("data-href", linkTarget);
     item.setAttribute("aria-label", linkTarget);
     item.addEventListener("mouseenter", (event) => {
-      (this.app.workspace as any).trigger("hover-link", {
+      this.app.workspace.trigger("hover-link", {
         event,
         source: VIEW_TYPE_TASK_MATRIX,
         hoverParent: this,
@@ -1877,25 +1463,29 @@ class TaskMatrixView extends ItemView {
         linktext: linkTarget,
       });
     });
-    item.addEventListener("click", async (event) => {
+    item.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      await this.openTask(task);
+      void this.openTask(task);
     });
   }
 
   private async renderEisenhower(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
+    const isMobile = this.isMobileLayout();
     const columns: Array<{ title: string; quadrant: ParsedTask["quadrant"]; subtitle: string }> = [
-      { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
-      { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
-      { title: "Q3", quadrant: "Q3", subtitle: "Urgent + Lower importance" },
+      { title: "Q1", quadrant: "Q1", subtitle: "Important + urgent" },
+      { title: "Q2", quadrant: "Q2", subtitle: "Important + not urgent" },
+      { title: "Q3", quadrant: "Q3", subtitle: "Urgent + lower importance" },
       { title: "Q4", quadrant: "Q4", subtitle: "Delegated or discard" },
     ];
 
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
+      if (isMobile) {
+        cell.addClass("is-mobile-collapsible");
+      }
 
       // Drag and drop handlers
       cell.addEventListener("dragover", (e) => {
@@ -1905,14 +1495,14 @@ class TaskMatrixView extends ItemView {
       cell.addEventListener("dragleave", () => {
         cell.removeClass("task-matrix-drag-over");
       });
-      cell.addEventListener("drop", async (e) => {
+      cell.addEventListener("drop", (e) => {
         e.preventDefault();
         cell.removeClass("task-matrix-drag-over");
         const taskId = e.dataTransfer?.getData("text/task-id");
         if (taskId) {
           const task = this.plugin.tasks.find((t) => t.id === taskId);
           if (task) {
-            await this.plugin.moveTaskToQuadrant(task, column.quadrant);
+            void this.plugin.moveTaskToQuadrant(task, column.quadrant);
           }
         }
       });
@@ -1936,13 +1526,31 @@ class TaskMatrixView extends ItemView {
         }
       };
 
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      if (isCollapsed) {
+        cell.addClass("is-collapsed");
+      }
+
+      const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      });
+      }, isMobile, isCollapsed);
+      const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
+
+      if (isMobile) {
+        header.addEventListener("click", (event) => {
+          if ((event.target as HTMLElement).closest(".task-matrix-add-btn")) return;
+          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+            this.collapsedMatrixQuadrants.delete(column.quadrant);
+          } else {
+            this.collapsedMatrixQuadrants.add(column.quadrant);
+          }
+          void this.render();
+        });
+      }
 
       for (const task of group) {
-        await this.createTaskCard(cell, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
@@ -1951,10 +1559,17 @@ class TaskMatrixView extends ItemView {
     parent: HTMLElement,
     title: string,
     count: number,
-    onAddTask?: () => void
-  ): void {
-    const header = parent.createDiv({ cls: "task-matrix-column-header" });
-    header.createEl("h3", { text: title });
+    onAddTask?: () => void,
+    isCollapsible = false,
+    isCollapsed = false
+  ): HTMLElement {
+    const header = parent.createDiv({ cls: `task-matrix-column-header${isCollapsible ? " is-collapsible" : ""}` });
+    const titleWrap = header.createDiv({ cls: "task-matrix-column-title" });
+    titleWrap.createEl("span", {
+      text: isCollapsible ? (isCollapsed ? "▸" : "▾") : "",
+      cls: "task-matrix-collapse-indicator",
+    });
+    titleWrap.createEl("h3", { text: title });
 
     const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
 
@@ -1968,6 +1583,7 @@ class TaskMatrixView extends ItemView {
     }
 
     rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
+    return header;
   }
 
   private async createTaskCard(parent: HTMLElement, task: ParsedTask, metaText: string): Promise<void> {
@@ -1985,10 +1601,10 @@ class TaskMatrixView extends ItemView {
     });
 
     // Click to open file
-    card.addEventListener("click", async (e) => {
+    card.addEventListener("click", (e) => {
       // Don't open if clicking on action buttons
       if ((e.target as HTMLElement).closest(".task-matrix-action-btn")) return;
-      await this.openTask(task);
+      void this.openTask(task);
     });
 
     const top = card.createDiv({ cls: "task-matrix-card-top" });
@@ -2007,7 +1623,7 @@ class TaskMatrixView extends ItemView {
     top.createEl("div", { text: this.statusBadge(task.displayStatus), cls: `task-matrix-badge status-${task.displayStatus}` });
 
     const chips = card.createDiv({ cls: "task-matrix-chip-row" });
-    if (task.priority !== "none") {
+    if (task.priority !== Priority.None) {
       chips.createEl("span", { text: `Priority ${task.priority}`, cls: "task-matrix-chip" });
     }
     if (task.dueDate) {
@@ -2025,7 +1641,7 @@ class TaskMatrixView extends ItemView {
     }
     // Check for date conflict tag in the original task line
     if (task.lineText.toLowerCase().includes("#due-date-conflict")) {
-      chips.createEl("span", { text: "⚠️ Due Date Conflict", cls: "task-matrix-chip conflict" });
+      chips.createEl("span", { text: "⚠️ due date conflict", cls: "task-matrix-chip conflict" });
     }
 
     card.createEl("div", { text: metaText, cls: "task-matrix-card-meta" });
@@ -2037,39 +1653,47 @@ class TaskMatrixView extends ItemView {
       const completeBtn = actions.createEl("button", {
         text: "✓",
         cls: "task-matrix-action-btn",
-        title: "Complete",
+        title: "Complete task",
       });
-      completeBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+      completeBtn.addEventListener("click", () => {
+        void this.plugin.toggleTaskStatus(task);
+      });
 
       // Only show start button if no start date or start date is in the future
       if (!task.startDate || task.displayStatus === "to-be-started") {
         const startBtn = actions.createEl("button", {
           text: "▶",
           cls: "task-matrix-action-btn",
-          title: "Start",
+          title: "Start task",
         });
-        startBtn.addEventListener("click", () => this.plugin.startTask(task));
+        startBtn.addEventListener("click", () => {
+          void this.plugin.startTask(task);
+        });
       }
 
       const cancelBtn = actions.createEl("button", {
         text: "✕",
         cls: "task-matrix-action-btn",
-        title: "Cancel",
+        title: "Cancel task",
       });
-      cancelBtn.addEventListener("click", () => this.plugin.cancelTask(task));
+      cancelBtn.addEventListener("click", () => {
+        void this.plugin.cancelTask(task);
+      });
     } else {
       const reopenBtn = actions.createEl("button", {
         text: "↺",
         cls: "task-matrix-action-btn",
-        title: "Reopen",
+        title: "Reopen task",
       });
-      reopenBtn.addEventListener("click", () => this.plugin.toggleTaskStatus(task));
+      reopenBtn.addEventListener("click", () => {
+        void this.plugin.toggleTaskStatus(task);
+      });
     }
 
     const editBtn = actions.createEl("button", {
       text: "✎",
       cls: "task-matrix-action-btn",
-      title: "Edit",
+      title: "Edit task",
     });
     editBtn.addEventListener("click", () => {
       new TaskEditModal(this.app, task, this.plugin).open();
@@ -2078,12 +1702,12 @@ class TaskMatrixView extends ItemView {
     const deleteBtn = actions.createEl("button", {
       text: "🗑",
       cls: "task-matrix-action-btn",
-      title: "Delete",
+      title: "Delete task",
     });
     deleteBtn.addEventListener("click", () => {
-      if (confirm("Delete this task?")) {
-        this.plugin.deleteTask(task);
-      }
+      new DeleteTaskModal(this.app, () => {
+        void this.plugin.deleteTask(task);
+      }).open();
     });
 
     // Matrix view: quick move icons for the other three quadrants
@@ -2100,7 +1724,9 @@ class TaskMatrixView extends ItemView {
           cls: "task-matrix-action-btn quadrant-move",
           title: `Move to ${targetQuadrant}`,
         });
-        moveBtn.addEventListener("click", () => this.plugin.moveTaskToQuadrant(task, targetQuadrant));
+        moveBtn.addEventListener("click", () => {
+          void this.plugin.moveTaskToQuadrant(task, targetQuadrant);
+        });
       }
     }
 
@@ -2125,7 +1751,9 @@ class TaskMatrixView extends ItemView {
             cls: "task-matrix-action-btn quadrant-move",
             title: `Move to ${targetState}`,
           });
-          moveBtn.addEventListener("click", () => this.plugin.moveTaskToGTDState(task, targetState));
+          moveBtn.addEventListener("click", () => {
+            void this.plugin.moveTaskToGTDState(task, targetState);
+          });
         }
       }
     }
@@ -2138,9 +1766,9 @@ class TaskMatrixView extends ItemView {
       case "cancelled":
         return "Cancelled";
       case "in-progress":
-        return "Doing";
+        return "In progress";
       case "to-be-started":
-        return "To be Started";
+        return "To be started";
       case "overdue":
         return "Overdue";
       default:
@@ -2184,13 +1812,13 @@ class TaskEditModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
 
-    contentEl.createEl("h2", { text: this.isCreateMode ? "Add Task" : "Edit Task" });
+    contentEl.createEl("h2", { text: this.isCreateMode ? "Add task" : "Edit task" });
 
     const form = contentEl.createDiv();
 
     // Get default values
     const description = this.isCreateMode ? "" : this.task!.description;
-    const priority = this.isCreateMode ? (this.defaultValues.priority ?? "none") : this.task!.priority;
+    const priority = this.isCreateMode ? (this.defaultValues.priority ?? Priority.None) : this.task!.priority;
     const dueDate = this.isCreateMode ? (this.defaultValues.dueDate ?? "") : (this.task!.dueDate || "");
     const startDate = this.isCreateMode ? (this.defaultValues.startDate ?? "") : (this.task!.startDate || "");
     const taskId = this.isCreateMode ? "" : (this.task!.taskId || "");
@@ -2215,18 +1843,18 @@ class TaskEditModal extends Modal {
     prioritySelect.addOption("critical", "Critical");
     prioritySelect.setValue(priority);
 
-    // Start Date
+    // Start date
     const startRow = form.createDiv({ cls: "task-matrix-form-row" });
-    startRow.createEl("label", { text: "Start Date" });
+    startRow.createEl("label", { text: "Start date" });
     const startInput = startRow.createEl("input", {
       type: "date",
       cls: "task-matrix-date-input",
       value: startDate,
     });
 
-    // Due Date
+    // Due date
     const dueRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dueRow.createEl("label", { text: "Due Date" });
+    dueRow.createEl("label", { text: "Due date" });
     const dueInput = dueRow.createEl("input", {
       type: "date",
       cls: "task-matrix-date-input",
@@ -2241,7 +1869,7 @@ class TaskEditModal extends Modal {
     const idInputRow = idRow.createDiv({ cls: "task-matrix-input-row" });
     const idInput = new TextComponent(idInputRow);
     idInput.setValue(taskId);
-    idInput.inputEl.style.flex = "1";
+    idInput.inputEl.addClass("task-matrix-grow-input");
 
     const generateIdBtn = new ButtonComponent(idInputRow)
       .setButtonText("🎲")
@@ -2249,13 +1877,13 @@ class TaskEditModal extends Modal {
       .onClick(() => {
         idInput.setValue(generateShortId());
       });
-    generateIdBtn.buttonEl.style.marginLeft = "8px";
+    generateIdBtn.buttonEl.addClass("task-matrix-inline-action-btn");
 
-    // Depends On - Dropdown with available tasks
+    // Depends on - dropdown with available tasks
     const dependsRow = form.createDiv({ cls: "task-matrix-form-row" });
-    dependsRow.createEl("label", { text: "Depends On" });
+    dependsRow.createEl("label", { text: "Depends on" });
     const dependsSelect = new DropdownComponent(dependsRow);
-    dependsSelect.addOption("", "-- None --");
+    dependsSelect.addOption("", "-- none --");
 
     // Get incomplete tasks with taskId, sorted by due date
     const availableTasks = this.plugin.tasks
@@ -2269,7 +1897,7 @@ class TaskEditModal extends Modal {
       });
 
     for (const t of availableTasks) {
-      const dueLabel = t.dueDate ? ` (Due: ${t.dueDate})` : "";
+      const dueLabel = t.dueDate ? ` (due: ${t.dueDate})` : "";
       const label = `${t.taskId}${dueLabel}: ${t.description.slice(0, 40)}${t.description.length > 40 ? "..." : ""}`;
       dependsSelect.addOption(t.taskId!, label);
     }
@@ -2285,7 +1913,8 @@ class TaskEditModal extends Modal {
     new ButtonComponent(buttons)
       .setButtonText(this.isCreateMode ? "Create" : "Save")
       .setCta()
-      .onClick(async () => {
+      .onClick(() => {
+        void (async () => {
         const updates = {
           description: descInput.getValue(),
           priority: prioritySelect.getValue() as ParsedTask["priority"],
@@ -2301,7 +1930,8 @@ class TaskEditModal extends Modal {
             this.app,
             updates.startDate,
             updates.dueDate,
-            async (result) => {
+            (result) => {
+              void (async () => {
               if (result.adjustDueDate) {
                 const today = new Date().toISOString().slice(0, 10);
                 updates.dueDate = today;
@@ -2319,6 +1949,7 @@ class TaskEditModal extends Modal {
                 await this.saveTask(updates, result.addConflictTag);
               }
               this.close();
+              })();
             }
           ).open();
           return;
@@ -2330,6 +1961,7 @@ class TaskEditModal extends Modal {
           await this.saveTask(updates, false);
         }
         this.close();
+        })();
       });
   }
 
@@ -2341,7 +1973,7 @@ class TaskEditModal extends Modal {
     }
 
     // Determine target file
-    let targetFile: TFile | null = null;
+    let targetFile: TFile | null;
     const { newTaskTargetPath } = this.plugin.settings;
 
     // Use configured target path with date template
@@ -2358,7 +1990,7 @@ class TaskEditModal extends Modal {
       if (activeFile && activeFile.extension === "md") {
         targetFile = activeFile;
       } else {
-        new Notice("No target note configured and no active markdown file. Please configure Target note path in settings or open a markdown file.");
+        new Notice("Set the target note path or open a Markdown file.");
         return;
       }
     }
@@ -2366,14 +1998,15 @@ class TaskEditModal extends Modal {
     // Build task line
     let taskLine = `- [ ] ${desc}`;
 
-    if (updates.priority && updates.priority !== "none") {
+    if (updates.priority && updates.priority !== Priority.None) {
       const priorityEmoji = {
-        critical: "🔺",
-        highest: "⏫",
-        high: "🔼",
-        medium: "",
-        low: "🔽",
-        lowest: "⏬",
+        [Priority.Critical]: "🔺",
+        [Priority.Highest]: "⏫",
+        [Priority.High]: "🔼",
+        [Priority.Medium]: "",
+        [Priority.Low]: "🔽",
+        [Priority.Lowest]: "⏬",
+        [Priority.None]: "",
       }[updates.priority];
       if (priorityEmoji) {
         taskLine = taskLine.replace(/^(- \[ \] )/, `$1${priorityEmoji} `);
@@ -2533,11 +2166,11 @@ class TaskEditModal extends Modal {
     // Update priority
     if (updates.priority !== undefined) {
       line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
-      if (updates.priority === "critical") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔺 ");
-      else if (updates.priority === "highest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
-      else if (updates.priority === "high") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔼 ");
-      else if (updates.priority === "low") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔽 ");
-      else if (updates.priority === "lowest") line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏬ ");
+      if (updates.priority === Priority.Critical) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔺 ");
+      else if (updates.priority === Priority.Highest) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
+      else if (updates.priority === Priority.High) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔼 ");
+      else if (updates.priority === Priority.Low) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔽 ");
+      else if (updates.priority === Priority.Lowest) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏬ ");
     }
 
     // Update due date - make date optional in regex to handle orphaned emojis
@@ -2611,10 +2244,17 @@ class DateConflictModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("task-matrix-modal");
 
-    contentEl.createEl("h2", { text: "Date Conflict Detected" });
+    contentEl.createEl("h2", { text: "Date conflict detected" });
 
     const message = contentEl.createEl("p");
-    message.innerHTML = `Start date (<strong>${this.startDate}</strong>) is later than due date (<strong>${this.dueDate}</strong>).<br><br>Would you like to adjust the due date to today?`;
+    message.appendText("Start date (");
+    message.createEl("strong", { text: this.startDate });
+    message.appendText(") is later than due date (");
+    message.createEl("strong", { text: this.dueDate });
+    message.appendText(").");
+    message.createEl("br");
+    message.createEl("br");
+    message.appendText("Would you like to adjust the due date to today?");
 
     const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
 
@@ -2646,28 +2286,66 @@ class DateConflictModal extends Modal {
   }
 }
 
+class DeleteTaskModal extends Modal {
+  constructor(app: App, private readonly onConfirm: () => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass("task-matrix-modal");
+    contentEl.createEl("h2", { text: "Delete task" });
+    contentEl.createEl("p", { text: "Are you sure you want to delete this task?" });
+
+    const buttonRow = contentEl.createDiv({ cls: "task-matrix-modal-buttons" });
+    new ButtonComponent(buttonRow)
+      .setButtonText("Cancel")
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttonRow)
+      .setButtonText("Delete")
+      .setWarning()
+      .onClick(() => {
+        this.onConfirm();
+        this.close();
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 class TaskMatrixSettingTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: TaskMatrixPlugin) {
     super(app, plugin);
+  }
+
+  private persistSettings(refreshTasks = false): void {
+    void (async () => {
+      await this.plugin.saveSettings();
+      if (refreshTasks) {
+        await this.plugin.refreshTasks();
+      }
+    })();
   }
 
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Task Matrix settings" });
+    new Setting(containerEl).setName("Scanning and views").setHeading();
 
     new Setting(containerEl)
       .setName("Scan folders")
       .setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.")
       .addText((text) =>
         text
-          .setPlaceholder("Projects/Tasks, Inbox")
+          .setPlaceholder("Projects/tasks, inbox")
           .setValue(this.plugin.settings.scanFolders.join(", "))
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.scanFolders = value.split(",").map(s => s.trim()).filter(Boolean);
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
@@ -2676,14 +2354,14 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setDesc("Choose which dashboard opens first.")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("eisenhower", "Eisenhower")
+          .addOption("eisenhower", "Eisenhower matrix")
           .addOption("calendar", "Calendar")
           .addOption("gtd", "GTD")
           .addOption("list", "List")
           .setValue(this.plugin.settings.defaultView)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.defaultView = value as ViewMode;
-            await this.plugin.saveSettings();
+            this.persistSettings();
           }),
       );
 
@@ -2692,43 +2370,40 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setDesc("Comma-separated list of folder paths to exclude from task scanning.")
       .addText((text) =>
         text
-          .setPlaceholder("Archive, Templates, Daily")
+          .setPlaceholder("Archive, templates, daily")
           .setValue(this.plugin.settings.excludeFolders.join(", "))
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.excludeFolders = value.split(",").map(s => s.trim()).filter(Boolean);
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
     new Setting(containerEl)
       .setName("Open location")
-      .setDesc("Where to open the Task Matrix view.")
+      .setDesc("Where to open the task matrix view.")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("sidebar", "Right Sidebar")
-          .addOption("tab", "New Tab")
+          .addOption("sidebar", "Right sidebar")
+          .addOption("tab", "New tab")
           .setValue(this.plugin.settings.openLocation)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.openLocation = value as "sidebar" | "tab";
-            await this.plugin.saveSettings();
+            this.persistSettings();
           }),
       );
 
     new Setting(containerEl)
       .setName("Completion markers")
-      .setDesc("Checkbox contents that indicate a completed task (comma-separated). Default: x, X")
+      .setDesc("Markers for completed tasks, separated by commas.")
       .addText((text) =>
         text
-          .setPlaceholder("x, X, done, 完成")
           .setValue(this.plugin.settings.completionMarkers.join(", "))
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.completionMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
             if (this.plugin.settings.completionMarkers.length === 0) {
               this.plugin.settings.completionMarkers = ["x", "X"];
             }
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
@@ -2739,13 +2414,12 @@ class TaskMatrixSettingTab extends PluginSettingTab {
         text
           .setPlaceholder("-, cancelled, skip")
           .setValue(this.plugin.settings.cancelledMarkers.join(", "))
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.cancelledMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
             if (this.plugin.settings.cancelledMarkers.length === 0) {
               this.plugin.settings.cancelledMarkers = ["-"];
             }
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
@@ -2753,10 +2427,9 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setName("Include completed tasks")
       .setDesc("Show completed tasks in the matrix.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.includeCompleted).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.includeCompleted).onChange((value) => {
           this.plugin.settings.includeCompleted = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
+          this.persistSettings(true);
         }),
       );
 
@@ -2764,9 +2437,9 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setName("Track completion date")
       .setDesc("When enabled, automatically add ✅ yyyy-mm-dd to tasks when they are marked as completed.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.trackCompletionDate).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.trackCompletionDate).onChange((value) => {
           this.plugin.settings.trackCompletionDate = value;
-          await this.plugin.saveSettings();
+          this.persistSettings();
         }),
       );
 
@@ -2778,25 +2451,24 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           .setLimits(1, 7, 1)
           .setValue(this.plugin.settings.urgentDaysRange)
           .setDynamicTooltip()
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.urgentDaysRange = value;
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
-    containerEl.createEl("h3", { text: "New Task Settings" });
+    new Setting(containerEl).setName("New tasks").setHeading();
 
     new Setting(containerEl)
       .setName("Target note path")
-      .setDesc("Path template for new tasks. Use YYYY, MM, DD for date substitution. Leave empty to use fallback logic.")
+      .setDesc("Path template for new tasks. Use yyyy, mm, dd for date substitution. Leave empty to use fallback logic.")
       .addText((text) =>
         text
           .setPlaceholder("Daily/YYYY-MM-DD.md")
           .setValue(this.plugin.settings.newTaskTargetPath)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.newTaskTargetPath = value.trim();
-            await this.plugin.saveSettings();
+            this.persistSettings();
           }),
       );
 
@@ -2805,23 +2477,23 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setDesc("Insert new tasks under this heading. Leave empty to append at end of file.")
       .addText((text) =>
         text
-          .setPlaceholder("## 👀 GTD任务看板")
+          .setPlaceholder("## tasks")
           .setValue(this.plugin.settings.newTaskTargetHeading)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.newTaskTargetHeading = value.trim();
-            await this.plugin.saveSettings();
+            this.persistSettings();
           }),
       );
 
-    containerEl.createEl("h3", { text: "List View Settings" });
+    new Setting(containerEl).setName("List view").setHeading();
 
     new Setting(containerEl)
       .setName("Group by folder")
       .setDesc("Group tasks by their containing folder in list view.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.listGroupByFolder).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.listGroupByFolder).onChange((value) => {
           this.plugin.settings.listGroupByFolder = value;
-          await this.plugin.saveSettings();
+          this.persistSettings();
         }),
       );
 
@@ -2833,59 +2505,55 @@ class TaskMatrixSettingTab extends PluginSettingTab {
           .setLimits(1, 5, 1)
           .setValue(this.plugin.settings.listGroupByFolderDepth)
           .setDynamicTooltip()
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.listGroupByFolderDepth = value;
-            await this.plugin.saveSettings();
+            this.persistSettings();
           }),
       );
 
-    containerEl.createEl("h3", { text: "Calendar View Settings" });
+    new Setting(containerEl).setName("Calendar view").setHeading();
 
     new Setting(containerEl)
       .setName("Calendar: first day of week")
-      .setDesc("Choose whether Calendar weeks start on Monday or Sunday.")
+      .setDesc("Choose whether calendar weeks start on monday or sunday.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("monday", "Monday")
           .addOption("sunday", "Sunday")
           .setValue(this.plugin.settings.calendarFirstDayOfWeek)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.calendarFirstDayOfWeek = value as "monday" | "sunday";
-            await this.plugin.saveSettings();
-            await this.plugin.refreshTasks();
+            this.persistSettings(true);
           }),
       );
 
     new Setting(containerEl)
       .setName("Calendar week view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in Calendar week mode.")
+      .setDesc("Show saturday and sunday columns in calendar week mode.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange((value) => {
           this.plugin.settings.showCalendarWeekends = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
+          this.persistSettings(true);
         }),
       );
 
     new Setting(containerEl)
       .setName("Calendar month view: show weekends")
-      .setDesc("Show Saturday and Sunday columns in Calendar month mode.")
+      .setDesc("Show saturday and sunday columns in calendar month mode.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange((value) => {
           this.plugin.settings.showCalendarMonthWeekends = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
+          this.persistSettings(true);
         }),
       );
 
     new Setting(containerEl)
-      .setName("Calendar: show in-process tasks")
-      .setDesc("For tasks with both start and due dates, show them on each day between start and due in Calendar views.")
+      .setName("Calendar: show in-progress tasks")
+      .setDesc("For tasks with both start and due dates, show them on each day between start and due in calendar views.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange((value) => {
           this.plugin.settings.showCalendarInProcessTasks = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
+          this.persistSettings(true);
         }),
       );
 
@@ -2893,10 +2561,9 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       .setName("Calendar list: show full month")
       .setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.")
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange((value) => {
           this.plugin.settings.calendarListShowFullMonth = value;
-          await this.plugin.saveSettings();
-          await this.plugin.refreshTasks();
+          this.persistSettings(true);
         }),
       );
   }

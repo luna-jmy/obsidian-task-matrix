@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.14
+- Fix: Align plugin description in repository manifest and release assets for marketplace validation
+
+## 0.1.13
+- Improve: List view now supports one-click expand/collapse for grouped folders
+- Improve: List view visual style refreshed to match the calendar list look more closely
+
+## 0.1.12
+- Improve: Eisenhower view now supports mobile-only quadrant collapse/expand by tapping the quadrant title, while desktop stays fully expanded
+
+## 0.1.11
+- New: Add global Start date and Due date filters with operators for exact match, range match, and empty/non-empty checks
+- Improve: Date filter inputs now disable clearly when the selected condition does not need a date value
+
+## 0.1.10
+- Improve: Mobile layout for toolbar, GTD board, Eisenhower cards, calendar views, and edit modal without changing core task behavior
+
 ## 0.1.9
 - Fix: Calendar `Summary` now excludes completed/cancelled tasks from `Due`, `Overdue`, `Start`, `Scheduled`, and `Recurrence` counts
 - Fix: `Done` count in Calendar `Summary` remains accurate even when global `Include completed tasks` is disabled

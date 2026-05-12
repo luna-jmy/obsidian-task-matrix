@@ -659,6 +659,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-shell {
         max-width: 1400px;
         margin: 0 auto;
+        width: 100%;
       }
       .task-matrix-header {
         margin-bottom: 16px;
@@ -700,10 +701,91 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         border-radius: 6px;
         background: var(--background-primary);
         color: var(--text-normal);
+        width: 100%;
+        box-sizing: border-box;
       }
       .task-matrix-segmented {
         display: flex;
         gap: 4px;
+        flex-wrap: wrap;
+      }
+      .task-matrix-filter-wrap {
+        position: relative;
+      }
+      .task-matrix-filter-btn {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        cursor: pointer;
+        min-height: 34px;
+      }
+      .task-matrix-filter-btn.is-active {
+        background: var(--background-modifier-hover);
+        border-color: var(--interactive-accent);
+      }
+      .task-matrix-filter-panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 20;
+        width: min(360px, 90vw);
+        padding: 12px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 8px;
+        background: var(--background-primary);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+      .task-matrix-filter-panel[hidden] {
+        display: none;
+      }
+      .task-matrix-filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .task-matrix-filter-row {
+        display: grid;
+        grid-template-columns: 88px 1fr 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+      .task-matrix-filter-row label {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+      .task-matrix-filter-row select,
+      .task-matrix-filter-row input {
+        width: 100%;
+        min-height: 34px;
+        padding: 6px 8px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        background: var(--background-secondary);
+        color: var(--text-normal);
+        box-sizing: border-box;
+      }
+      .task-matrix-filter-row input:disabled {
+        background: var(--background-modifier-hover);
+        color: var(--text-faint);
+        border-color: var(--background-modifier-border);
+        cursor: not-allowed;
+        opacity: 0.75;
+      }
+      .task-matrix-filter-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+      .task-matrix-filter-clear {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        background: var(--background-secondary);
+        color: var(--text-normal);
+        cursor: pointer;
       }
       .task-matrix-mode-button {
         padding: 6px 12px;
@@ -713,6 +795,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         border-radius: 6px;
         cursor: pointer;
         font-size: 12px;
+        min-height: 34px;
       }
       .task-matrix-mode-button.is-active {
         background: var(--interactive-accent);
@@ -724,6 +807,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         background: var(--background-primary);
         border-radius: 6px;
         cursor: pointer;
+        min-height: 34px;
       }
       .task-matrix-empty {
         text-align: center;
@@ -733,12 +817,25 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+      }
+      .task-matrix-list-toolbar {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .task-matrix-list-toggle-all {
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
       }
       .task-matrix-board {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 16px;
+        align-items: start;
       }
       .task-matrix-grid {
         display: grid;
@@ -822,12 +919,14 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        min-width: 0;
       }
       .task-calendar-heads,
       .task-calendar-month-grid {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
         gap: 6px;
+        min-width: 0;
       }
       .task-calendar-head {
         font-size: 11px;
@@ -952,21 +1051,165 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         gap: 4px;
       }
       @media (max-width: 800px) {
+        .task-matrix-view {
+          padding: 10px;
+        }
+        .task-matrix-header {
+          margin-bottom: 12px;
+        }
+        .task-matrix-title {
+          font-size: 20px;
+        }
+        .task-matrix-subtitle {
+          font-size: 12px;
+        }
+        .task-matrix-toolbar {
+          align-items: stretch;
+          gap: 10px;
+          padding: 10px;
+        }
+        .task-matrix-search {
+          min-width: 0;
+        }
+        .task-matrix-segmented {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          width: 100%;
+        }
+        .task-matrix-filter-wrap {
+          width: 100%;
+        }
+        .task-matrix-filter-btn {
+          width: 100%;
+          min-height: 38px;
+        }
+        .task-matrix-mode-button,
+        .task-matrix-refresh {
+          width: 100%;
+          min-height: 38px;
+        }
+        .task-matrix-filter-panel {
+          position: static;
+          width: 100%;
+          margin-top: 8px;
+        }
+        .task-matrix-filter-row {
+          grid-template-columns: 1fr;
+        }
+        .task-matrix-board {
+          display: flex;
+          gap: 12px;
+          overflow-x: auto;
+          padding-bottom: 6px;
+          scroll-snap-type: x proximity;
+          -webkit-overflow-scrolling: touch;
+        }
+        .task-matrix-column {
+          min-width: min(84vw, 320px);
+          flex: 0 0 min(84vw, 320px);
+          scroll-snap-align: start;
+        }
         .task-matrix-grid {
           grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .task-matrix-cell {
+          min-height: 0;
+        }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
+          display: inline-flex;
+        }
+        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
+          margin-bottom: 0;
+        }
+        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
+          margin-bottom: 12px;
+        }
+        .task-matrix-card {
+          padding: 12px;
+        }
+        .task-matrix-card-top {
+          flex-direction: column;
+        }
+        .task-matrix-badge {
+          align-self: flex-start;
+        }
+        .task-matrix-card-actions {
+          gap: 6px;
+        }
+        .task-matrix-action-btn {
+          min-height: 32px;
+        }
+        .task-calendar-toolbar {
+          align-items: stretch;
+        }
+        .task-calendar-segmented,
+        .task-calendar-nav {
+          width: 100%;
+        }
+        .task-calendar-segmented {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .task-calendar-nav {
+          flex-wrap: wrap;
+          justify-content: space-between;
+        }
+        .task-calendar-title {
+          order: -1;
+          width: 100%;
+          min-width: 0;
+          text-align: left;
+        }
+        .task-calendar-summary-wrap {
+          margin-left: auto;
+        }
+        .task-calendar-month {
+          overflow-x: auto;
+          padding-bottom: 4px;
+          -webkit-overflow-scrolling: touch;
         }
         .task-calendar-heads,
-        .task-calendar-month-grid,
-        .task-calendar-week {
-          grid-template-columns: 1fr;
+        .task-calendar-month-grid {
+          min-width: 560px;
         }
+        .task-calendar-week,
         .task-calendar-week-main,
         .task-calendar-week-compact,
         .task-calendar-weekend {
-          grid-template-columns: 1fr;
+          display: flex;
+          overflow-x: auto;
+          width: 100%;
+          padding-bottom: 4px;
+          -webkit-overflow-scrolling: touch;
+        }
+        .task-calendar-week .task-calendar-day,
+        .task-calendar-weekend .task-calendar-day {
+          min-width: min(78vw, 240px);
+          flex: 0 0 min(78vw, 240px);
         }
         .task-calendar-day {
           min-height: auto;
+        }
+        .task-calendar-summary-popup {
+          right: 0;
+          left: auto;
+          max-width: min(88vw, 260px);
+        }
+        .task-matrix-modal {
+          padding: 16px;
+        }
+        .task-matrix-input-row {
+          align-items: stretch;
+        }
+        .task-matrix-input-row > * {
+          width: 100%;
+        }
+        .task-matrix-modal-buttons {
+          justify-content: stretch;
+        }
+        .task-matrix-modal-buttons button {
+          flex: 1 1 100%;
         }
       }
       .task-matrix-column, .task-matrix-cell {
@@ -982,11 +1225,32 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         margin-bottom: 12px;
         padding-bottom: 8px;
         border-bottom: 1px solid var(--background-modifier-border);
+        gap: 8px;
+        flex-wrap: wrap;
       }
       .task-matrix-column-header h3 {
         font-size: 14px;
         margin: 0;
         font-weight: 600;
+        min-width: 0;
+      }
+      .task-matrix-column-header.is-collapsible {
+        cursor: pointer;
+      }
+      .task-matrix-column-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .task-matrix-collapse-indicator {
+        display: none;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex: 0 0 auto;
+      }
+      .task-matrix-cell-body.is-collapsed {
+        display: none;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);
@@ -1045,6 +1309,10 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         font-weight: 500;
         line-height: 1.4;
         flex: 1;
+        min-width: 0;
+      }
+      .task-matrix-card-title p {
+        margin: 0;
       }
       .task-matrix-badge {
         font-size: 10px;
@@ -1123,6 +1391,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-card-meta {
         font-size: 11px;
         color: var(--text-muted);
+        word-break: break-word;
       }
       .task-matrix-card-actions {
         display: flex;
@@ -1130,6 +1399,7 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         margin-top: 8px;
         padding-top: 8px;
         border-top: 1px solid var(--background-modifier-border);
+        flex-wrap: wrap;
       }
       .task-matrix-action-btn {
         font-size: 11px;
@@ -1215,34 +1485,45 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       .task-matrix-input-row {
         display: flex;
         align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
       }
       .task-matrix-modal-buttons {
         display: flex;
         gap: 8px;
         justify-content: flex-end;
         margin-top: 20px;
+        flex-wrap: wrap;
       }
       .task-matrix-folder-group {
-        margin-bottom: 16px;
+        border: 1px solid var(--background-modifier-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--background-primary);
       }
       .task-matrix-folder-header {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         color: var(--text-muted);
-        padding: 8px 12px;
-        background: var(--background-secondary);
-        border-radius: 6px 6px 0 0;
-        margin: 0 0 4px 0;
+        padding: 8px 10px;
+        background: var(--background-primary);
+        margin: 0;
         border-bottom: 1px solid var(--background-modifier-border);
       }
       .task-matrix-folder-header.task-matrix-folder-toggle {
         width: 100%;
         text-align: left;
-        border: 1px solid var(--background-modifier-border);
+        border: none;
         cursor: pointer;
       }
       .task-matrix-folder-header.task-matrix-folder-toggle:hover {
         background: var(--background-modifier-hover);
+      }
+      .task-matrix-folder-content {
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
       .task-matrix-folder-content.is-collapsed {
         display: none;
@@ -1265,6 +1546,10 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.calendarDate = /* @__PURE__ */ new Date();
     this.calendarSummaryOpen = false;
     this.searchQuery = "";
+    this.dateFiltersOpen = false;
+    this.startDateFilter = { operator: "any", value: "" };
+    this.dueDateFilter = { operator: "any", value: "" };
+    this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set();
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
@@ -1315,8 +1600,54 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const query = this.searchQuery.trim().toLowerCase();
     if (!query) return this.plugin.tasks;
     return this.plugin.tasks.filter((task) => {
-      return [task.description, task.filePath, task.taskId, task.dependsOn].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      const matchesQuery = [task.description, task.filePath, task.taskId, task.dependsOn].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      return matchesQuery;
     });
+  }
+  get visibleTasks() {
+    return this.filteredTasks.filter((task) => {
+      return this.matchesDateFilter(task.startDate, this.startDateFilter) && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
+    });
+  }
+  matchesDateFilter(dateValue, filter) {
+    switch (filter.operator) {
+      case "any":
+        return true;
+      case "is-empty":
+        return !dateValue;
+      case "is-not-empty":
+        return Boolean(dateValue);
+      default:
+        if (!dateValue || !filter.value) return true;
+        switch (filter.operator) {
+          case "not-on":
+            return dateValue !== filter.value;
+          case "on":
+            return dateValue === filter.value;
+          case "before":
+            return dateValue < filter.value;
+          case "on-or-before":
+            return dateValue <= filter.value;
+          case "after":
+            return dateValue > filter.value;
+          case "on-or-after":
+            return dateValue >= filter.value;
+          default:
+            return true;
+        }
+    }
+  }
+  usesDateValue(operator) {
+    return !["any", "is-empty", "is-not-empty"].includes(operator);
+  }
+  isMobileLayout() {
+    return window.matchMedia("(max-width: 800px)").matches;
+  }
+  getActiveDateFilterCount() {
+    let count = 0;
+    if (this.startDateFilter.operator !== "any") count++;
+    if (this.dueDateFilter.operator !== "any") count++;
+    return count;
   }
   renderHeader(parent) {
     const header = parent.createDiv({ cls: "task-matrix-header" });
@@ -1343,6 +1674,90 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         this.refreshBody();
       }, 150);
     });
+    const filterWrap = toolbar.createDiv({ cls: "task-matrix-filter-wrap" });
+    const activeDateFilterCount = this.getActiveDateFilterCount();
+    const filterButton = filterWrap.createEl("button", {
+      text: activeDateFilterCount > 0 ? `Date Filters (${activeDateFilterCount})` : "Date Filters",
+      cls: `task-matrix-filter-btn${activeDateFilterCount > 0 ? " is-active" : ""}`
+    });
+    const updateFilterButtonState = () => {
+      const count = this.getActiveDateFilterCount();
+      filterButton.setText(count > 0 ? `Date Filters (${count})` : "Date Filters");
+      filterButton.toggleClass("is-active", count > 0);
+    };
+    filterButton.addEventListener("click", () => {
+      this.dateFiltersOpen = !this.dateFiltersOpen;
+      if (this.dateFiltersOpen) {
+        filterPanel.removeAttribute("hidden");
+      } else {
+        filterPanel.setAttribute("hidden", "hidden");
+      }
+    });
+    const filterPanel = filterWrap.createDiv({ cls: "task-matrix-filter-panel" });
+    if (!this.dateFiltersOpen) {
+      filterPanel.setAttribute("hidden", "hidden");
+    }
+    const filterGroup = filterPanel.createDiv({ cls: "task-matrix-filter-group" });
+    const renderDateFilterRow = (label, filter, onChange) => {
+      const row = filterGroup.createDiv({ cls: "task-matrix-filter-row" });
+      row.createEl("label", { text: label });
+      const selectEl = row.createEl("select");
+      const options = [
+        { value: "any", label: "Any" },
+        { value: "not-on", label: "Not on" },
+        { value: "on", label: "On" },
+        { value: "before", label: "Before" },
+        { value: "on-or-before", label: "On or before" },
+        { value: "after", label: "After" },
+        { value: "on-or-after", label: "On or after" },
+        { value: "is-empty", label: "Is empty" },
+        { value: "is-not-empty", label: "Is not empty" }
+      ];
+      for (const option of options) {
+        selectEl.createEl("option", { value: option.value, text: option.label });
+      }
+      selectEl.value = filter.operator;
+      const dateInput = row.createEl("input", { type: "date" });
+      dateInput.value = filter.value;
+      const syncDateInputState = () => {
+        const needsDate = this.usesDateValue(selectEl.value);
+        dateInput.disabled = !needsDate;
+        if (!needsDate) {
+          dateInput.value = "";
+        }
+      };
+      syncDateInputState();
+      const updateFilter = () => {
+        const operator = selectEl.value;
+        const value = this.usesDateValue(operator) ? dateInput.value : "";
+        onChange({ operator, value });
+        updateFilterButtonState();
+        void this.refreshBody();
+      };
+      selectEl.addEventListener("change", () => {
+        syncDateInputState();
+        updateFilter();
+      });
+      dateInput.addEventListener("change", updateFilter);
+    };
+    renderDateFilterRow("Start date", this.startDateFilter, (next) => {
+      this.startDateFilter = next;
+    });
+    renderDateFilterRow("Due date", this.dueDateFilter, (next) => {
+      this.dueDateFilter = next;
+    });
+    const filterActions = filterPanel.createDiv({ cls: "task-matrix-filter-actions" });
+    const clearButton = filterActions.createEl("button", {
+      text: "Clear filters",
+      cls: "task-matrix-filter-clear"
+    });
+    clearButton.addEventListener("click", async () => {
+      this.startDateFilter = { operator: "any", value: "" };
+      this.dueDateFilter = { operator: "any", value: "" };
+      this.dateFiltersOpen = false;
+      updateFilterButtonState();
+      await this.render();
+    });
     const segmented = toolbar.createDiv({ cls: "task-matrix-segmented" });
     this.renderModeButton(segmented, "list", ICONS.list);
     this.renderModeButton(segmented, "gtd", ICONS.gtd);
@@ -1368,12 +1783,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
   }
   async renderBodyContent(parent) {
-    const tasks = this.filteredTasks;
+    const tasks = this.visibleTasks;
     if (tasks.length === 0) {
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
       empty.createEl("h3", { text: "No tasks found" });
       empty.createEl("p", {
-        text: this.searchQuery ? "The current search did not match any tasks." : "Create markdown tasks in your vault, then refresh this view."
+        text: this.searchQuery || this.getActiveDateFilterCount() > 0 ? "The current search or date filters did not match any tasks." : "Create markdown tasks in your vault, then refresh this view."
       });
       return;
     }
@@ -1395,7 +1810,30 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const wrap = parent.createDiv({ cls: "task-matrix-list" });
     if (this.plugin.settings.listGroupByFolder) {
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
-      for (const [folderPath, folderTasks] of Object.entries(grouped)) {
+      const groupEntries = Object.entries(grouped);
+      const listToolbar = wrap.createDiv({ cls: "task-matrix-list-toolbar" });
+      const toggleAllButton = listToolbar.createEl("button", { cls: "task-matrix-list-toggle-all" });
+      const updateToggleAllButton = () => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
+      };
+      updateToggleAllButton();
+      toggleAllButton.addEventListener("click", async () => {
+        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
+          const groupKey = folderPath || "Root";
+          return this.collapsedFolderGroups.has(groupKey);
+        });
+        if (allCollapsed) {
+          this.collapsedFolderGroups.clear();
+        } else {
+          this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
+        }
+        await this.refreshBody();
+      });
+      for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
         const groupKey = folderPath || "Root";
         const toggle = groupEl.createEl("button", {
@@ -1420,14 +1858,18 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             this.collapsedFolderGroups.add(groupKey);
           }
           renderToggleLabel();
+          updateToggleAllButton();
         });
         for (const task of folderTasks) {
           await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);
         }
       }
     } else {
+      const flatGroup = wrap.createDiv({ cls: "task-matrix-folder-group" });
+      flatGroup.createDiv({ cls: "task-matrix-folder-header", text: `All tasks (${tasks.length})` });
+      const flatContent = flatGroup.createDiv({ cls: "task-matrix-folder-content" });
       for (const task of tasks) {
-        await this.createTaskCard(wrap, task, `${task.filePath}:${task.lineNumber}`);
+        await this.createTaskCard(flatContent, task, `${task.filePath}:${task.lineNumber}`);
       }
     }
   }
@@ -1854,6 +2296,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
+    const isMobile = this.isMobileLayout();
     const columns = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + Urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + Not urgent" },
@@ -1863,6 +2306,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
+      if (isMobile) {
+        cell.addClass("is-mobile-collapsible");
+      }
       cell.addEventListener("dragover", (e) => {
         e.preventDefault();
         cell.addClass("task-matrix-drag-over");
@@ -1897,18 +2343,39 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             return {};
         }
       };
-      this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
+      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      if (isCollapsed) {
+        cell.addClass("is-collapsed");
+      }
+      const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      });
+      }, isMobile, isCollapsed);
+      const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
+      if (isMobile) {
+        header.addEventListener("click", (event) => {
+          if (event.target.closest(".task-matrix-add-btn")) return;
+          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+            this.collapsedMatrixQuadrants.delete(column.quadrant);
+          } else {
+            this.collapsedMatrixQuadrants.add(column.quadrant);
+          }
+          void this.render();
+        });
+      }
       for (const task of group) {
-        await this.createTaskCard(cell, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
-  createColumnHeader(parent, title, count, onAddTask) {
-    const header = parent.createDiv({ cls: "task-matrix-column-header" });
-    header.createEl("h3", { text: title });
+  createColumnHeader(parent, title, count, onAddTask, isCollapsible = false, isCollapsed = false) {
+    const header = parent.createDiv({ cls: `task-matrix-column-header${isCollapsible ? " is-collapsible" : ""}` });
+    const titleWrap = header.createDiv({ cls: "task-matrix-column-title" });
+    titleWrap.createEl("span", {
+      text: isCollapsible ? isCollapsed ? "\u25B8" : "\u25BE" : "",
+      cls: "task-matrix-collapse-indicator"
+    });
+    titleWrap.createEl("h3", { text: title });
     const rightSection = header.createDiv({ cls: "task-matrix-header-right" });
     if (onAddTask) {
       const addBtn = rightSection.createEl("button", {
@@ -1919,6 +2386,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       addBtn.addEventListener("click", onAddTask);
     }
     rightSection.createEl("span", { text: String(count), cls: "task-matrix-count" });
+    return header;
   }
   async createTaskCard(parent, task, metaText) {
     const card = parent.createDiv({ cls: `task-matrix-card${task.blocked ? " blocked" : ""}` });

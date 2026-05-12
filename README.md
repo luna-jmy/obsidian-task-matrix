@@ -1,6 +1,6 @@
 # Obsidian Task Matrix ⚡
 
-A powerful Obsidian plugin that transforms your Markdown tasks into visual task dashboards with List, GTD, and Eisenhower Matrix views.
+Visual task dashboards with list, GTD, and Eisenhower views.
 
 ## ✨ Features
 
@@ -11,6 +11,7 @@ A powerful Obsidian plugin that transforms your Markdown tasks into visual task 
 | **📋 List View** | Comprehensive task overview | Search and browse all tasks |
 | **📥 GTD Flow** | Workflow management | Visual Kanban with Inbox → In Progress → Waiting → Done |
 | **🔳 Eisenhower Matrix** | Priority decisions | Urgency vs. importance at a glance |
+| **🗓 Calendar View** | Date planning | Review due, start, scheduled, and done tasks by month, week, or list |
 
 ### 🎯 Core Capabilities
 
@@ -30,6 +31,15 @@ A powerful Obsidian plugin that transforms your Markdown tasks into visual task 
 - **Configurable Urgent Range**: Set how many days count as "urgent" (1-7 days)
 - **Dependency Tracking**: Blocked tasks (with unfinished dependencies) are visually marked
 - **Drag & Drop**: Move tasks between GTD columns or Eisenhower quadrants to auto-update tags
+- **Quick Move Buttons**: Move tasks directly between GTD states or Eisenhower quadrants from the task card
+- **Date Conflict Detection**: Warns when a start date is later than a due date
+
+### 🔍 Filtering & Navigation
+
+- **Keyword Search**: Filter tasks by description, file path, task ID, or dependency ID
+- **Date Filters**: Filter by `Start date` and `Due date` with `on`, `before`, `after`, `is empty`, `is not empty`, and more
+- **Calendar Summary**: See scoped counts for due, overdue, start, scheduled, recurrence, and daily-note tasks
+- **Calendar Modes**: Switch between month, week, and list layouts
 
 ### 🎛️ Task Actions
 
@@ -44,7 +54,15 @@ Each task card provides quick actions:
 ### 📁 List View Features
 
 - **Folder Grouping**: Group tasks by folder with configurable depth (1-5 levels)
-- **Search**: Filter tasks by keyword
+- **Expand/Collapse Groups**: Toggle individual groups or expand/collapse all with one click
+- **Refreshed Styling**: List groups now use a cleaner card style aligned with the calendar list view
+
+### 📱 Mobile Experience
+
+- **Responsive Toolbar & Cards**: Better spacing and stacking for small screens
+- **Swipe-Friendly GTD Board**: Horizontal column navigation on mobile
+- **Mobile Matrix Collapse**: Collapse Eisenhower quadrants by tapping the title on mobile only
+- **Responsive Calendar Layouts**: Improved month, week, and list browsing on smaller screens
 
 ### ⚙️ Settings
 
@@ -75,8 +93,9 @@ Each task card provides quick actions:
 
 ### From GitHub Releases
 
-1. Download the latest release `obsidian-task-matrix.zip`
-2. Extract to your vault's `.obsidian/plugins/` folder
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release
+2. Create a folder named `task-matrix` under your vault's `.obsidian/plugins/`
+3. Put the downloaded files into that folder
 3. Enable "Task Matrix" in Obsidian Settings → Community Plugins
 
 ### From Source
@@ -146,6 +165,24 @@ When editing a task, the "Depends On" field shows a dropdown of all incomplete t
   - To Q3 (Urgent + Lower importance): Sets low priority, adds due date
   - To Q4 (Delegated or discard): Sets lowest priority, clears due date
 
+### Date Filters
+
+Use the `Date Filters` control in the toolbar to narrow tasks by:
+
+- `Start date`
+- `Due date`
+
+Supported operators:
+
+- `not on`
+- `on`
+- `before`
+- `on or before`
+- `after`
+- `on or after`
+- `is empty`
+- `is not empty`
+
 ## 🏗️ Tech Stack
 
 - **Obsidian API**: Plugin framework
@@ -155,6 +192,12 @@ When editing a task, the "Depends On" field shows a dropdown of all incomplete t
 ## 📝 Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## 📣 Official Account
+
+Follow my WeChat official account:
+
+![WeChat Official Account QR](assets/qr-official.jpg)
 
 ## 📄 License
 
