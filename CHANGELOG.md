@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.15
+- Fix: Clearing due date, start date, task ID, and depends-on in the edit modal now works correctly
+- Improve: Start date field now appears above due date in the edit modal
+- Improve: Calendar settings reorganized into its own section after List settings
+- Improve: Calendar settings reordered with "first day of week" as the first option
+
 ## 0.1.14
 - Fix: Align plugin description in repository manifest and release assets for marketplace validation
 
