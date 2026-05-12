@@ -445,17 +445,13 @@
           grid-template-columns: 1fr;
         }
         .task-matrix-board {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr;
           gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 6px;
-          scroll-snap-type: x proximity;
-          -webkit-overflow-scrolling: touch;
         }
         .task-matrix-column {
-          min-width: min(84vw, 320px);
-          flex: 0 0 min(84vw, 320px);
-          scroll-snap-align: start;
+          min-width: 0;
+          flex: none;
         }
         .task-matrix-grid {
           grid-template-columns: 1fr;

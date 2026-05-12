@@ -60,7 +60,7 @@ Each task card provides quick actions:
 ### 📱 Mobile Experience
 
 - **Responsive Toolbar & Cards**: Better spacing and stacking for small screens
-- **Swipe-Friendly GTD Board**: Horizontal column navigation on mobile
+- **Responsive GTD Board**: Single-column layout on mobile with collapse/expand support
 - **Mobile Matrix Collapse**: Collapse Eisenhower quadrants by tapping the title (also available on desktop)
 - **Responsive Calendar Layouts**: Improved month, week, and list browsing on smaller screens
 

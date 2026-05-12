@@ -4,6 +4,8 @@
 - New: Eisenhower Matrix columns now support collapse/expand on desktop (previously mobile-only)
 - New: GTD view columns now support collapse/expand on both desktop and mobile
 - Fix: Collapsed Eisenhower quadrants on mobile no longer leave excessive empty space
+- Fix: GTD and Matrix collapse no longer resets scroll position (toggles CSS classes in-place instead of re-rendering)
+- Change: Mobile GTD view uses vertical single-column layout instead of horizontal scroll
 
 ## 0.1.15
 - Fix: Clearing due date, start date, task ID, and depends-on in the edit modal now works correctly

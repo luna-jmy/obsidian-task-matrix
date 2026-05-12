@@ -1077,14 +1077,29 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
         columnEl.addClass("is-collapsed");
       }
       const header = columnEl.querySelector(".task-matrix-column-header");
+      const collapseState = column.state;
       header.addEventListener("click", (event) => {
         if (event.target.closest(".task-matrix-add-btn")) return;
-        if (this.collapsedGtdColumns.has(column.state)) {
-          this.collapsedGtdColumns.delete(column.state);
+        const wasCollapsed = this.collapsedGtdColumns.has(collapseState);
+        if (wasCollapsed) {
+          this.collapsedGtdColumns.delete(collapseState);
         } else {
-          this.collapsedGtdColumns.add(column.state);
+          this.collapsedGtdColumns.add(collapseState);
         }
-        void this.render();
+        const nowCollapsed = !wasCollapsed;
+        columnEl.toggleClass("is-collapsed", nowCollapsed);
+        const bodyEl = columnEl.querySelector(".task-matrix-column-body");
+        if (bodyEl) bodyEl.toggleClass("is-collapsed", nowCollapsed);
+        const indicator = header.querySelector(".task-matrix-collapse-indicator");
+        if (indicator) indicator.setText(nowCollapsed ? "\u25B8" : "\u25BE");
+        const headerEl = columnEl.querySelector(".task-matrix-column-header");
+        if (headerEl) {
+          headerEl.style.borderBottom = nowCollapsed ? "none" : "";
+          headerEl.style.paddingBottom = nowCollapsed ? "0" : "";
+          headerEl.style.marginBottom = nowCollapsed ? "0" : "";
+        }
+        columnEl.style.minHeight = nowCollapsed ? "0" : "";
+        columnEl.style.paddingBottom = nowCollapsed ? "12px" : "";
       });
       const body = columnEl.createDiv({ cls: `task-matrix-column-body${this.collapsedGtdColumns.has(column.state) ? " is-collapsed" : ""}` });
       for (const task of group) {
@@ -1482,12 +1497,22 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
       header.addEventListener("click", (event) => {
         if (event.target.closest(".task-matrix-add-btn")) return;
-        if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
+        const wasCollapsed = this.collapsedMatrixQuadrants.has(column.quadrant);
+        if (wasCollapsed) {
           this.collapsedMatrixQuadrants.delete(column.quadrant);
         } else {
           this.collapsedMatrixQuadrants.add(column.quadrant);
         }
-        void this.render();
+        const nowCollapsed = !wasCollapsed;
+        cell.toggleClass("is-collapsed", nowCollapsed);
+        const cellBody = cell.querySelector(".task-matrix-cell-body");
+        if (cellBody) cellBody.toggleClass("is-collapsed", nowCollapsed);
+        const indicator = header.querySelector(".task-matrix-collapse-indicator");
+        if (indicator) indicator.setText(nowCollapsed ? "\u25B8" : "\u25BE");
+        header.style.borderBottom = nowCollapsed ? "none" : "";
+        header.style.paddingBottom = nowCollapsed ? "0" : "";
+        header.style.marginBottom = nowCollapsed ? "0" : "";
+        cell.style.minHeight = nowCollapsed ? "0" : "";
       });
       for (const task of group) {
         await this.createTaskCard(body, task, this.describeTask(task));
