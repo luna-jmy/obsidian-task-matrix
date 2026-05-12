@@ -18,8 +18,9 @@ jobs:
         with:
           node-version: 20
 
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - run: npm run build
+      - run: mkdir -p release && cp main.js manifest.json styles.css release/
 
       - name: Extract version from tag
         id: version
