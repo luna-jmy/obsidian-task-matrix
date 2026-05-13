@@ -48,7 +48,9 @@ var DEFAULT_SETTINGS = {
   showCalendarMonthWeekends: true,
   calendarListShowFullMonth: false,
   showCalendarInProcessTasks: false,
-  calendarFirstDayOfWeek: "monday"
+  calendarFirstDayOfWeek: "monday",
+  dueDateDisplayRange: 1,
+  hideFutureStartTasks: true
 };
 
 // src/task-parser.ts
@@ -714,7 +716,16 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
   }
   get visibleTasks() {
+    const { dueDateDisplayRange, hideFutureStartTasks } = this.plugin.settings;
     return this.filteredTasks.filter((task) => {
+      if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
+        const maxDue = isoDateOffset(dueDateDisplayRange * 30);
+        if (task.dueDate > maxDue) return false;
+      }
+      if (hideFutureStartTasks && task.startDate && task.displayStatus === "to-be-started") {
+        const maxStart = isoDateOffset(30);
+        if (task.startDate > maxStart) return false;
+      }
       return this.matchesDateFilter(task.startDate, this.startDateFilter) && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
     });
   }
@@ -2160,6 +2171,18 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Urgent days range").setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.").addSlider(
       (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange((value) => {
         this.plugin.settings.urgentDaysRange = value;
+        this.persistSettings(true);
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Due date display range").setDesc("Only show tasks due within this many months (overdue tasks are always shown). Set to 0 to show all.").addSlider(
+      (slider) => slider.setLimits(0, 12, 1).setValue(this.plugin.settings.dueDateDisplayRange).setDynamicTooltip().onChange((value) => {
+        this.plugin.settings.dueDateDisplayRange = value;
+        this.persistSettings(true);
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Hide future start tasks").setDesc("Hide tasks whose start date is more than 1 month from now.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.hideFutureStartTasks).onChange((value) => {
+        this.plugin.settings.hideFutureStartTasks = value;
         this.persistSettings(true);
       })
     );

@@ -75,6 +75,10 @@ export interface TaskMatrixSettings {
   showCalendarInProcessTasks: boolean;
   // Calendar setting: first day of week
   calendarFirstDayOfWeek: FirstDayOfWeek;
+  // Due date display range in months (0 = no limit, default 1)
+  dueDateDisplayRange: number;
+  // Whether to hide tasks with start date more than 1 month from now
+  hideFutureStartTasks: boolean;
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
@@ -96,4 +100,6 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   calendarListShowFullMonth: false,
   showCalendarInProcessTasks: false,
   calendarFirstDayOfWeek: "monday",
+  dueDateDisplayRange: 1,
+  hideFutureStartTasks: true,
 };

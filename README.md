@@ -73,6 +73,8 @@ Each task card provides quick actions:
 - **Completion/Cancelled Markers**: Customize checkbox markers for task states
 - **Track Completion Date**: Auto-add `✅ YYYY-MM-DD` when completing tasks
 - **Urgent Days Range**: Set urgent threshold (1-7 days, default 1 = today only)
+- **Due Date Display Range**: Hide tasks due farther than the selected number of months
+- **Hide Future Start Tasks**: Hide tasks whose start date is more than one month away
 
 #### List View Settings
 - **Group by Folder**: Enable folder grouping

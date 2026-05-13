@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.18
+- New: Add `Due date display range` setting to hide tasks due farther than the selected number of months while keeping overdue, completed, and cancelled tasks visible
+- New: Add `Hide future start tasks` setting to hide tasks whose start date is more than one month away
+- Fix: Edit task dropdown arrows no longer tile across the select field
+
 ## 0.1.16
 - New: Eisenhower Matrix columns now support collapse/expand on desktop (previously mobile-only)
 - New: GTD view columns now support collapse/expand on both desktop and mobile

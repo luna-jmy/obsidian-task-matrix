@@ -819,14 +819,16 @@
         padding: 8px;
         border: 1px solid var(--background-modifier-border);
         border-radius: 4px;
-        background: var(--background-primary);
+        background-color: var(--background-primary);
         color: var(--text-normal);
         min-height: 36px;
         line-height: 1.4;
       }
       .task-matrix-form-row select {
         height: 36px;
-        padding: 6px 8px;
+        padding: 6px 28px 6px 8px;
+        background-repeat: no-repeat;
+        background-position: right 8px center;
       }
       .task-matrix-form-row input[type="date"] {
         font-family: inherit;

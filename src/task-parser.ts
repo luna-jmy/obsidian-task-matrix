@@ -54,7 +54,7 @@ function cleanDescription(raw: string): string {
     .trim();
 }
 
-function isoDateOffset(days: number): string {
+export function isoDateOffset(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
   // Use local date components to avoid timezone issues with toISOString
@@ -64,7 +64,7 @@ function isoDateOffset(days: number): string {
   return `${year}-${month}-${day}`;
 }
 
-function getToday(): string {
+export function getToday(): string {
   return isoDateOffset(0);
 }
 

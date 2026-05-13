@@ -14,7 +14,7 @@ import {
   MarkdownRenderer,
 } from "obsidian";
 import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode, Priority } from "./types";
-import { parseTaskLine, sortTasks, computeGtdState, generateShortId } from "./task-parser";
+import { parseTaskLine, sortTasks, computeGtdState, generateShortId, isoDateOffset } from "./task-parser";
 
 const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
 const ICONS = {
@@ -663,7 +663,18 @@ class TaskMatrixView extends ItemView {
   }
 
   private get visibleTasks(): ParsedTask[] {
+    const { dueDateDisplayRange, hideFutureStartTasks } = this.plugin.settings;
     return this.filteredTasks.filter((task) => {
+      // Due date range filter: hide tasks due more than N months away (always show overdue/completed/cancelled)
+      if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
+        const maxDue = isoDateOffset(dueDateDisplayRange * 30);
+        if (task.dueDate > maxDue) return false;
+      }
+      // Start date filter: hide tasks starting more than 1 month from now
+      if (hideFutureStartTasks && task.startDate && task.displayStatus === "to-be-started") {
+        const maxStart = isoDateOffset(30);
+        if (task.startDate > maxStart) return false;
+      }
       return this.matchesDateFilter(task.startDate, this.startDateFilter)
         && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
     });
@@ -2493,6 +2504,30 @@ class TaskMatrixSettingTab extends PluginSettingTab {
             this.plugin.settings.urgentDaysRange = value;
             this.persistSettings(true);
           }),
+      );
+
+    new Setting(containerEl)
+      .setName("Due date display range")
+      .setDesc("Only show tasks due within this many months (overdue tasks are always shown). Set to 0 to show all.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 12, 1)
+          .setValue(this.plugin.settings.dueDateDisplayRange)
+          .setDynamicTooltip()
+          .onChange((value) => {
+            this.plugin.settings.dueDateDisplayRange = value;
+            this.persistSettings(true);
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Hide future start tasks")
+      .setDesc("Hide tasks whose start date is more than 1 month from now.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.hideFutureStartTasks).onChange((value) => {
+          this.plugin.settings.hideFutureStartTasks = value;
+          this.persistSettings(true);
+        }),
       );
 
     new Setting(containerEl).setName("New tasks").setHeading();
