@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.1
+- Fix: Calendar view no longer shows cancelled tasks
+
 ## 0.2.0
 - New: Add `Exclude markers` setting to ignore custom checkbox markers such as `- [I]` from task views and statistics
 - New: Add completed-task display controls for showing completed tasks without due dates and limiting completed tasks by completion/due date range

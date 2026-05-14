@@ -740,6 +740,9 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       if (this.currentView === "list" && !this.plugin.settings.listShowCancelled && task.displayStatus === "cancelled") {
         return false;
       }
+      if (this.currentView === "calendar" && task.displayStatus === "cancelled") {
+        return false;
+      }
       if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
         const maxDue = isoDateOffset(dueDateDisplayRange * 30);
         if (task.dueDate > maxDue) return false;

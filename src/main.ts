@@ -688,6 +688,9 @@ class TaskMatrixView extends ItemView {
       if (this.currentView === "list" && !this.plugin.settings.listShowCancelled && task.displayStatus === "cancelled") {
         return false;
       }
+      if (this.currentView === "calendar" && task.displayStatus === "cancelled") {
+        return false;
+      }
       // Due date range filter: hide tasks due more than N months away (always show overdue/completed/cancelled)
       if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
         const maxDue = isoDateOffset(dueDateDisplayRange * 30);
