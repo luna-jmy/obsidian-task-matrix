@@ -1328,14 +1328,21 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       byDate[dateKey].push({ task, type });
     };
     for (const task of tasks) {
+      if (task.displayStatus === "completed") {
+        if (this.isValidIso(task.doneDate)) {
+          pushItem(task.doneDate, task, "done");
+        } else if (this.isValidIso(task.dueDate)) {
+          pushItem(task.dueDate, task, "done");
+        }
+        continue;
+      }
       if (this.isValidIso(task.dueDate)) pushItem(task.dueDate, task, "due");
       if (this.isValidIso(task.startDate)) pushItem(task.startDate, task, "start");
       if (this.isValidIso(task.scheduledDate)) pushItem(task.scheduledDate, task, "scheduled");
-      if (this.isValidIso(task.doneDate)) pushItem(task.doneDate, task, "done");
       if (task.displayStatus === "overdue" && this.isValidIso(task.dueDate) && task.dueDate < todayIso) {
         pushItem(todayIso, task, "overdue");
       }
-      if (showInProcessTasks && task.displayStatus !== "completed" && task.displayStatus !== "cancelled" && this.isValidIso(task.startDate) && this.isValidIso(task.dueDate) && task.startDate < task.dueDate) {
+      if (showInProcessTasks && task.displayStatus !== "cancelled" && this.isValidIso(task.startDate) && this.isValidIso(task.dueDate) && task.startDate < task.dueDate) {
         const start = new Date(task.startDate);
         const due = new Date(task.dueDate);
         for (let day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1); day < due; day.setDate(day.getDate() + 1)) {

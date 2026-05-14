@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.2
+- Fix: Completed tasks in Calendar view now appear only once, preferring done date and falling back to due date
+
 ## 0.2.1
 - Fix: Calendar view no longer shows cancelled tasks
 

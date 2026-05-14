@@ -1349,16 +1349,22 @@ class TaskMatrixView extends ItemView {
     };
 
     for (const task of tasks) {
+      if (task.displayStatus === "completed") {
+        if (this.isValidIso(task.doneDate)) {
+          pushItem(task.doneDate, task, "done");
+        } else if (this.isValidIso(task.dueDate)) {
+          pushItem(task.dueDate, task, "done");
+        }
+        continue;
+      }
       if (this.isValidIso(task.dueDate)) pushItem(task.dueDate, task, "due");
       if (this.isValidIso(task.startDate)) pushItem(task.startDate, task, "start");
       if (this.isValidIso(task.scheduledDate)) pushItem(task.scheduledDate, task, "scheduled");
-      if (this.isValidIso(task.doneDate)) pushItem(task.doneDate, task, "done");
       if (task.displayStatus === "overdue" && this.isValidIso(task.dueDate) && task.dueDate < todayIso) {
         pushItem(todayIso, task, "overdue");
       }
       if (
         showInProcessTasks &&
-        task.displayStatus !== "completed" &&
         task.displayStatus !== "cancelled" &&
         this.isValidIso(task.startDate) &&
         this.isValidIso(task.dueDate) &&
