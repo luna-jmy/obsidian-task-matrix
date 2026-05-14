@@ -203,10 +203,30 @@ export default class TaskMatrixPlugin extends Plugin {
 
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
         if (!parsed) continue;
+        if (this.settings.excludeMarkers.includes(parsed.checkboxStatus.trim())) {
+          continue;
+        }
         parsed.sectionHeading = currentHeading;
         // Filter out completed and cancelled tasks if setting is disabled
         if (!options?.ignoreIncludeCompleted && !this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
           continue;
+        }
+        if (!options?.ignoreIncludeCompleted && parsed.displayStatus === "completed" && !parsed.dueDate && !this.settings.includeCompletedWithoutDueDate) {
+          continue;
+        }
+        if (
+          !options?.ignoreIncludeCompleted
+          && this.settings.includeCompleted
+          && !this.settings.includeCompletedWithoutDueDate
+          && parsed.displayStatus === "completed"
+        ) {
+          if (this.settings.completedTaskDisplayRange > 0) {
+            const cutoffDate = isoDateOffset(-this.settings.completedTaskDisplayRange * 30);
+            const completedRangeDate = parsed.doneDate ?? parsed.dueDate;
+            if (!completedRangeDate || completedRangeDate < cutoffDate) {
+              continue;
+            }
+          }
         }
         tasks.push(parsed);
       }
@@ -665,6 +685,9 @@ class TaskMatrixView extends ItemView {
   private get visibleTasks(): ParsedTask[] {
     const { dueDateDisplayRange, hideFutureStartTasks } = this.plugin.settings;
     return this.filteredTasks.filter((task) => {
+      if (this.currentView === "list" && !this.plugin.settings.listShowCancelled && task.displayStatus === "cancelled") {
+        return false;
+      }
       // Due date range filter: hide tasks due more than N months away (always show overdue/completed/cancelled)
       if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
         const maxDue = isoDateOffset(dueDateDisplayRange * 30);
@@ -1014,8 +1037,7 @@ class TaskMatrixView extends ItemView {
     return folderParts.join("/");
   }
 
-  private mapTaskToGtdColumn(task: ParsedTask, simpleFlow: boolean): ParsedTask["gtdState"] {
-    if (!simpleFlow) return task.gtdState;
+  private mapTaskToGtdColumn(task: ParsedTask): ParsedTask["gtdState"] {
     if (task.gtdState === "To be Started") return "Inbox";
     if (task.gtdState === "Overdue") {
       const todayIso = new Date().toISOString().slice(0, 10);
@@ -1029,21 +1051,12 @@ class TaskMatrixView extends ItemView {
 
   private async renderGtd(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
     const board = parent.createDiv({ cls: "task-matrix-board" });
-    const simpleFlow = !this.plugin.settings.includeCompleted;
-    const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = simpleFlow
-      ? [
-          { title: "Inbox", state: "Inbox" },
-          { title: "In progress", state: "In Progress" },
-          { title: "Waiting", state: "Waiting" },
-        ]
-      : [
-          { title: "Inbox", state: "Inbox" },
-          { title: "To be started", state: "To be Started" },
-          { title: "In progress", state: "In Progress" },
-          { title: "Waiting", state: "Waiting" },
-          { title: "Overdue", state: "Overdue" },
-          { title: "Done", state: "Done" },
-        ];
+    const columns: Array<{ title: string; state: ParsedTask["gtdState"] }> = [
+      { title: "Inbox", state: "Inbox" },
+      { title: "In progress", state: "In Progress" },
+      { title: "Waiting", state: "Waiting" },
+      { title: "Done", state: "Done" },
+    ];
 
     for (const column of columns) {
       const columnEl = board.createDiv({ cls: "task-matrix-column" });
@@ -1069,7 +1082,12 @@ class TaskMatrixView extends ItemView {
         }
       });
 
-      const group = tasks.filter((task) => this.mapTaskToGtdColumn(task, simpleFlow) === column.state);
+      const group = tasks.filter((task) => {
+        if (column.state === "Done") {
+          return task.displayStatus === "completed" && this.mapTaskToGtdColumn(task) === column.state;
+        }
+        return task.displayStatus !== "cancelled" && this.mapTaskToGtdColumn(task) === column.state;
+      });
 
       // Define default values based on GTD state
       const getGtdDefaults = (state: ParsedTask["gtdState"]): Partial<ParsedTask> => {
@@ -1781,8 +1799,7 @@ class TaskMatrixView extends ItemView {
 
     // GTD view: quick move icons for Inbox / In Progress / Waiting
     if (this.currentView === "gtd") {
-      const simpleFlow = !this.plugin.settings.includeCompleted;
-      const currentGtdColumn = this.mapTaskToGtdColumn(task, simpleFlow);
+      const currentGtdColumn = this.mapTaskToGtdColumn(task);
       const quickStates: ParsedTask["gtdState"][] = ["Inbox", "In Progress", "Waiting"];
       const stateLabels: Record<"Inbox" | "In Progress" | "Waiting", string> = {
         Inbox: "I",
@@ -2457,6 +2474,19 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Exclude markers")
+      .setDesc("Checkbox contents to exclude from task views and statistics, separated by commas.")
+      .addText((text) =>
+        text
+          .setPlaceholder("I, ?, !")
+          .setValue(this.plugin.settings.excludeMarkers.join(", "))
+          .onChange((value) => {
+            this.plugin.settings.excludeMarkers = value.split(",").map(s => s.trim()).filter(Boolean);
+            this.persistSettings(true);
+          }),
+      );
+
+    new Setting(containerEl)
       .setName("Cancelled markers")
       .setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -")
       .addText((text) =>
@@ -2479,8 +2509,38 @@ class TaskMatrixSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.includeCompleted).onChange((value) => {
           this.plugin.settings.includeCompleted = value;
           this.persistSettings(true);
+          this.display();
         }),
       );
+
+    if (this.plugin.settings.includeCompleted) {
+      new Setting(containerEl)
+        .setName("Show completed tasks without due date")
+        .setDesc("When disabled, completed tasks are shown only if they have a due date.")
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.includeCompletedWithoutDueDate).onChange((value) => {
+            this.plugin.settings.includeCompletedWithoutDueDate = value;
+            this.persistSettings(true);
+            this.display();
+          }),
+        );
+
+      if (!this.plugin.settings.includeCompletedWithoutDueDate) {
+        new Setting(containerEl)
+          .setName("Completed task display range")
+          .setDesc("Only show completed tasks finished within this many months. Uses completion date first, then due date. Set to 0 to show all.")
+          .addSlider((slider) =>
+            slider
+              .setLimits(0, 12, 1)
+              .setValue(this.plugin.settings.completedTaskDisplayRange)
+              .setDynamicTooltip()
+              .onChange((value) => {
+                this.plugin.settings.completedTaskDisplayRange = value;
+                this.persistSettings(true);
+              }),
+          );
+      }
+    }
 
     new Setting(containerEl)
       .setName("Track completion date")
@@ -2559,6 +2619,16 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl).setName("List view").setHeading();
+
+    new Setting(containerEl)
+      .setName("Show cancelled tasks")
+      .setDesc("Show cancelled tasks in list view.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.listShowCancelled).onChange((value) => {
+          this.plugin.settings.listShowCancelled = value;
+          this.persistSettings(true);
+        }),
+      );
 
     new Setting(containerEl)
       .setName("Group by folder")

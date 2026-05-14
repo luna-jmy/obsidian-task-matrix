@@ -1,6 +1,6 @@
 {
   "name": "obsidian-task-matrix-plugin",
-  "version": "0.1.18",
+  "version": "0.2.0",
   "description": "Task matrix dashboards for Obsidian.",
   "main": "main.js",
   "scripts": {
@@ -18,7 +18,7 @@
   "author": "Luna Jiang",
   "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.14.0",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
@@ -31,6 +31,6 @@
     "typescript-eslint": "^8.58.0"
   },
   "dependencies": {
-    "@eslint/json": "^1.2.0"
+    "@eslint/json": "0.14.0"
   }
 }

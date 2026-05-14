@@ -50,12 +50,17 @@ export interface TaskMatrixSettings {
   excludeFolders: string[];
   defaultView: ViewMode;
   includeCompleted: boolean;
+  includeCompletedWithoutDueDate: boolean;
+  completedTaskDisplayRange: number;
   openLocation: OpenLocation;
   // Custom completion markers (checkbox content that means completed)
   completionMarkers: string[];
+  // Custom markers to exclude from task views and statistics
+  excludeMarkers: string[];
   // Custom cancelled markers (checkbox content that means cancelled)
   cancelledMarkers: string[];
   // List view folder grouping
+  listShowCancelled: boolean;
   listGroupByFolder: boolean;
   listGroupByFolderDepth: number;
   // Task creation settings
@@ -86,9 +91,13 @@ export const DEFAULT_SETTINGS: TaskMatrixSettings = {
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,
+  includeCompletedWithoutDueDate: false,
+  completedTaskDisplayRange: 1,
   openLocation: "sidebar",
   completionMarkers: ["x", "X"],
+  excludeMarkers: [],
   cancelledMarkers: ["-"],
+  listShowCancelled: false,
   listGroupByFolder: false,
   listGroupByFolderDepth: 1,
   newTaskTargetPath: "",

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+- New: Add `Exclude markers` setting to ignore custom checkbox markers such as `- [I]` from task views and statistics
+- New: Add completed-task display controls for showing completed tasks without due dates and limiting completed tasks by completion/due date range
+- New: Add List view setting to show or hide cancelled tasks, hidden by default
+- Change: GTD view now shows Inbox, In progress, Waiting, and Done columns only
+- Fix: GTD Done column now counts only completion markers and excludes cancelled markers
+
 ## 0.1.18
 - New: Add `Due date display range` setting to hide tasks due farther than the selected number of months while keeping overdue, completed, and cancelled tasks visible
 - New: Add `Hide future start tasks` setting to hide tasks whose start date is more than one month away
