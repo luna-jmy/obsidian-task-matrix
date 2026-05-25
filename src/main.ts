@@ -1524,7 +1524,7 @@ class TaskMatrixView extends ItemView {
     });
     item.setAttribute("href", linkTarget);
     item.setAttribute("data-href", linkTarget);
-    item.setAttribute("aria-label", linkTarget);
+    item.setAttribute("aria-label", task.description);
     item.addEventListener("mouseenter", (event) => {
       this.app.workspace.trigger("hover-link", {
         event,
