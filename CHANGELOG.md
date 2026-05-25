@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+- Fix: Calendar view shows task description instead of file path in hover tooltip
+- Fix: Calendar view no longer duplicates start and due entries when they fall on the same day
+- Fix: Calendar process items no longer include the due date
+
 ## 0.2.2
 - Fix: Completed tasks in Calendar view now appear only once, preferring done date and falling back to due date
 
