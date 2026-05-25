@@ -1358,7 +1358,7 @@ class TaskMatrixView extends ItemView {
         continue;
       }
       if (this.isValidIso(task.dueDate)) pushItem(task.dueDate, task, "due");
-      if (this.isValidIso(task.startDate)) pushItem(task.startDate, task, "start");
+      if (this.isValidIso(task.startDate) && task.startDate !== task.dueDate) pushItem(task.startDate, task, "start");
       if (this.isValidIso(task.scheduledDate)) pushItem(task.scheduledDate, task, "scheduled");
       if (task.displayStatus === "overdue" && this.isValidIso(task.dueDate) && task.dueDate < todayIso) {
         pushItem(todayIso, task, "overdue");
@@ -1371,10 +1371,9 @@ class TaskMatrixView extends ItemView {
         task.startDate < task.dueDate
       ) {
         const start = new Date(task.startDate);
-        const due = new Date(task.dueDate);
         for (
           let day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
-          day < due;
+          this.toCalendarIso(day) < task.dueDate;
           day.setDate(day.getDate() + 1)
         ) {
           pushItem(this.toCalendarIso(day), task, "process");
