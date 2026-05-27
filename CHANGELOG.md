@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+- New: Add completed tasks toggle button to main toolbar
+- New: Add global collapse/expand toggle for List, GTD, and Matrix views
+- Fix: Matrix grid no longer stretches when quadrants are collapsed
+
 ## 0.2.3
 - Fix: Calendar view shows task description instead of file path in hover tooltip
 - Fix: Calendar view no longer duplicates start and due entries when they fall on the same day
