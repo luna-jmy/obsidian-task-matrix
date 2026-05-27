@@ -908,6 +908,16 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.renderModeButton(segmented, "gtd", ICONS.gtd);
     this.renderModeButton(segmented, "eisenhower", ICONS.eisenhower);
     this.renderModeButton(segmented, "calendar", ICONS.calendar);
+    const completedBtn = toolbar.createEl("button", {
+      text: "\u2713",
+      cls: `task-matrix-toolbar-btn${this.plugin.settings.includeCompleted ? " is-active" : ""}`
+    });
+    completedBtn.title = this.plugin.settings.includeCompleted ? "Hide completed tasks" : "Show completed tasks";
+    completedBtn.addEventListener("click", () => {
+      this.plugin.settings.includeCompleted = !this.plugin.settings.includeCompleted;
+      void this.plugin.saveSettings();
+      void this.plugin.refreshTasks(true);
+    });
     const refreshButton = toolbar.createEl("button", {
       text: ICONS.refresh,
       cls: "task-matrix-refresh"

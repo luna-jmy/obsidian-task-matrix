@@ -149,6 +149,18 @@
         background: var(--interactive-accent);
         color: var(--text-on-accent);
       }
+      .task-matrix-toolbar-btn {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        border-radius: 6px;
+        cursor: pointer;
+        min-height: 34px;
+      }
+      .task-matrix-toolbar-btn.is-active {
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+      }
       .task-matrix-refresh {
         padding: 6px 10px;
         border: 1px solid var(--background-modifier-border);
@@ -432,6 +444,7 @@
           min-height: 38px;
         }
         .task-matrix-mode-button,
+        .task-matrix-toolbar-btn,
         .task-matrix-refresh {
           width: 100%;
           min-height: 38px;
