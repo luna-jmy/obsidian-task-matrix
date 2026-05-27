@@ -918,6 +918,48 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       void this.plugin.saveSettings();
       void this.plugin.refreshTasks(true);
     });
+    const isAllCollapsed = () => {
+      if (this.currentView === "list") {
+        const grouped = this.groupTasksByFolder(this.visibleTasks, this.plugin.settings.listGroupByFolderDepth);
+        const keys = Object.keys(grouped).map((fp) => fp || "Root");
+        return keys.length > 0 && keys.every((k) => this.collapsedFolderGroups.has(k));
+      }
+      if (this.currentView === "gtd") {
+        const states = ["Inbox", "In Progress", "Waiting", "Done"];
+        return states.every((s) => this.collapsedGtdColumns.has(s));
+      }
+      if (this.currentView === "eisenhower") {
+        const quads = ["Q1", "Q2", "Q3", "Q4"];
+        return quads.every((q) => this.collapsedMatrixQuadrants.has(q));
+      }
+      return false;
+    };
+    const collapseBtn = toolbar.createEl("button", {
+      text: "\u229E",
+      cls: "task-matrix-toolbar-btn"
+    });
+    collapseBtn.title = "Collapse all";
+    collapseBtn.addEventListener("click", () => {
+      if (isAllCollapsed()) {
+        if (this.currentView === "list") {
+          this.collapsedFolderGroups.clear();
+        } else if (this.currentView === "gtd") {
+          this.collapsedGtdColumns.clear();
+        } else if (this.currentView === "eisenhower") {
+          this.collapsedMatrixQuadrants.clear();
+        }
+      } else {
+        if (this.currentView === "list") {
+          const grouped = this.groupTasksByFolder(this.visibleTasks, this.plugin.settings.listGroupByFolderDepth);
+          this.collapsedFolderGroups = new Set(Object.keys(grouped).map((fp) => fp || "Root"));
+        } else if (this.currentView === "gtd") {
+          this.collapsedGtdColumns = /* @__PURE__ */ new Set(["Inbox", "In Progress", "Waiting", "Done"]);
+        } else if (this.currentView === "eisenhower") {
+          this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set(["Q1", "Q2", "Q3", "Q4"]);
+        }
+      }
+      void this.refreshBody();
+    });
     const refreshButton = toolbar.createEl("button", {
       text: ICONS.refresh,
       cls: "task-matrix-refresh"
@@ -966,28 +1008,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     if (this.plugin.settings.listGroupByFolder) {
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
       const groupEntries = Object.entries(grouped);
-      const listToolbar = wrap.createDiv({ cls: "task-matrix-list-toolbar" });
-      const toggleAllButton = listToolbar.createEl("button", { cls: "task-matrix-list-toggle-all" });
-      const updateToggleAllButton = () => {
-        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
-          const groupKey = folderPath || "Root";
-          return this.collapsedFolderGroups.has(groupKey);
-        });
-        toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
-      };
-      updateToggleAllButton();
-      toggleAllButton.addEventListener("click", () => {
-        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
-          const groupKey = folderPath || "Root";
-          return this.collapsedFolderGroups.has(groupKey);
-        });
-        if (allCollapsed) {
-          this.collapsedFolderGroups.clear();
-        } else {
-          this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
-        }
-        void this.refreshBody();
-      });
       for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
         const groupKey = folderPath || "Root";
@@ -1013,7 +1033,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             this.collapsedFolderGroups.add(groupKey);
           }
           renderToggleLabel();
-          updateToggleAllButton();
         });
         for (const task of folderTasks) {
           await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);

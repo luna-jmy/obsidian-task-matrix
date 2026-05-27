@@ -179,18 +179,6 @@
         flex-direction: column;
         gap: 10px;
       }
-      .task-matrix-list-toolbar {
-        display: flex;
-        justify-content: flex-end;
-      }
-      .task-matrix-list-toggle-all {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        padding: 6px 10px;
-        cursor: pointer;
-      }
       .task-matrix-board {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -201,6 +189,7 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
+        align-content: start;
       }
       .task-calendar {
         background: var(--background-secondary);
