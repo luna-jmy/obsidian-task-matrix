@@ -1,7 +1,3 @@
-/* eslint-disable */
-this.require = require;
-this.exports = exports;
-this.module = module;
 "use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -35,9 +31,13 @@ var DEFAULT_SETTINGS = {
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,
+  includeCompletedWithoutDueDate: false,
+  completedTaskDisplayRange: 1,
   openLocation: "sidebar",
   completionMarkers: ["x", "X"],
+  excludeMarkers: [],
   cancelledMarkers: ["-"],
+  listShowCancelled: false,
   listGroupByFolder: false,
   listGroupByFolderDepth: 1,
   newTaskTargetPath: "",
@@ -48,7 +48,9 @@ var DEFAULT_SETTINGS = {
   showCalendarMonthWeekends: true,
   calendarListShowFullMonth: false,
   showCalendarInProcessTasks: false,
-  calendarFirstDayOfWeek: "monday"
+  calendarFirstDayOfWeek: "monday",
+  dueDateDisplayRange: 1,
+  hideFutureStartTasks: true
 };
 
 // src/task-parser.ts
@@ -267,10 +269,10 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         void this.refreshTasks(true);
       }
     });
-    this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("create", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("modify", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("delete", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => this.handleVaultRename(file, oldPath)));
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
   }
   onunload() {
@@ -323,21 +325,42 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       }
     }
   }
-  shouldIncludeFile(file) {
+  isExcalidrawFilePath(path) {
+    return path.toLowerCase().endsWith(".excalidraw.md");
+  }
+  shouldIncludePath(path) {
     for (const excludeFolder of this.settings.excludeFolders) {
       const trimmed = excludeFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return false;
       }
     }
     if (this.settings.scanFolders.length === 0) return true;
     for (const scanFolder of this.settings.scanFolders) {
       const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return true;
       }
     }
     return false;
+  }
+  shouldTrackMarkdownPath(path) {
+    return path.toLowerCase().endsWith(".md") && !this.isExcalidrawFilePath(path) && this.shouldIncludePath(path);
+  }
+  handleVaultChange(file) {
+    if (file instanceof import_obsidian.TFile && this.shouldTrackMarkdownPath(file.path)) {
+      this.scheduleRefresh();
+    }
+  }
+  handleVaultRename(file, oldPath) {
+    const currentPathMatches = file instanceof import_obsidian.TFile && this.shouldTrackMarkdownPath(file.path);
+    const oldPathMatches = this.shouldTrackMarkdownPath(oldPath);
+    if (currentPathMatches || oldPathMatches) {
+      this.scheduleRefresh();
+    }
+  }
+  shouldIncludeFile(file) {
+    return this.shouldTrackMarkdownPath(file.path);
   }
   async collectTasks(options) {
     const tasks = [];
@@ -366,9 +389,24 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         }
         const parsed = parseTaskLine(line, file.path, index + 1, this.settings);
         if (!parsed) continue;
+        if (this.settings.excludeMarkers.includes(parsed.checkboxStatus.trim())) {
+          continue;
+        }
         parsed.sectionHeading = currentHeading;
         if (!options?.ignoreIncludeCompleted && !this.settings.includeCompleted && (parsed.displayStatus === "completed" || parsed.displayStatus === "cancelled")) {
           continue;
+        }
+        if (!options?.ignoreIncludeCompleted && parsed.displayStatus === "completed" && !parsed.dueDate && !this.settings.includeCompletedWithoutDueDate) {
+          continue;
+        }
+        if (!options?.ignoreIncludeCompleted && this.settings.includeCompleted && !this.settings.includeCompletedWithoutDueDate && parsed.displayStatus === "completed") {
+          if (this.settings.completedTaskDisplayRange > 0) {
+            const cutoffDate = isoDateOffset(-this.settings.completedTaskDisplayRange * 30);
+            const completedRangeDate = parsed.doneDate ?? parsed.dueDate;
+            if (!completedRangeDate || completedRangeDate < cutoffDate) {
+              continue;
+            }
+          }
         }
         tasks.push(parsed);
       }
@@ -657,6 +695,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.startDateFilter = { operator: "any", value: "" };
     this.dueDateFilter = { operator: "any", value: "" };
     this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set();
+    this.collapsedGtdColumns = /* @__PURE__ */ new Set();
     this.collapsedFolderGroups = /* @__PURE__ */ new Set();
     this.shellEl = null;
     this.bodyEl = null;
@@ -713,7 +752,22 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
   }
   get visibleTasks() {
+    const { dueDateDisplayRange, hideFutureStartTasks } = this.plugin.settings;
     return this.filteredTasks.filter((task) => {
+      if (this.currentView === "list" && !this.plugin.settings.listShowCancelled && task.displayStatus === "cancelled") {
+        return false;
+      }
+      if (this.currentView === "calendar" && task.displayStatus === "cancelled") {
+        return false;
+      }
+      if (dueDateDisplayRange > 0 && task.dueDate && task.displayStatus !== "overdue" && task.displayStatus !== "completed" && task.displayStatus !== "cancelled") {
+        const maxDue = isoDateOffset(dueDateDisplayRange * 30);
+        if (task.dueDate > maxDue) return false;
+      }
+      if (hideFutureStartTasks && task.startDate && task.displayStatus === "to-be-started") {
+        const maxStart = isoDateOffset(30);
+        if (task.startDate > maxStart) return false;
+      }
       return this.matchesDateFilter(task.startDate, this.startDateFilter) && this.matchesDateFilter(task.dueDate, this.dueDateFilter);
     });
   }
@@ -871,6 +925,58 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     this.renderModeButton(segmented, "gtd", ICONS.gtd);
     this.renderModeButton(segmented, "eisenhower", ICONS.eisenhower);
     this.renderModeButton(segmented, "calendar", ICONS.calendar);
+    const completedBtn = toolbar.createEl("button", {
+      text: "\u2713",
+      cls: `task-matrix-toolbar-btn${this.plugin.settings.includeCompleted ? " is-active" : ""}`
+    });
+    completedBtn.title = this.plugin.settings.includeCompleted ? "Hide completed tasks" : "Show completed tasks";
+    completedBtn.addEventListener("click", () => {
+      this.plugin.settings.includeCompleted = !this.plugin.settings.includeCompleted;
+      void this.plugin.saveSettings();
+      void this.plugin.refreshTasks(true);
+    });
+    const isAllCollapsed = () => {
+      if (this.currentView === "list") {
+        const grouped = this.groupTasksByFolder(this.visibleTasks, this.plugin.settings.listGroupByFolderDepth);
+        const keys = Object.keys(grouped).map((fp) => fp || "Root");
+        return keys.length > 0 && keys.every((k) => this.collapsedFolderGroups.has(k));
+      }
+      if (this.currentView === "gtd") {
+        const states = ["Inbox", "In Progress", "Waiting", "Done"];
+        return states.every((s) => this.collapsedGtdColumns.has(s));
+      }
+      if (this.currentView === "eisenhower") {
+        const quads = ["Q1", "Q2", "Q3", "Q4"];
+        return quads.every((q) => this.collapsedMatrixQuadrants.has(q));
+      }
+      return false;
+    };
+    const collapseBtn = toolbar.createEl("button", {
+      text: "\u229E",
+      cls: "task-matrix-toolbar-btn"
+    });
+    collapseBtn.title = "Collapse all";
+    collapseBtn.addEventListener("click", () => {
+      if (isAllCollapsed()) {
+        if (this.currentView === "list") {
+          this.collapsedFolderGroups.clear();
+        } else if (this.currentView === "gtd") {
+          this.collapsedGtdColumns.clear();
+        } else if (this.currentView === "eisenhower") {
+          this.collapsedMatrixQuadrants.clear();
+        }
+      } else {
+        if (this.currentView === "list") {
+          const grouped = this.groupTasksByFolder(this.visibleTasks, this.plugin.settings.listGroupByFolderDepth);
+          this.collapsedFolderGroups = new Set(Object.keys(grouped).map((fp) => fp || "Root"));
+        } else if (this.currentView === "gtd") {
+          this.collapsedGtdColumns = /* @__PURE__ */ new Set(["Inbox", "In Progress", "Waiting", "Done"]);
+        } else if (this.currentView === "eisenhower") {
+          this.collapsedMatrixQuadrants = /* @__PURE__ */ new Set(["Q1", "Q2", "Q3", "Q4"]);
+        }
+      }
+      void this.refreshBody();
+    });
     const refreshButton = toolbar.createEl("button", {
       text: ICONS.refresh,
       cls: "task-matrix-refresh"
@@ -919,28 +1025,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     if (this.plugin.settings.listGroupByFolder) {
       const grouped = this.groupTasksByFolder(tasks, this.plugin.settings.listGroupByFolderDepth);
       const groupEntries = Object.entries(grouped);
-      const listToolbar = wrap.createDiv({ cls: "task-matrix-list-toolbar" });
-      const toggleAllButton = listToolbar.createEl("button", { cls: "task-matrix-list-toggle-all" });
-      const updateToggleAllButton = () => {
-        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
-          const groupKey = folderPath || "Root";
-          return this.collapsedFolderGroups.has(groupKey);
-        });
-        toggleAllButton.setText(allCollapsed ? "Expand all" : "Collapse all");
-      };
-      updateToggleAllButton();
-      toggleAllButton.addEventListener("click", () => {
-        const allCollapsed = groupEntries.length > 0 && groupEntries.every(([folderPath]) => {
-          const groupKey = folderPath || "Root";
-          return this.collapsedFolderGroups.has(groupKey);
-        });
-        if (allCollapsed) {
-          this.collapsedFolderGroups.clear();
-        } else {
-          this.collapsedFolderGroups = new Set(groupEntries.map(([folderPath]) => folderPath || "Root"));
-        }
-        void this.refreshBody();
-      });
       for (const [folderPath, folderTasks] of groupEntries) {
         const groupEl = wrap.createDiv({ cls: "task-matrix-folder-group" });
         const groupKey = folderPath || "Root";
@@ -966,7 +1050,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             this.collapsedFolderGroups.add(groupKey);
           }
           renderToggleLabel();
-          updateToggleAllButton();
         });
         for (const task of folderTasks) {
           await this.createTaskCard(content, task, `${task.filePath}:${task.lineNumber}`);
@@ -1004,8 +1087,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     const folderParts = parts.slice(0, depth);
     return folderParts.join("/");
   }
-  mapTaskToGtdColumn(task, simpleFlow) {
-    if (!simpleFlow) return task.gtdState;
+  mapTaskToGtdColumn(task) {
     if (task.gtdState === "To be Started") return "Inbox";
     if (task.gtdState === "Overdue") {
       const todayIso = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -1018,17 +1100,10 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderGtd(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-board" });
-    const simpleFlow = !this.plugin.settings.includeCompleted;
-    const columns = simpleFlow ? [
+    const columns = [
       { title: "Inbox", state: "Inbox" },
-      { title: "In progress", state: "In Progress" },
-      { title: "Waiting", state: "Waiting" }
-    ] : [
-      { title: "Inbox", state: "Inbox" },
-      { title: "To be started", state: "To be Started" },
       { title: "In progress", state: "In Progress" },
       { title: "Waiting", state: "Waiting" },
-      { title: "Overdue", state: "Overdue" },
       { title: "Done", state: "Done" }
     ];
     for (const column of columns) {
@@ -1052,7 +1127,12 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
           }
         }
       });
-      const group = tasks.filter((task) => this.mapTaskToGtdColumn(task, simpleFlow) === column.state);
+      const group = tasks.filter((task) => {
+        if (column.state === "Done") {
+          return task.displayStatus === "completed" && this.mapTaskToGtdColumn(task) === column.state;
+        }
+        return task.displayStatus !== "cancelled" && this.mapTaskToGtdColumn(task) === column.state;
+      });
       const getGtdDefaults = (state) => {
         const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         switch (state) {
@@ -1071,9 +1151,38 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       this.createColumnHeader(columnEl, column.title, group.length, () => {
         const defaults = getGtdDefaults(column.state);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
+      }, true, this.collapsedGtdColumns.has(column.state));
+      if (this.collapsedGtdColumns.has(column.state)) {
+        columnEl.addClass("is-collapsed");
+      }
+      const header = columnEl.querySelector(".task-matrix-column-header");
+      const collapseState = column.state;
+      header.addEventListener("click", (event) => {
+        if (event.target.closest(".task-matrix-add-btn")) return;
+        const wasCollapsed = this.collapsedGtdColumns.has(collapseState);
+        if (wasCollapsed) {
+          this.collapsedGtdColumns.delete(collapseState);
+        } else {
+          this.collapsedGtdColumns.add(collapseState);
+        }
+        const nowCollapsed = !wasCollapsed;
+        columnEl.toggleClass("is-collapsed", nowCollapsed);
+        const bodyEl = columnEl.querySelector(".task-matrix-column-body");
+        if (bodyEl) bodyEl.toggleClass("is-collapsed", nowCollapsed);
+        const indicator = header.querySelector(".task-matrix-collapse-indicator");
+        if (indicator) indicator.setText(nowCollapsed ? "\u25B8" : "\u25BE");
+        const headerEl = columnEl.querySelector(".task-matrix-column-header");
+        if (headerEl) {
+          headerEl.style.borderBottom = nowCollapsed ? "none" : "";
+          headerEl.style.paddingBottom = nowCollapsed ? "0" : "";
+          headerEl.style.marginBottom = nowCollapsed ? "0" : "";
+        }
+        columnEl.style.minHeight = nowCollapsed ? "0" : "";
+        columnEl.style.paddingBottom = nowCollapsed ? "12px" : "";
       });
+      const body = columnEl.createDiv({ cls: `task-matrix-column-body${this.collapsedGtdColumns.has(column.state) ? " is-collapsed" : ""}` });
       for (const task of group) {
-        await this.createTaskCard(columnEl, task, this.describeTask(task));
+        await this.createTaskCard(body, task, this.describeTask(task));
       }
     }
   }
@@ -1265,17 +1374,23 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       byDate[dateKey].push({ task, type });
     };
     for (const task of tasks) {
+      if (task.displayStatus === "completed") {
+        if (this.isValidIso(task.doneDate)) {
+          pushItem(task.doneDate, task, "done");
+        } else if (this.isValidIso(task.dueDate)) {
+          pushItem(task.dueDate, task, "done");
+        }
+        continue;
+      }
       if (this.isValidIso(task.dueDate)) pushItem(task.dueDate, task, "due");
-      if (this.isValidIso(task.startDate)) pushItem(task.startDate, task, "start");
+      if (this.isValidIso(task.startDate) && task.startDate !== task.dueDate) pushItem(task.startDate, task, "start");
       if (this.isValidIso(task.scheduledDate)) pushItem(task.scheduledDate, task, "scheduled");
-      if (this.isValidIso(task.doneDate)) pushItem(task.doneDate, task, "done");
       if (task.displayStatus === "overdue" && this.isValidIso(task.dueDate) && task.dueDate < todayIso) {
         pushItem(todayIso, task, "overdue");
       }
-      if (showInProcessTasks && task.displayStatus !== "completed" && task.displayStatus !== "cancelled" && this.isValidIso(task.startDate) && this.isValidIso(task.dueDate) && task.startDate < task.dueDate) {
+      if (showInProcessTasks && task.displayStatus !== "cancelled" && this.isValidIso(task.startDate) && this.isValidIso(task.dueDate) && task.startDate < task.dueDate) {
         const start = new Date(task.startDate);
-        const due = new Date(task.dueDate);
-        for (let day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1); day < due; day.setDate(day.getDate() + 1)) {
+        for (let day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1); this.toCalendarIso(day) < task.dueDate; day.setDate(day.getDate() + 1)) {
           pushItem(this.toCalendarIso(day), task, "process");
         }
       }
@@ -1394,7 +1509,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     });
     item.setAttribute("href", linkTarget);
     item.setAttribute("data-href", linkTarget);
-    item.setAttribute("aria-label", linkTarget);
+    item.setAttribute("aria-label", task.description);
     item.addEventListener("mouseenter", (event) => {
       this.app.workspace.trigger("hover-link", {
         event,
@@ -1412,7 +1527,6 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
   }
   async renderEisenhower(parent, tasks) {
     const board = parent.createDiv({ cls: "task-matrix-grid" });
-    const isMobile = this.isMobileLayout();
     const columns = [
       { title: "Q1", quadrant: "Q1", subtitle: "Important + urgent" },
       { title: "Q2", quadrant: "Q2", subtitle: "Important + not urgent" },
@@ -1422,9 +1536,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
     for (const column of columns) {
       const cell = board.createDiv({ cls: "task-matrix-cell" });
       cell.dataset.quadrant = column.quadrant;
-      if (isMobile) {
-        cell.addClass("is-mobile-collapsible");
-      }
+      cell.addClass("is-collapsible");
       cell.addEventListener("dragover", (e) => {
         e.preventDefault();
         cell.addClass("task-matrix-drag-over");
@@ -1459,26 +1571,34 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
             return {};
         }
       };
-      const isCollapsed = isMobile && this.collapsedMatrixQuadrants.has(column.quadrant);
+      const isCollapsed = this.collapsedMatrixQuadrants.has(column.quadrant);
       if (isCollapsed) {
         cell.addClass("is-collapsed");
       }
       const header = this.createColumnHeader(cell, `${column.title} ${column.subtitle}`, group.length, () => {
         const defaults = getQuadrantDefaults(column.quadrant);
         new TaskEditModal(this.app, null, this.plugin, defaults).open();
-      }, isMobile, isCollapsed);
+      }, true, isCollapsed);
       const body = cell.createDiv({ cls: `task-matrix-cell-body${isCollapsed ? " is-collapsed" : ""}` });
-      if (isMobile) {
-        header.addEventListener("click", (event) => {
-          if (event.target.closest(".task-matrix-add-btn")) return;
-          if (this.collapsedMatrixQuadrants.has(column.quadrant)) {
-            this.collapsedMatrixQuadrants.delete(column.quadrant);
-          } else {
-            this.collapsedMatrixQuadrants.add(column.quadrant);
-          }
-          void this.render();
-        });
-      }
+      header.addEventListener("click", (event) => {
+        if (event.target.closest(".task-matrix-add-btn")) return;
+        const wasCollapsed = this.collapsedMatrixQuadrants.has(column.quadrant);
+        if (wasCollapsed) {
+          this.collapsedMatrixQuadrants.delete(column.quadrant);
+        } else {
+          this.collapsedMatrixQuadrants.add(column.quadrant);
+        }
+        const nowCollapsed = !wasCollapsed;
+        cell.toggleClass("is-collapsed", nowCollapsed);
+        const cellBody = cell.querySelector(".task-matrix-cell-body");
+        if (cellBody) cellBody.toggleClass("is-collapsed", nowCollapsed);
+        const indicator = header.querySelector(".task-matrix-collapse-indicator");
+        if (indicator) indicator.setText(nowCollapsed ? "\u25B8" : "\u25BE");
+        header.style.borderBottom = nowCollapsed ? "none" : "";
+        header.style.paddingBottom = nowCollapsed ? "0" : "";
+        header.style.marginBottom = nowCollapsed ? "0" : "";
+        cell.style.minHeight = nowCollapsed ? "0" : "";
+      });
       for (const task of group) {
         await this.createTaskCard(body, task, this.describeTask(task));
       }
@@ -1624,8 +1744,7 @@ var TaskMatrixView = class extends import_obsidian.ItemView {
       }
     }
     if (this.currentView === "gtd") {
-      const simpleFlow = !this.plugin.settings.includeCompleted;
-      const currentGtdColumn = this.mapTaskToGtdColumn(task, simpleFlow);
+      const currentGtdColumn = this.mapTaskToGtdColumn(task);
       const quickStates = ["Inbox", "In Progress", "Waiting"];
       const stateLabels = {
         Inbox: "I",
@@ -2101,6 +2220,12 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
         this.persistSettings(true);
       })
     );
+    new import_obsidian.Setting(containerEl).setName("Exclude markers").setDesc("Checkbox contents to exclude from task views and statistics, separated by commas.").addText(
+      (text) => text.setPlaceholder("I, ?, !").setValue(this.plugin.settings.excludeMarkers.join(", ")).onChange((value) => {
+        this.plugin.settings.excludeMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
+        this.persistSettings(true);
+      })
+    );
     new import_obsidian.Setting(containerEl).setName("Cancelled markers").setDesc("Checkbox contents that indicate a cancelled task (comma-separated). Default: -").addText(
       (text) => text.setPlaceholder("-, cancelled, skip").setValue(this.plugin.settings.cancelledMarkers.join(", ")).onChange((value) => {
         this.plugin.settings.cancelledMarkers = value.split(",").map((s) => s.trim()).filter(Boolean);
@@ -2114,8 +2239,26 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       (toggle) => toggle.setValue(this.plugin.settings.includeCompleted).onChange((value) => {
         this.plugin.settings.includeCompleted = value;
         this.persistSettings(true);
+        this.display();
       })
     );
+    if (this.plugin.settings.includeCompleted) {
+      new import_obsidian.Setting(containerEl).setName("Show completed tasks without due date").setDesc("When disabled, completed tasks are shown only if they have a due date.").addToggle(
+        (toggle) => toggle.setValue(this.plugin.settings.includeCompletedWithoutDueDate).onChange((value) => {
+          this.plugin.settings.includeCompletedWithoutDueDate = value;
+          this.persistSettings(true);
+          this.display();
+        })
+      );
+      if (!this.plugin.settings.includeCompletedWithoutDueDate) {
+        new import_obsidian.Setting(containerEl).setName("Completed task display range").setDesc("Only show completed tasks finished within this many months. Uses completion date first, then due date. Set to 0 to show all.").addSlider(
+          (slider) => slider.setLimits(0, 12, 1).setValue(this.plugin.settings.completedTaskDisplayRange).setDynamicTooltip().onChange((value) => {
+            this.plugin.settings.completedTaskDisplayRange = value;
+            this.persistSettings(true);
+          })
+        );
+      }
+    }
     new import_obsidian.Setting(containerEl).setName("Track completion date").setDesc("When enabled, automatically add \u2705 yyyy-mm-dd to tasks when they are marked as completed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.trackCompletionDate).onChange((value) => {
         this.plugin.settings.trackCompletionDate = value;
@@ -2125,6 +2268,18 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Urgent days range").setDesc("Number of days to consider a task as urgent (1-7). Default: 1 (today only). 2 = today+tomorrow, 3 = today+2 days, etc.").addSlider(
       (slider) => slider.setLimits(1, 7, 1).setValue(this.plugin.settings.urgentDaysRange).setDynamicTooltip().onChange((value) => {
         this.plugin.settings.urgentDaysRange = value;
+        this.persistSettings(true);
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Due date display range").setDesc("Only show tasks due within this many months (overdue tasks are always shown). Set to 0 to show all.").addSlider(
+      (slider) => slider.setLimits(0, 12, 1).setValue(this.plugin.settings.dueDateDisplayRange).setDynamicTooltip().onChange((value) => {
+        this.plugin.settings.dueDateDisplayRange = value;
+        this.persistSettings(true);
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Hide future start tasks").setDesc("Hide tasks whose start date is more than 1 month from now.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.hideFutureStartTasks).onChange((value) => {
+        this.plugin.settings.hideFutureStartTasks = value;
         this.persistSettings(true);
       })
     );
@@ -2142,6 +2297,12 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName("List view").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Show cancelled tasks").setDesc("Show cancelled tasks in list view.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.listShowCancelled).onChange((value) => {
+        this.plugin.settings.listShowCancelled = value;
+        this.persistSettings(true);
+      })
+    );
     new import_obsidian.Setting(containerEl).setName("Group by folder").setDesc("Group tasks by their containing folder in list view.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.listGroupByFolder).onChange((value) => {
         this.plugin.settings.listGroupByFolder = value;

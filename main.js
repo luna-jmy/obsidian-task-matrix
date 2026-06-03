@@ -1,7 +1,3 @@
-/* eslint-disable */
-this.require = require;
-this.exports = exports;
-this.module = module;
 "use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -273,10 +269,10 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
         void this.refreshTasks(true);
       }
     });
-    this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("create", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("modify", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("delete", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => this.handleVaultRename(file, oldPath)));
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
   }
   onunload() {
@@ -329,21 +325,42 @@ var TaskMatrixPlugin = class extends import_obsidian.Plugin {
       }
     }
   }
-  shouldIncludeFile(file) {
+  isExcalidrawFilePath(path) {
+    return path.toLowerCase().endsWith(".excalidraw.md");
+  }
+  shouldIncludePath(path) {
     for (const excludeFolder of this.settings.excludeFolders) {
       const trimmed = excludeFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return false;
       }
     }
     if (this.settings.scanFolders.length === 0) return true;
     for (const scanFolder of this.settings.scanFolders) {
       const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return true;
       }
     }
     return false;
+  }
+  shouldTrackMarkdownPath(path) {
+    return path.toLowerCase().endsWith(".md") && !this.isExcalidrawFilePath(path) && this.shouldIncludePath(path);
+  }
+  handleVaultChange(file) {
+    if (file instanceof import_obsidian.TFile && this.shouldTrackMarkdownPath(file.path)) {
+      this.scheduleRefresh();
+    }
+  }
+  handleVaultRename(file, oldPath) {
+    const currentPathMatches = file instanceof import_obsidian.TFile && this.shouldTrackMarkdownPath(file.path);
+    const oldPathMatches = this.shouldTrackMarkdownPath(oldPath);
+    if (currentPathMatches || oldPathMatches) {
+      this.scheduleRefresh();
+    }
+  }
+  shouldIncludeFile(file) {
+    return this.shouldTrackMarkdownPath(file.path);
   }
   async collectTasks(options) {
     const tasks = [];

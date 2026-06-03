@@ -5,6 +5,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  TAbstractFile,
   TFile,
   WorkspaceLeaf,
   Modal,
@@ -75,10 +76,10 @@ export default class TaskMatrixPlugin extends Plugin {
       },
     });
 
-    this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
-    this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("create", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("modify", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("delete", (file) => this.handleVaultChange(file)));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => this.handleVaultRename(file, oldPath)));
 
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
 
@@ -144,25 +145,51 @@ export default class TaskMatrixPlugin extends Plugin {
     }
   }
 
-  private shouldIncludeFile(file: TFile): boolean {
-    // Check excluded folders first
+  private isExcalidrawFilePath(path: string): boolean {
+    return path.toLowerCase().endsWith(".excalidraw.md");
+  }
+
+  private shouldIncludePath(path: string): boolean {
     for (const excludeFolder of this.settings.excludeFolders) {
       const trimmed = excludeFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return false;
       }
     }
 
-    // Check scan folders (if none specified, include all)
     if (this.settings.scanFolders.length === 0) return true;
 
     for (const scanFolder of this.settings.scanFolders) {
       const trimmed = scanFolder.trim().replace(/^\/+|\/+$/g, "");
-      if (trimmed && (file.path === trimmed || file.path.startsWith(`${trimmed}/`))) {
+      if (trimmed && (path === trimmed || path.startsWith(`${trimmed}/`))) {
         return true;
       }
     }
     return false;
+  }
+
+  private shouldTrackMarkdownPath(path: string): boolean {
+    return path.toLowerCase().endsWith(".md")
+      && !this.isExcalidrawFilePath(path)
+      && this.shouldIncludePath(path);
+  }
+
+  private handleVaultChange(file: TAbstractFile): void {
+    if (file instanceof TFile && this.shouldTrackMarkdownPath(file.path)) {
+      this.scheduleRefresh();
+    }
+  }
+
+  private handleVaultRename(file: TAbstractFile, oldPath: string): void {
+    const currentPathMatches = file instanceof TFile && this.shouldTrackMarkdownPath(file.path);
+    const oldPathMatches = this.shouldTrackMarkdownPath(oldPath);
+    if (currentPathMatches || oldPathMatches) {
+      this.scheduleRefresh();
+    }
+  }
+
+  private shouldIncludeFile(file: TFile): boolean {
+    return this.shouldTrackMarkdownPath(file.path);
   }
 
   async collectTasks(options?: { ignoreIncludeCompleted?: boolean }): Promise<ParsedTask[]> {

@@ -149,6 +149,18 @@
         background: var(--interactive-accent);
         color: var(--text-on-accent);
       }
+      .task-matrix-toolbar-btn {
+        padding: 6px 10px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-primary);
+        border-radius: 6px;
+        cursor: pointer;
+        min-height: 34px;
+      }
+      .task-matrix-toolbar-btn.is-active {
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+      }
       .task-matrix-refresh {
         padding: 6px 10px;
         border: 1px solid var(--background-modifier-border);
@@ -167,18 +179,6 @@
         flex-direction: column;
         gap: 10px;
       }
-      .task-matrix-list-toolbar {
-        display: flex;
-        justify-content: flex-end;
-      }
-      .task-matrix-list-toggle-all {
-        border: 1px solid var(--background-modifier-border);
-        background: var(--background-primary);
-        color: var(--text-normal);
-        border-radius: 6px;
-        padding: 6px 10px;
-        cursor: pointer;
-      }
       .task-matrix-board {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -189,6 +189,7 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
+        align-content: start;
       }
       .task-calendar {
         background: var(--background-secondary);
@@ -432,6 +433,7 @@
           min-height: 38px;
         }
         .task-matrix-mode-button,
+        .task-matrix-toolbar-btn,
         .task-matrix-refresh {
           width: 100%;
           min-height: 38px;
@@ -445,17 +447,13 @@
           grid-template-columns: 1fr;
         }
         .task-matrix-board {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr;
           gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 6px;
-          scroll-snap-type: x proximity;
-          -webkit-overflow-scrolling: touch;
         }
         .task-matrix-column {
-          min-width: min(84vw, 320px);
-          flex: 0 0 min(84vw, 320px);
-          scroll-snap-align: start;
+          min-width: 0;
+          flex: none;
         }
         .task-matrix-grid {
           grid-template-columns: 1fr;
@@ -464,13 +462,10 @@
         .task-matrix-cell {
           min-height: 0;
         }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-collapse-indicator {
-          display: inline-flex;
-        }
-        .task-matrix-cell.is-mobile-collapsible .task-matrix-column-header {
+        .task-matrix-cell.is-collapsible .task-matrix-column-header {
           margin-bottom: 0;
         }
-        .task-matrix-cell.is-mobile-collapsible:not(.is-collapsed) .task-matrix-column-header {
+        .task-matrix-cell.is-collapsible:not(.is-collapsed) .task-matrix-column-header {
           margin-bottom: 12px;
         }
         .task-matrix-card {
@@ -597,8 +592,25 @@
         color: var(--text-muted);
         flex: 0 0 auto;
       }
+      .task-matrix-column-header.is-collapsible .task-matrix-collapse-indicator {
+        display: inline-flex;
+      }
       .task-matrix-cell-body.is-collapsed {
         display: none;
+      }
+      .task-matrix-column-body.is-collapsed {
+        display: none;
+      }
+      .task-matrix-cell.is-collapsed,
+      .task-matrix-column.is-collapsed {
+        min-height: 0;
+        padding-bottom: 12px;
+      }
+      .task-matrix-cell.is-collapsed .task-matrix-column-header,
+      .task-matrix-column.is-collapsed .task-matrix-column-header {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0;
       }
       .task-matrix-count {
         background: var(--background-modifier-border);
@@ -809,14 +821,16 @@
         padding: 8px;
         border: 1px solid var(--background-modifier-border);
         border-radius: 4px;
-        background: var(--background-primary);
+        background-color: var(--background-primary);
         color: var(--text-normal);
         min-height: 36px;
         line-height: 1.4;
       }
       .task-matrix-form-row select {
         height: 36px;
-        padding: 6px 8px;
+        padding: 6px 28px 6px 8px;
+        background-repeat: no-repeat;
+        background-position: right 8px center;
       }
       .task-matrix-form-row input[type="date"] {
         font-family: inherit;

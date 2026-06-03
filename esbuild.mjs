@@ -2,13 +2,9 @@ import esbuild from "esbuild";
 import process from "node:process";
 import builtins from "builtin-modules";
 
-const banner = `/* eslint-disable */\nthis.require = require;\nthis.exports = exports;\nthis.module = module;`;
 const production = process.argv[2] === "production";
 
 const context = await esbuild.context({
-  banner: {
-    js: banner,
-  },
   bundle: true,
   entryPoints: ["src/main.ts"],
   external: [

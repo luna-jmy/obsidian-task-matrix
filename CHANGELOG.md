@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+- Fix: Remove global CommonJS runtime injection from the bundled plugin to avoid breaking Excalidraw package loading
+- Fix: Skip `.excalidraw.md` files during automatic task refresh to reduce interference with Excalidraw saves
+
 ## 0.2.4
 - New: Add completed tasks toggle button to main toolbar
 - New: Add global collapse/expand toggle for List, GTD, and Matrix views
