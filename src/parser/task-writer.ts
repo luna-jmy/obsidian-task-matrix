@@ -1,6 +1,7 @@
 import { App, Notice, TFile } from "obsidian";
 import { INLINE_FIELD_TOKEN_SOURCE } from "./task-parser";
-import { ParsedTask, Priority } from "./types";
+import { ParsedTask, Priority } from "../types";
+import { t } from "../i18n";
 
 /**
  * Line-level, end-of-line preserving, atomic edits to markdown notes.
@@ -123,7 +124,7 @@ export async function editTaskLine(
 ): Promise<EditResult> {
   const target = app.vault.getAbstractFileByPath(task.filePath);
   if (!(target instanceof TFile)) {
-    new Notice(`File not found: ${task.filePath}`);
+    new Notice(t("找不到文件：{path}", { path: task.filePath }));
     return "missing";
   }
 
@@ -237,11 +238,11 @@ export function insertLineUnderHeading(
   const headingPattern = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u");
   const headingIndex = lines.findIndex((candidate) => headingPattern.test(candidate.trim()));
   if (headingIndex === -1) {
-    return { success: false, error: `heading "${heading}" not found` };
+    return { success: false, error: t("找不到标题「{heading}」", { heading }) };
   }
 
   const levelMatch = /^(#{1,6})/u.exec(lines[headingIndex]);
-  if (!levelMatch) return { success: false, error: "invalid heading format" };
+  if (!levelMatch) return { success: false, error: t("标题格式不合法") };
   const level = levelMatch[1].length;
 
   let sectionEnd = headingIndex + 1;

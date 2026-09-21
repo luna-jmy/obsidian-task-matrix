@@ -1,9 +1,9 @@
 {
   "id": "task-matrix-dashboard",
   "name": "Task Matrix",
-  "version": "0.2.6",
+  "version": "1.0.0",
   "minAppVersion": "1.5.0",
-  "description": "Visual task dashboards with list, GTD, Eisenhower, and calendar views.",
+  "description": "Visual task dashboards with list, GTD, Eisenhower, calendar and Gantt views.",
   "author": "Luna Jiang",
   "authorUrl": "https://github.com/luna-jmy",
   "isDesktopOnly": false

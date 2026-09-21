@@ -5,7 +5,8 @@ import {
   GTDState,
   EisenhowerQuadrant,
   TaskMatrixSettings,
-} from "./types";
+} from "../types";
+import { isoDateOffset, todayIso } from "../utils/date";
 
 const PRIORITY_MARKERS: Array<[string, Priority]> = [
   ["🔺", Priority.Critical],
@@ -61,20 +62,6 @@ function cleanDescription(raw: string): string {
     .trim();
 }
 
-export function isoDateOffset(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  // Use local date components to avoid timezone issues with toISOString
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function getToday(): string {
-  return isoDateOffset(0);
-}
-
 // Check if checkbox content means completed based on settings
 function isCompletedCheckbox(checkboxContent: string, completionMarkers: string[]): boolean {
   const trimmed = checkboxContent.trim();
@@ -105,7 +92,7 @@ export function computeDisplayStatus(
     return "cancelled";
   }
 
-  const today = getToday();
+  const today = todayIso();
 
   // Check if overdue (past due date)
   if (dueDate && dueDate < today) {
@@ -135,7 +122,7 @@ export function computeGtdState(
   }
 
   const desc = description.toLowerCase();
-  const today = getToday();
+  const today = todayIso();
 
   // Check for blocked/waiting first
   if (blocked || desc.includes("#waiting") || desc.includes("#delegated") || desc.includes("#blocked")) {
@@ -170,7 +157,11 @@ export function computeGtdState(
   return "Inbox";
 }
 
-export function computeQuadrant(priority: Priority, dueDate: string | undefined, urgentDaysRange: number): EisenhowerQuadrant {
+export function computeQuadrant(
+  priority: Priority,
+  dueDate: string | undefined,
+  urgentDaysRange: number,
+): EisenhowerQuadrant {
   const isImportant = priority === Priority.Critical || priority === Priority.Highest || priority === Priority.High;
   // Urgent if overdue or due within urgentDaysRange days (default 1 = today only)
   const urgentDeadline = isoDateOffset(urgentDaysRange - 1);
@@ -180,6 +171,25 @@ export function computeQuadrant(priority: Priority, dueDate: string | undefined,
   if (isImportant && !isUrgent) return "Q2";
   if (!isImportant && isUrgent) return "Q3";
   return "Q4";
+}
+
+export function priorityRank(priority: Priority): number {
+  switch (priority) {
+    case Priority.Critical:
+      return 6;
+    case Priority.Highest:
+      return 5;
+    case Priority.High:
+      return 4;
+    case Priority.Medium:
+      return 3;
+    case Priority.None:
+      return 2;
+    case Priority.Low:
+      return 1;
+    case Priority.Lowest:
+      return 0;
+  }
 }
 
 export function parseTaskLine(
@@ -238,40 +248,7 @@ export function parseTaskLine(
   };
 }
 
-function priorityRank(priority: Priority): number {
-  switch (priority) {
-    case Priority.Critical:
-      return 6;
-    case Priority.Highest:
-      return 5;
-    case Priority.High:
-      return 4;
-    case Priority.Medium:
-      return 3;
-    case Priority.None:
-      return 2;
-    case Priority.Low:
-      return 1;
-    case Priority.Lowest:
-      return 0;
-  }
-}
-
-export function sortTasks(tasks: ParsedTask[]): ParsedTask[] {
-  return [...tasks].sort((a, b) => {
-    const dueA = a.dueDate ?? "9999-99-99";
-    const dueB = b.dueDate ?? "9999-99-99";
-    if (dueA !== dueB) return dueA.localeCompare(dueB);
-
-    const priorityDiff = priorityRank(b.priority) - priorityRank(a.priority);
-    if (priorityDiff !== 0) return priorityDiff;
-
-    if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
-    return a.lineNumber - b.lineNumber;
-  });
-}
-
-// Generate a short unique ID
+/** Generate a short unique ID */
 export function generateShortId(): string {
   return Math.random().toString(36).substring(2, 8);
 }

@@ -4,92 +4,122 @@ Visual task dashboards with list, GTD, Eisenhower, and calendar views.
 
 ## ✨ Features
 
-### 🔄 Four Complementary Views
+### 🧭 Interface
 
-| View | Best For | Key Benefit |
-|------|----------|-------------|
-| **📋 List View** | Comprehensive task overview | Search and browse all tasks |
-| **📥 GTD Flow** | Workflow management | Visual Kanban with Inbox → In Progress → Waiting → Done |
-| **🔳 Eisenhower Matrix** | Priority decisions | Urgency vs. importance at a glance |
-| **🗓 Calendar View** | Date planning | Review due, start, scheduled, and done tasks by month, week, or list |
+The view is three rows, top to bottom:
 
-### 🎯 Core Capabilities
+1. **Toolbar** — new task, refresh, the four panel modes (List / GTD / Matrix / Calendar), a **Gantt mode** toggle, and one expand/collapse button that shows what it will do next (it reads **Collapse all** only when every container is open). Clicking **Gantt mode** swaps the panel buttons for the Gantt's own controls (time scale and grouping); the button then reads **Exit Gantt mode**, and the panel mode you were on is remembered.
+2. **Filter bar** — search, status chips, start and due date ranges, sorting, a live `shown/total` count, and a clear button.
+3. **Main area** — equally sized containers holding task cards, so the grid stays symmetrical at any window width.
 
-- **Visual Task Dashboard**: See all your vault's tasks in one place
-- **Smart Task Parsing**: Supports standard Obsidian task formats including:
-  - Task status: `- [ ]`, `- [/]`, `- [-]`, `- [x]`
-  - Priorities: `⏫` (Highest), `🔼` (High), `🔽` (Low), `⏬` (Lowest)
-  - Dates: `📅` Due, `🛫` Start, `⏳` Scheduled, `✅` Done, `➕` Created
-  - Task IDs: `🆔` for dependency tracking
-  - Dependencies: `⛔` indicates a task is blocked by another
-  - Tags: Any `#tag` including `#waiting`, `#doing`, `#blocked`
+The interface ships in Chinese and English and follows the Obsidian language by default (Interface → Interface language).
 
-### 🧠 Smart Automation
+### 🔄 Four Views
 
-- **Auto GTD Classification**: Tasks are automatically categorized based on status, tags, and dates
-- **Eisenhower Quadrants**: Auto-sorted by priority and due date urgency
-- **Configurable Urgent Range**: Set how many days count as "urgent" (1-7 days)
-- **Dependency Tracking**: Blocked tasks (with unfinished dependencies) are visually marked
-- **Drag & Drop**: Move tasks between GTD columns or Eisenhower quadrants to auto-update tags
-- **Quick Move Buttons**: Move tasks directly between GTD states or Eisenhower quadrants from the task card
-- **Date Conflict Detection**: Warns when a start date is later than a due date
+| View | Layout | Best for |
+|------|--------|----------|
+| **📋 List** | One container, or one per folder when grouping is on | Browsing everything |
+| **📥 GTD** | Four containers: Inbox, In progress, Waiting, Done | Working through a flow |
+| **🔳 Matrix** | Four containers: Q1–Q4 | Deciding what matters |
+| **🗓 Calendar** | Month, week or list | Planning by date |
+| **📊 Gantt** | A timeline with day, week, month and year scales | Seeing how work spans time |
 
-### 🔍 Filtering & Navigation
+Hovering an entry in the calendar gives an instant tooltip with the task and the note it lives in — it does not wait for the page-preview delay.
 
-- **Keyword Search**: Filter tasks by description, file path, task ID, or dependency ID
-- **Date Filters**: Filter by `Start date` and `Due date` with `on`, `before`, `after`, `is empty`, `is not empty`, and more
-- **Calendar Summary**: See scoped counts for due, overdue, start, scheduled, recurrence, and daily-note tasks
-- **Calendar Modes**: Switch between month, week, and list layouts
+### 📊 The Gantt view
 
-### 🎛️ Task Actions
+The Gantt is a mode rather than a panel layout: the view opens in panel mode, and **Gantt mode** in the toolbar swaps the main area for the timeline and brings the Gantt's own controls (time scale and grouping) into the toolbar. Leaving it restores the panel mode you were on.
 
-Each task card provides quick actions:
-- ✓ Complete/Uncomplete (optionally adds `✅ YYYY-MM-DD` when completing)
-- ▶ Start (set to in-progress)
+- Bar colours are configurable in the settings, one per Mermaid Gantt state: `active` for open tasks, `done` for completed ones, `crit` for tasks marked `🔺`, and a colour for everything else. Type any CSS colour (`var(--color-blue)`, a colour name) or click a swatch.
+- The time axis starts on the current month and scrolls to today; `Ctrl` + wheel zooms between day, week, month and year.
+- Sections group by folder, note, GTD state or quadrant — or turn grouping off for a single flat list. Grouping by note gives one section per note (named after the note, ordered by path), which keeps a note's tasks together even when they span several folders' worth of projects. Section keys for folder, GTD state and quadrant are shared with the panel views, so collapsing a section in the Gantt also collapses the matching container there.
+- The left column lists tasks and follows the timeline's vertical scroll; clicking a task or its bar opens the note.
+- A task with only one date still gets a bar: the missing end is inferred and drawn with a dashed orange outline, and the sidebar shows 「missing dates」.
+- `🚩` / `#milestone` renders as a diamond, `🔺` / `#crit` gets a red outline, weekends are shaded, and today is a dashed red line.
+- Tasks with no start and no due date cannot be placed on a timeline and are left out; the sidebar header reports how many, so nothing disappears silently.
+
+The Gantt parses task lines with its own rules (start `🛫`, scheduling `⏳`, due `📅`, `🆔`, `⛔`, `🔺` for critical tasks, `🚩` / `#milestone` for milestones, plus the Dataview-style `[start:: …]`, `[due:: …]`, `[id:: …]` and `[dependsOn:: …]` forms):
+
+```markdown
+## Launch
+### Design
+- [ ] Wireframes 🛫 2026-09-20 📅 2026-09-30 🆔 design 🔺
+- [ ] Copy review 📅 2026-09-26 ⛔ design
+- [x] Kickoff 🚩 2026-09-18
+```
+
+### 🎯 Task cards
+
+Each card shows the rendered description, a status badge, and chips for priority, dates, task ID and dependencies:
+
+- ✓ Complete / ↺ Reopen (optionally adds `✅ YYYY-MM-DD`)
+- ▶ Start (adds `🛫` and `#doing`)
 - ✕ Cancel
-- ✎ Edit (modify description, priority, dates, ID, dependencies)
+- ✎ Edit — description, priority, dates, ID, dependency
 - 🗑 Delete
-- Click to open task in file
+- 1–4 and 收/进/等 quick moves in the Matrix and GTD views
+- Click the card to open the note it lives in
 
-### 📁 List View Features
+A task whose `⛔` dependency is unfinished gets a red left border.
 
-- **Folder Grouping**: Group tasks by folder with configurable depth (1-5 levels)
-- **Expand/Collapse Groups**: Toggle individual groups or expand/collapse all with one click
-- **Refreshed Styling**: List groups now use a cleaner card style aligned with the calendar list view
+### 🧠 How tasks are classified
 
-### 📱 Mobile Experience
+- **GTD** comes from tags (`#waiting`, `#doing`, `#blocked`), start dates and dependencies. An overdue task that never started falls back to Inbox rather than sitting in a column of its own.
+- **Matrix** treats high priority and above as important, and anything due inside the configured urgent window (1–7 days) as urgent.
+- **Scheduling** is only ever written as plain markdown: `📅` due, `🛫` start, `⏳` scheduled, `✅` done, `➕` created, `🆔` task ID, `⛔` dependency, plus your own `#tags`.
 
-- **Responsive Toolbar & Cards**: Better spacing and stacking for small screens
-- **Responsive GTD Board**: Single-column layout on mobile with collapse/expand support
-- **Mobile Matrix Collapse**: Collapse Eisenhower quadrants by tapping the title (also available on desktop)
-- **Responsive Calendar Layouts**: Improved month, week, and list browsing on smaller screens
+### 🔍 Filtering
+
+- **Search** matches description, file path, task ID and dependency ID.
+- **Status chips**: open, to be started, overdue, completed, cancelled — with `Active only` / `Hide cancelled` / `All statuses` presets.
+- **Marker chips**: filter by what is actually inside the brackets (`[ ]`, `[x]`, `[-]`, `/`, or any custom marker you use). The candidates come from your vault, so an unused marker never shows up as a dead chip.
+- **Start and due date**: a preset (today, this week, this month, this year, custom) plus an explicit range; editing either end switches to a custom range automatically.
+- **Sort**: due ↑, due ↓, start ↑, priority, file name.
+- The count shows how many of the indexed tasks survive the current filters, and **Clear filters** goes back to the neutral baseline — nothing filtered, everything shown.
+
+### 📥 Drag and drop
+
+- Drag a card onto a GTD container to change its state, or onto a Matrix container to change its quadrant.
+- Dropping writes the same tags and dates the quick-move buttons write.
+- Drag and drop is desktop only; on mobile use the quick-move buttons.
+
+### 📱 Mobile
+
+- The toolbar and filter bar wrap instead of overflowing.
+- Containers fall back to a single column on narrow screens.
+- Cards keep every action reachable by tap.
 
 ### ⚙️ Settings
 
-- **Scan Folders**: Comma-separated folders to index (defaults to `500 Journal, 100 Projects`; clear the field to scan the whole vault)
-- **Default View**: Choose which view opens first (List/GTD/Eisenhower)
-- **Open Location**: Open in sidebar or new tab
-- **Include Completed**: Toggle visibility of completed/cancelled tasks
-- **Completion/Cancelled Markers**: Customize checkbox markers for task states
-- **Track Completion Date**: Auto-add `✅ YYYY-MM-DD` when completing tasks
-- **Urgent Days Range**: Set urgent threshold (1-7 days, default 1 = today only)
-- **Due Date Display Range**: Hide tasks due farther than the selected number of months
-- **Hide Future Start Tasks**: Hide tasks whose start date is more than one month away
+Settings are grouped the same way the view is:
 
-#### List View Settings
-- **Group by Folder**: Enable folder grouping
-- **Grouping Depth**: How many folder levels to group by (1-5)
+#### Interface
+- **Interface language**: automatic, Chinese, or English
 
-#### New Task Settings
-- **Target Note Path**: Default location for new tasks (supports `YYYY`, `MM`, `DD` templates)
-- **Target Heading**: Insert new tasks under a specific heading
+#### Scanning
+- **Scan folders**: comma-separated folders to index. Defaults to `500 Journal, 100 Projects`; clear the field to scan the whole vault (slow on large vaults)
+- **Excluded folders**: tasks here stay out of every view and count
 
-#### Calendar View Settings
-- **First day of week**: Start calendar weeks on Monday or Sunday
-- **Show weekends in week view**: Show weekend columns in the week view
-- **Show weekends in month view**: Show weekend columns in the month view
-- **Show in-progress tasks**: Repeat tasks on every day between their start and due dates
-- **Show full month in list**: Show every day of the month in list mode
+#### Task markers
+- **Completion markers** / **Cancelled markers**: what the brackets must contain
+- **Ignored markers**: checkbox contents that are not tasks at all
+- **Track completion date**: add `✅ YYYY-MM-DD` when a task is completed
+
+#### Display
+- **Default view**, **Open location**
+- **Urgent window**: how many days ahead counts as urgent (1–7)
+- **Due date range**, **Completed task range**, **Hide tasks that start far ahead**: how much gets laid out at once
+- **Show completed tasks without a due date**
+
+#### New tasks
+- **Target note path**: where new tasks go (supports `YYYY`, `MM`, `DD` placeholders). Empty means the note you have open
+- **Target heading**: insert under this heading; empty appends at the end of the note
+
+#### List view
+- **Group by folder** and **Folder depth** (1–5)
+
+#### Calendar view
+- **First day of week**, weekends in the month and week views, whole month in the list view, and spreading in-progress tasks across their date range
 
 ## 📥 Installation
 
@@ -134,7 +164,7 @@ Create tasks in any markdown file using standard Obsidian syntax:
 
 ```markdown
 - [ ] Review quarterly goals 📅 2025-03-15 🔼
-- [/] Write blog post #doing 🛫 2025-03-10
+- [ ] Write blog post #doing 🛫 2025-03-10
 - [ ] Waiting for feedback #waiting 🆔 task-123
 - [ ] Implement feature ⛔ task-123
 - [x] Completed task ✅ 2025-03-11
@@ -149,9 +179,9 @@ When editing a task, the "Depends On" field shows a dropdown of all incomplete t
 | Symbol | Meaning |
 |--------|---------|
 | `- [ ]` | Open task |
-| `- [/]` | In progress |
-| `- [-]` | Cancelled |
-| `- [x]` | Completed |
+| `- [x]` | Completed (changeable in the settings) |
+| `- [-]` | Cancelled (changeable in the settings) |
+| `🔺` | Critical priority |
 | `⏫` | Highest priority |
 | `🔼` | High priority |
 | `🔽` | Low priority |
@@ -159,46 +189,37 @@ When editing a task, the "Depends On" field shows a dropdown of all incomplete t
 | `📅 YYYY-MM-DD` | Due date |
 | `🛫 YYYY-MM-DD` | Start date |
 | `⏳ YYYY-MM-DD` | Scheduled date |
+| `➕ YYYY-MM-DD` | Created date |
 | `🆔 task-id` | Task identifier |
 | `⛔ task-id` | Depends on task |
-| `✅ YYYY-MM-DD` | Completion date (auto-added when "Track completion date" is enabled) |
+| `✅ YYYY-MM-DD` | Completion date (added when "Track completion date" is on) |
 
-### Drag & Drop
+`- [/]` is not a status of its own: a task counts as in progress once it has a start date in the past or a `#doing` / `#active` / `#next` tag.
 
-- **GTD View**: Drag tasks between columns to update their state
-  - To "In Progress": Adds `#doing` tag
-  - To "Waiting": Adds `#waiting` tag
-  - To "Done": Marks as completed
+### Drag targets
 
-- **Eisenhower View**: Drag tasks between quadrants to adjust priority and urgency
-  - To Q1 (Important + Urgent): Sets high priority, adds due date
-  - To Q2 (Important + Not Urgent): Sets high priority, clears due date
-  - To Q3 (Urgent + Lower importance): Sets low priority, adds due date
-  - To Q4 (Delegated or discard): Sets lowest priority, clears due date
+**GTD containers**
 
-### Date Filters
+- → In progress: adds `#doing` and a `🛫` start date of today
+- → Waiting: adds `#waiting`
+- → Done: writes the completion marker
+- → Inbox: clears the flow tags
 
-Use the `Date Filters` control in the toolbar to narrow tasks by:
+**Matrix containers**
 
-- `Start date`
-- `Due date`
+- → Q1: high priority plus a due date of today
+- → Q2: high priority, due date cleared
+- → Q3: low priority plus a due date of today
+- → Q4: lowest priority, due date cleared
 
-Supported operators:
-
-- `not on`
-- `on`
-- `before`
-- `on or before`
-- `after`
-- `on or after`
-- `is empty`
-- `is not empty`
+If the write would leave a start date after its due date, a dialog asks whether to move the due date to today or to keep both and mark the task `#due-date-conflict`.
 
 ## 🏗️ Tech Stack
 
 - **Obsidian API**: Plugin framework
 - **TypeScript**: Type-safe development
 - **esbuild**: Fast bundling
+- **i18n**: Chinese source strings with an English dictionary, verified on every build by `npm run check:i18n`
 
 ## 📝 Changelog
 

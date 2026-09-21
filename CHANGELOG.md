@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.0
+- New: Interface rebuilt to match the Project Master layout — one toolbar row, one filter and search row, then the panel grid
+- New: List, GTD and Matrix views render as equally sized containers holding task cards
+- New: Filter bar with search, status chips, start and due date ranges, sorting, a live `shown/total` count and a clear button
+- New: Gantt view — a read-only timeline with day, week, month and year scales, weekend shading, a today marker, duration labels, milestones and critical tasks, grouped by folder, GTD state, quadrant, or not at all
+- New: Bar colours are configurable — one colour per Mermaid Gantt state: `active` (open tasks), `done` (completed), `crit` (marked with 🔺) and other
+- New: The Gantt can group sections by note — one section per note, named after it and ordered by path
+- New: The Gantt parses task fields with its own rules: `🛫` / `⏳` (start, with `⏳` as fallback), `📅`, `🆔`, `⛔`, Dataview-style `[start:: …]` fields, `🔺` for critical tasks and `🚩` / `#milestone` for milestones
+- New: The settings page is split into tabs — General, New tasks, View preferences, and Calendar and Gantt
+- New: New tasks go to today's journal by default (`500 Journal/{{date:YYYY-MM-DD}}`); when that note does not exist yet it is created from a template note you pick in the settings, and the folders along the way are created too. The path and template support `{{title}}`, `{{date}}`, `{{time}}` and `{{date:FORMAT}}`, while `<% … %>` commands are left to Templater (optional)
+- New: Marker filter — pick the brackets content (`[ ]`, `[x]`, `[-]`, or anything else you use) from the values that actually appear in your vault
+- New: Hovering a calendar entry shows an instant tooltip; the core page-preview delay no longer applies
+- Fix: A task past its due date is labelled “overdue” on the due date itself, not “due”
+- Change: Expand all and collapse all merged into one button that shows what it will do
+- Change: The view opens in panel mode; a single **Gantt mode** button switches the main area to the timeline and brings the Gantt's controls (time scale, grouping) into the toolbar, so they are no longer visible when they would do nothing
+- New: Chinese and English interface; follows the Obsidian language by default and can be pinned in the settings
+- Change: Calendar view keeps its own month, week and list layouts instead of containers
+- Change: All CSS classes use the `tm-` prefix; the `task-matrix-*` and `task-matrix-calendar-*` classes are gone
+- Change: Source split into `parser/`, `services/`, `panels/`, `modals/`, `views/` and `i18n/`; `main.ts` is now a thin assembly layer
+- Change: i18n coverage is verified on every build (`npm run check:i18n`)
+- Fix: Plugin and ribbon icon falls back through a candidate list, so a missing icon name no longer leaves a blank slot
+
 ## 0.2.6
 - Change: New installations scan `500 Journal` and `100 Projects` by default instead of the whole vault, so the first index pass stays fast; clear the field to scan everything
 - Change: Task edits are written through `Vault.process`, so concurrent changes from other plugins or Obsidian Sync are no longer overwritten

@@ -1,11 +1,12 @@
 {
   "name": "obsidian-task-matrix-plugin",
-  "version": "0.2.6",
+  "version": "1.0.0",
   "description": "Task matrix dashboards for Obsidian.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.mjs",
-    "build": "tsc --noEmit -skipLibCheck && node esbuild.mjs production",
+    "build": "npm run check:i18n && tsc --noEmit -skipLibCheck && node esbuild.mjs production",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
