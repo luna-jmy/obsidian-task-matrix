@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.6
+- Change: New installations scan `500 Journal` and `100 Projects` by default instead of the whole vault, so the first index pass stays fast; clear the field to scan everything
+- Change: Task edits are written through `Vault.process`, so concurrent changes from other plugins or Obsidian Sync are no longer overwritten
+- Fix: Line endings and trailing newlines are preserved, so editing a task no longer rewrites the whole note
+- Fix: Task edits are matched by content as well as line number, so a stale index can no longer touch the wrong line
+- Fix: Nested task indentation is kept when moving tasks between GTD columns or Eisenhower quadrants
+- Fix: Editing a task only rewrites the fields you changed, keeping the original inline field order
+- Fix: Completion dates use the local date instead of UTC
+- Fix: Markdown rendering inside task cards releases its listeners on every refresh
+- Change: The task index is built after the workspace is ready instead of blocking plugin startup
+- Change: Views only re-render when the task list actually changed
+- Change: Calendar CSS classes use the `task-matrix-` prefix to avoid clashing with other plugins and themes
+- Change: Settings names and descriptions use sentence case
+
 ## 0.2.5
 - Fix: Remove global CommonJS runtime injection from the bundled plugin to avoid breaking Excalidraw package loading
 - Fix: Skip `.excalidraw.md` files during automatic task refresh to reduce interference with Excalidraw saves

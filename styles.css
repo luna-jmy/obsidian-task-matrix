@@ -1,3 +1,8 @@
+/*
+ * Task Matrix (plugin id: task-matrix-dashboard)
+ * Namespace: every rule below is scoped to `.task-matrix-*` selectors owned by
+ * this plugin, and only uses Obsidian CSS variables so themes keep working.
+ */
 /* task-matrix-base-styles:start */
       .task-matrix-view {
         padding: 16px;
@@ -191,13 +196,13 @@
         gap: 16px;
         align-content: start;
       }
-      .task-calendar {
+      .task-matrix-calendar {
         background: var(--background-secondary);
         border: 1px solid var(--background-modifier-border);
         border-radius: 8px;
         padding: 12px;
       }
-      .task-calendar-toolbar {
+      .task-matrix-calendar-toolbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -205,12 +210,12 @@
         margin-bottom: 10px;
         flex-wrap: wrap;
       }
-      .task-calendar-segmented {
+      .task-matrix-calendar-segmented {
         display: flex;
         gap: 4px;
       }
-      .task-calendar-mode-btn,
-      .task-calendar-nav-btn {
+      .task-matrix-calendar-mode-btn,
+      .task-matrix-calendar-nav-btn {
         border: 1px solid var(--background-modifier-border);
         background: var(--background-primary);
         color: var(--text-normal);
@@ -219,19 +224,19 @@
         cursor: pointer;
         font-size: 12px;
       }
-      .task-calendar-mode-btn.active {
+      .task-matrix-calendar-mode-btn.active {
         background: var(--interactive-accent);
         color: var(--text-on-accent);
       }
-      .task-calendar-nav {
+      .task-matrix-calendar-nav {
         display: flex;
         align-items: center;
         gap: 6px;
       }
-      .task-calendar-summary-wrap {
+      .task-matrix-calendar-summary-wrap {
         position: relative;
       }
-      .task-calendar-summary-popup {
+      .task-matrix-calendar-summary-popup {
         position: absolute;
         right: 0;
         top: calc(100% + 6px);
@@ -243,10 +248,10 @@
         padding: 8px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
       }
-      .task-calendar-summary-popup[hidden] {
+      .task-matrix-calendar-summary-popup[hidden] {
         display: none;
       }
-      .task-calendar-summary-popup ul {
+      .task-matrix-calendar-summary-popup ul {
         list-style: none;
         margin: 0;
         padding: 0;
@@ -254,38 +259,38 @@
         flex-direction: column;
         gap: 6px;
       }
-      .task-calendar-summary-popup li {
+      .task-matrix-calendar-summary-popup li {
         font-size: 12px;
         color: var(--text-normal);
       }
-      .task-calendar-title {
+      .task-matrix-calendar-title {
         min-width: 130px;
         text-align: center;
         font-size: 13px;
         font-weight: 600;
       }
-      .task-calendar-month {
+      .task-matrix-calendar-month {
         display: flex;
         flex-direction: column;
         gap: 6px;
         min-width: 0;
       }
-      .task-calendar-heads,
-      .task-calendar-month-grid {
+      .task-matrix-calendar-heads,
+      .task-matrix-calendar-month-grid {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
         gap: 6px;
         min-width: 0;
       }
-      .task-calendar-head {
+      .task-matrix-calendar-head {
         font-size: 11px;
         color: var(--text-muted);
         text-align: center;
       }
-      .task-calendar-head.weekend {
+      .task-matrix-calendar-head.weekend {
         color: var(--interactive-accent);
       }
-      .task-calendar-day {
+      .task-matrix-calendar-day {
         border: 1px solid var(--background-modifier-border);
         background: var(--background-primary);
         border-radius: 6px;
@@ -295,35 +300,35 @@
         flex-direction: column;
         gap: 4px;
       }
-      .task-calendar-day.weekend-day {
+      .task-matrix-calendar-day.weekend-day {
         background: var(--background-modifier-active-hover);
       }
-      .task-calendar-day.weekend-day .task-calendar-date {
+      .task-matrix-calendar-day.weekend-day .task-matrix-calendar-date {
         color: var(--interactive-accent);
       }
-      .task-calendar-day.outside {
+      .task-matrix-calendar-day.outside {
         opacity: 0.45;
       }
-      .task-calendar-day.today {
+      .task-matrix-calendar-day.today {
         border: 2px solid var(--interactive-accent);
         background: var(--background-modifier-active-hover);
       }
-      .task-calendar-day.weekend-day.today {
+      .task-matrix-calendar-day.weekend-day.today {
         background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
       }
-      .task-calendar-day.today .task-calendar-date {
+      .task-matrix-calendar-day.today .task-matrix-calendar-date {
         color: var(--interactive-accent);
       }
-      .task-calendar-date {
+      .task-matrix-calendar-date {
         font-size: 11px;
         font-weight: 600;
       }
-      .task-calendar-items {
+      .task-matrix-calendar-items {
         display: flex;
         flex-direction: column;
         gap: 3px;
       }
-      .task-calendar-item {
+      .task-matrix-calendar-item {
         display: block;
         padding: 2px 4px;
         border-radius: 4px;
@@ -335,57 +340,57 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .task-calendar-item.type-due { border-left: 2px solid #f59e0b; }
-      .task-calendar-item.type-start { border-left: 2px solid #3b82f6; }
-      .task-calendar-item.type-scheduled { border-left: 2px solid #8b5cf6; }
-      .task-calendar-item.type-done { border-left: 2px solid #22c55e; }
-      .task-calendar-item.type-overdue { border-left: 2px solid #ef4444; }
-      .task-calendar-item.type-process { border-left: 2px solid #0ea5e9; }
-      .task-calendar-week {
+      .task-matrix-calendar-item.type-due { border-left: 2px solid #f59e0b; }
+      .task-matrix-calendar-item.type-start { border-left: 2px solid #3b82f6; }
+      .task-matrix-calendar-item.type-scheduled { border-left: 2px solid #8b5cf6; }
+      .task-matrix-calendar-item.type-done { border-left: 2px solid #22c55e; }
+      .task-matrix-calendar-item.type-overdue { border-left: 2px solid #ef4444; }
+      .task-matrix-calendar-item.type-process { border-left: 2px solid #0ea5e9; }
+      .task-matrix-calendar-week {
         display: grid;
         grid-template-columns: repeat(5, minmax(160px, 1fr));
         gap: 8px;
         overflow-x: auto;
       }
-      .task-calendar-week-split {
+      .task-matrix-calendar-week-split {
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
-      .task-calendar-week-main {
+      .task-matrix-calendar-week-main {
         grid-template-columns: repeat(5, minmax(160px, 1fr));
       }
-      .task-calendar-week-compact {
+      .task-matrix-calendar-week-compact {
         grid-template-columns: repeat(5, minmax(160px, 1fr));
       }
-      .task-calendar-weekend {
+      .task-matrix-calendar-weekend {
         display: grid;
         grid-template-columns: repeat(2, minmax(160px, 1fr));
         gap: 8px;
       }
-      .task-calendar-day.week-day {
+      .task-matrix-calendar-day.week-day {
         min-height: 180px;
       }
-      .task-calendar-list {
+      .task-matrix-calendar-list {
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
-      .task-calendar-list-day {
+      .task-matrix-calendar-list-day {
         border: 1px solid var(--background-modifier-border);
         border-radius: 6px;
         overflow: hidden;
         background: var(--background-primary);
       }
-      .task-calendar-list-day.today {
+      .task-matrix-calendar-list-day.today {
         border-color: var(--interactive-accent);
         background: var(--background-modifier-active-hover);
       }
-      .task-calendar-list-day.today > summary {
+      .task-matrix-calendar-list-day.today > summary {
         color: var(--interactive-accent);
         font-weight: 700;
       }
-      .task-calendar-list-day > summary {
+      .task-matrix-calendar-list-day > summary {
         cursor: pointer;
         list-style: none;
         padding: 8px 10px;
@@ -393,7 +398,7 @@
         color: var(--text-muted);
         border-bottom: 1px solid var(--background-modifier-border);
       }
-      .task-calendar-list-content {
+      .task-matrix-calendar-list-content {
         padding: 8px;
         display: flex;
         flex-direction: column;
@@ -483,58 +488,58 @@
         .task-matrix-action-btn {
           min-height: 32px;
         }
-        .task-calendar-toolbar {
+        .task-matrix-calendar-toolbar {
           align-items: stretch;
         }
-        .task-calendar-segmented,
-        .task-calendar-nav {
+        .task-matrix-calendar-segmented,
+        .task-matrix-calendar-nav {
           width: 100%;
         }
-        .task-calendar-segmented {
+        .task-matrix-calendar-segmented {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
-        .task-calendar-nav {
+        .task-matrix-calendar-nav {
           flex-wrap: wrap;
           justify-content: space-between;
         }
-        .task-calendar-title {
+        .task-matrix-calendar-title {
           order: -1;
           width: 100%;
           min-width: 0;
           text-align: left;
         }
-        .task-calendar-summary-wrap {
+        .task-matrix-calendar-summary-wrap {
           margin-left: auto;
         }
-        .task-calendar-month {
+        .task-matrix-calendar-month {
           overflow-x: auto;
           padding-bottom: 4px;
           -webkit-overflow-scrolling: touch;
         }
-        .task-calendar-heads,
-        .task-calendar-month-grid {
+        .task-matrix-calendar-heads,
+        .task-matrix-calendar-month-grid {
           min-width: 560px;
         }
-        .task-calendar-week,
-        .task-calendar-week-main,
-        .task-calendar-week-compact,
-        .task-calendar-weekend {
+        .task-matrix-calendar-week,
+        .task-matrix-calendar-week-main,
+        .task-matrix-calendar-week-compact,
+        .task-matrix-calendar-weekend {
           display: flex;
           overflow-x: auto;
           width: 100%;
           padding-bottom: 4px;
           -webkit-overflow-scrolling: touch;
         }
-        .task-calendar-week .task-calendar-day,
-        .task-calendar-weekend .task-calendar-day {
+        .task-matrix-calendar-week .task-matrix-calendar-day,
+        .task-matrix-calendar-weekend .task-matrix-calendar-day {
           min-width: min(78vw, 240px);
           flex: 0 0 min(78vw, 240px);
         }
-        .task-calendar-day {
+        .task-matrix-calendar-day {
           min-height: auto;
         }
-        .task-calendar-summary-popup {
+        .task-matrix-calendar-summary-popup {
           right: 0;
           left: auto;
           max-width: min(88vw, 260px);
@@ -790,8 +795,9 @@
         align-self: center;
         margin-right: 2px;
       }
-      .task-matrix-drag-over {
-        background: var(--background-modifier-hover) !important;
+      .task-matrix-cell.task-matrix-drag-over,
+      .task-matrix-column.task-matrix-drag-over {
+        background: var(--background-modifier-hover);
         border: 2px dashed var(--interactive-accent);
       }
       .task-matrix-card.blocked {
@@ -898,7 +904,7 @@
       }
 /* task-matrix-base-styles:end */
 
-.task-matrix-view .task-calendar {
+.task-matrix-view .task-matrix-calendar {
   --cal-radius: 12px;
   --cal-gap: 8px;
   --cal-border: 1px solid var(--background-modifier-border);
@@ -910,7 +916,7 @@
   box-shadow: var(--cal-shadow);
 }
 
-.task-matrix-view .task-calendar-toolbar {
+.task-matrix-view .task-matrix-calendar-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -919,7 +925,7 @@
   flex-wrap: wrap;
 }
 
-.task-matrix-view .task-calendar-segmented {
+.task-matrix-view .task-matrix-calendar-segmented {
   display: inline-flex;
   gap: 0;
   border: var(--cal-border);
@@ -928,8 +934,8 @@
   background: var(--background-primary);
 }
 
-.task-matrix-view .task-calendar-mode-btn,
-.task-matrix-view .task-calendar-nav-btn {
+.task-matrix-view .task-matrix-calendar-mode-btn,
+.task-matrix-view .task-matrix-calendar-nav-btn {
   border: none;
   border-right: var(--cal-border);
   background: transparent;
@@ -942,31 +948,31 @@
   transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
 }
 
-.task-matrix-view .task-calendar-mode-btn:last-child,
-.task-matrix-view .task-calendar-nav-btn:last-child {
+.task-matrix-view .task-matrix-calendar-mode-btn:last-child,
+.task-matrix-view .task-matrix-calendar-nav-btn:last-child {
   border-right: none;
 }
 
-.task-matrix-view .task-calendar-mode-btn:hover,
-.task-matrix-view .task-calendar-nav-btn:hover {
+.task-matrix-view .task-matrix-calendar-mode-btn:hover,
+.task-matrix-view .task-matrix-calendar-nav-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
 
-.task-matrix-view .task-calendar-mode-btn.active {
+.task-matrix-view .task-matrix-calendar-mode-btn.active {
   background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
   color: var(--interactive-accent);
   font-weight: 700;
 }
 
-.task-matrix-view .task-calendar-nav {
+.task-matrix-view .task-matrix-calendar-nav {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.task-matrix-view .task-calendar-nav > .task-calendar-nav-btn,
-.task-matrix-view .task-calendar-summary-wrap > .task-calendar-nav-btn {
+.task-matrix-view .task-matrix-calendar-nav > .task-matrix-calendar-nav-btn,
+.task-matrix-view .task-matrix-calendar-summary-wrap > .task-matrix-calendar-nav-btn {
   border: var(--cal-border);
   border-radius: 8px;
   background: var(--background-primary);
@@ -975,7 +981,7 @@
   padding: 6px 10px;
 }
 
-.task-matrix-view .task-calendar-title {
+.task-matrix-view .task-matrix-calendar-title {
   min-width: 150px;
   text-align: center;
   font-size: 15px;
@@ -983,11 +989,11 @@
   color: var(--text-normal);
 }
 
-.task-matrix-view .task-calendar-summary-wrap {
+.task-matrix-view .task-matrix-calendar-summary-wrap {
   position: relative;
 }
 
-.task-matrix-view .task-calendar-summary-popup {
+.task-matrix-view .task-matrix-calendar-summary-popup {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
@@ -1000,11 +1006,11 @@
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
 }
 
-.task-matrix-view .task-calendar-summary-popup[hidden] {
+.task-matrix-view .task-matrix-calendar-summary-popup[hidden] {
   display: none;
 }
 
-.task-matrix-view .task-calendar-summary-popup ul {
+.task-matrix-view .task-matrix-calendar-summary-popup ul {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1013,7 +1019,7 @@
   gap: 6px;
 }
 
-.task-matrix-view .task-calendar-summary-popup li {
+.task-matrix-view .task-matrix-calendar-summary-popup li {
   font-size: 13px;
   color: var(--text-normal);
   display: flex;
@@ -1022,7 +1028,7 @@
   padding: 2px 0;
 }
 
-.task-matrix-view .task-calendar-summary-popup li::before {
+.task-matrix-view .task-matrix-calendar-summary-popup li::before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1030,32 +1036,32 @@
   font-size: 13px;
 }
 
-.task-matrix-view .task-calendar-summary-popup li:nth-child(1)::before { content: "✅"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(2)::before { content: "📅"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(3)::before { content: "⚠️"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(4)::before { content: "🛫"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(5)::before { content: "⏳"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(6)::before { content: "🔁"; }
-.task-matrix-view .task-calendar-summary-popup li:nth-child(7)::before { content: "📝"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(1)::before { content: "✅"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(2)::before { content: "📅"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(3)::before { content: "⚠️"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(4)::before { content: "🛫"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(5)::before { content: "⏳"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(6)::before { content: "🔁"; }
+.task-matrix-view .task-matrix-calendar-summary-popup li:nth-child(7)::before { content: "📝"; }
 
-.task-matrix-view .task-calendar-month {
+.task-matrix-view .task-matrix-calendar-month {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.task-matrix-view .task-calendar-heads,
-.task-matrix-view .task-calendar-month-grid {
+.task-matrix-view .task-matrix-calendar-heads,
+.task-matrix-view .task-matrix-calendar-month-grid {
   display: grid;
   gap: 6px;
 }
 
-.task-matrix-view .task-calendar-heads.is-workweek,
-.task-matrix-view .task-calendar-month-grid.is-workweek {
+.task-matrix-view .task-matrix-calendar-heads.is-workweek,
+.task-matrix-view .task-matrix-calendar-month-grid.is-workweek {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-.task-matrix-view .task-calendar-head {
+.task-matrix-view .task-matrix-calendar-head {
   text-align: center;
   font-size: 11px;
   color: var(--text-muted);
@@ -1065,11 +1071,11 @@
   padding: 2px 0 4px;
 }
 
-.task-matrix-view .task-calendar-head.weekend {
+.task-matrix-view .task-matrix-calendar-head.weekend {
   color: var(--interactive-accent);
 }
 
-.task-matrix-view .task-calendar-day {
+.task-matrix-view .task-matrix-calendar-day {
   border: var(--cal-border);
   background: var(--background-primary);
   border-radius: var(--cal-radius);
@@ -1081,52 +1087,52 @@
   transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.task-matrix-view .task-calendar-day:hover {
+.task-matrix-view .task-matrix-calendar-day:hover {
   border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
 }
 
-.task-matrix-view .task-calendar-day.outside {
+.task-matrix-view .task-matrix-calendar-day.outside {
   opacity: 0.5;
   filter: saturate(0.75);
 }
 
-.task-matrix-view .task-calendar-day.weekend-day {
+.task-matrix-view .task-matrix-calendar-day.weekend-day {
   background: color-mix(in srgb, var(--background-primary) 92%, var(--interactive-accent) 8%);
 }
 
-.task-matrix-view .task-calendar-day.weekend-day .task-calendar-date {
+.task-matrix-view .task-matrix-calendar-day.weekend-day .task-matrix-calendar-date {
   color: var(--interactive-accent);
 }
 
-.task-matrix-view .task-calendar-day.today {
+.task-matrix-view .task-matrix-calendar-day.today {
   border: 2px solid color-mix(in srgb, var(--interactive-accent) 70%, white 0%);
   background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 }
 
-.task-matrix-view .task-calendar-day.weekend-day.today {
+.task-matrix-view .task-matrix-calendar-day.weekend-day.today {
   background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
   border-color: color-mix(in srgb, var(--interactive-accent) 78%, white 0%);
 }
 
-.task-matrix-view .task-calendar-date {
+.task-matrix-view .task-matrix-calendar-date {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-normal);
 }
 
-.task-matrix-view .task-calendar-day.today .task-calendar-date {
+.task-matrix-view .task-matrix-calendar-day.today .task-matrix-calendar-date {
   color: var(--interactive-accent);
 }
 
-.task-matrix-view .task-calendar-items {
+.task-matrix-view .task-matrix-calendar-items {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.task-matrix-view .task-calendar-item {
+.task-matrix-view .task-matrix-calendar-item {
   display: block;
   padding: 3px 6px;
   border-radius: 6px;
@@ -1142,41 +1148,41 @@
   transition: background-color 120ms ease, transform 120ms ease, border-color 120ms ease;
 }
 
-.task-matrix-view .task-calendar-item:hover {
+.task-matrix-view .task-matrix-calendar-item:hover {
   transform: translateX(1px);
 }
 
-.task-matrix-view .task-calendar-item.type-due {
+.task-matrix-view .task-matrix-calendar-item.type-due {
   border-left: 3px solid #f59e0b;
   background: color-mix(in srgb, #f59e0b 12%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-item.type-start {
+.task-matrix-view .task-matrix-calendar-item.type-start {
   border-left: 3px solid #3b82f6;
   background: color-mix(in srgb, #3b82f6 12%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-item.type-scheduled {
+.task-matrix-view .task-matrix-calendar-item.type-scheduled {
   border-left: 3px solid #8b5cf6;
   background: color-mix(in srgb, #8b5cf6 12%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-item.type-done {
+.task-matrix-view .task-matrix-calendar-item.type-done {
   border-left: 3px solid #22c55e;
   background: color-mix(in srgb, #22c55e 12%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-item.type-overdue {
+.task-matrix-view .task-matrix-calendar-item.type-overdue {
   border-left: 3px solid #ef4444;
   background: color-mix(in srgb, #ef4444 13%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-item.type-process {
+.task-matrix-view .task-matrix-calendar-item.type-process {
   border-left: 3px solid #0ea5e9;
   background: color-mix(in srgb, #0ea5e9 12%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-week {
+.task-matrix-view .task-matrix-calendar-week {
   display: grid;
   grid-template-columns: repeat(5, minmax(160px, 1fr));
   gap: 8px;
@@ -1184,37 +1190,37 @@
   padding-bottom: 2px;
 }
 
-.task-matrix-view .task-calendar-week-split {
+.task-matrix-view .task-matrix-calendar-week-split {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.task-matrix-view .task-calendar-week-main {
+.task-matrix-view .task-matrix-calendar-week-main {
   grid-template-columns: repeat(5, minmax(160px, 1fr));
 }
 
-.task-matrix-view .task-calendar-week-compact {
+.task-matrix-view .task-matrix-calendar-week-compact {
   grid-template-columns: repeat(5, minmax(160px, 1fr));
 }
 
-.task-matrix-view .task-calendar-weekend {
+.task-matrix-view .task-matrix-calendar-weekend {
   display: grid;
   grid-template-columns: repeat(2, minmax(160px, 1fr));
   gap: 8px;
 }
 
-.task-matrix-view .task-calendar-day.week-day {
+.task-matrix-view .task-matrix-calendar-day.week-day {
   min-height: 210px;
 }
 
-.task-matrix-view .task-calendar-list {
+.task-matrix-view .task-matrix-calendar-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.task-matrix-view .task-calendar-list-day {
+.task-matrix-view .task-matrix-calendar-list-day {
   border: var(--cal-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1222,7 +1228,7 @@
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
 }
 
-.task-matrix-view .task-calendar-list-day > summary {
+.task-matrix-view .task-matrix-calendar-list-day > summary {
   cursor: pointer;
   list-style: none;
   padding: 9px 12px;
@@ -1232,22 +1238,22 @@
   border-bottom: var(--cal-border);
 }
 
-.task-matrix-view .task-calendar-list-day > summary::-webkit-details-marker {
+.task-matrix-view .task-matrix-calendar-list-day > summary::-webkit-details-marker {
   display: none;
 }
 
-.task-matrix-view .task-calendar-list-day.today {
+.task-matrix-view .task-matrix-calendar-list-day.today {
   border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
   background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
 }
 
-.task-matrix-view .task-calendar-list-day.today > summary {
+.task-matrix-view .task-matrix-calendar-list-day.today > summary {
   color: var(--interactive-accent);
   font-weight: 700;
   background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
 }
 
-.task-matrix-view .task-calendar-list-content {
+.task-matrix-view .task-matrix-calendar-list-content {
   padding: 9px;
   display: flex;
   flex-direction: column;
@@ -1255,43 +1261,43 @@
 }
 
 @media (max-width: 980px) {
-  .task-matrix-view .task-calendar {
+  .task-matrix-view .task-matrix-calendar {
     padding: 10px;
   }
 
-  .task-matrix-view .task-calendar-title {
+  .task-matrix-view .task-matrix-calendar-title {
     min-width: auto;
     font-size: 14px;
   }
 }
 
 @media (max-width: 720px) {
-  .task-matrix-view .task-calendar-toolbar {
+  .task-matrix-view .task-matrix-calendar-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .task-matrix-view .task-calendar-nav {
+  .task-matrix-view .task-matrix-calendar-nav {
     justify-content: space-between;
     flex-wrap: wrap;
   }
 
-  .task-matrix-view .task-calendar-day {
+  .task-matrix-view .task-matrix-calendar-day {
     min-height: 96px;
   }
 
-  .task-matrix-view .task-calendar-day.week-day {
+  .task-matrix-view .task-matrix-calendar-day.week-day {
     min-height: 150px;
   }
 
-  .task-matrix-view .task-calendar-week,
-  .task-matrix-view .task-calendar-week-main,
-  .task-matrix-view .task-calendar-week-compact,
-  .task-matrix-view .task-calendar-weekend {
+  .task-matrix-view .task-matrix-calendar-week,
+  .task-matrix-view .task-matrix-calendar-week-main,
+  .task-matrix-view .task-matrix-calendar-week-compact,
+  .task-matrix-view .task-matrix-calendar-weekend {
     grid-template-columns: 1fr;
   }
 
-  .task-matrix-view .task-calendar-item {
+  .task-matrix-view .task-matrix-calendar-item {
     font-size: 10px;
   }
 }

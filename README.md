@@ -1,10 +1,10 @@
 # Obsidian Task Matrix ⚡
 
-Visual task dashboards with list, GTD, and Eisenhower views.
+Visual task dashboards with list, GTD, Eisenhower, and calendar views.
 
 ## ✨ Features
 
-### 🔄 Three Complementary Views
+### 🔄 Four Complementary Views
 
 | View | Best For | Key Benefit |
 |------|----------|-------------|
@@ -66,7 +66,7 @@ Each task card provides quick actions:
 
 ### ⚙️ Settings
 
-- **Scan Folder**: Limit task indexing to a specific vault folder
+- **Scan Folders**: Comma-separated folders to index (defaults to `500 Journal, 100 Projects`; clear the field to scan the whole vault)
 - **Default View**: Choose which view opens first (List/GTD/Eisenhower)
 - **Open Location**: Open in sidebar or new tab
 - **Include Completed**: Toggle visibility of completed/cancelled tasks
@@ -84,6 +84,13 @@ Each task card provides quick actions:
 - **Target Note Path**: Default location for new tasks (supports `YYYY`, `MM`, `DD` templates)
 - **Target Heading**: Insert new tasks under a specific heading
 
+#### Calendar View Settings
+- **First day of week**: Start calendar weeks on Monday or Sunday
+- **Show weekends in week view**: Show weekend columns in the week view
+- **Show weekends in month view**: Show weekend columns in the month view
+- **Show in-progress tasks**: Repeat tasks on every day between their start and due dates
+- **Show full month in list**: Show every day of the month in list mode
+
 ## 📥 Installation
 
 ### Using BRAT (Recommended for Beta Versions)
@@ -91,25 +98,27 @@ Each task card provides quick actions:
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin in Obsidian
 2. Open BRAT settings and click "Add Beta plugin"
 3. Enter: `luna-jmy/obsidian-task-matrix`
-4. Click "Add Plugin" and enable it in Community Plugins
+4. Click "Add Plugin" and enable it in Community plugins
 
 ### From GitHub Releases
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release
-2. Create a folder named `task-matrix` under your vault's `.obsidian/plugins/`
+2. Create a folder named `task-matrix-dashboard` under `.obsidian/plugins/` in your vault
 3. Put the downloaded files into that folder
-3. Enable "Task Matrix" in Obsidian Settings → Community Plugins
+4. Enable "Task Matrix" in Obsidian settings → Community plugins
+
+The folder name must match the plugin id `task-matrix-dashboard`, otherwise Obsidian will not load the plugin.
 
 ### From Source
 
 ```bash
 git clone https://github.com/luna-jmy/obsidian-task-matrix.git
-cd obsidian-task-matrix/obsidian-task-matrix-plugin
+cd obsidian-task-matrix
 npm install
 npm run build
 ```
 
-Copy the `obsidian-task-matrix-plugin` folder to your vault's `.obsidian/plugins/` directory.
+Copy `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/task-matrix-dashboard/` in your vault.
 
 ## 🚀 Usage
 
@@ -195,11 +204,13 @@ Supported operators:
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
-## 📣 Official Account
+## 🔒 Data and privacy
 
-Follow my WeChat official account:
+Task Matrix runs entirely inside your vault:
 
-![WeChat Official Account QR](assets/qr-official.jpg)
+- No network requests, no telemetry, and no account or sign-in.
+- It only reads and writes markdown files that already exist in your vault, and only the task line you act on.
+- Settings are stored through Obsidian's plugin data API inside your vault's `.obsidian` folder.
 
 ## 📄 License
 

@@ -31,3 +31,10 @@ settings.local.json
 # Claude / AI assistant directories
 .claude/*
 .agent/*
+
+# AI assistant instructions (kept local, not published)
+AGENTS.md
+
+# Release artifacts: built locally by `npm run build` and rebuilt in CI by
+# .github/workflows/release.yml, so they are never committed.
+release/

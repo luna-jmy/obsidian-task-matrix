@@ -32,6 +32,13 @@ const FIELD_PATTERNS = {
 // Excludes Dataview inline fields like [field::value] by rejecting ::
 const TASK_PATTERN = /^[ \t]*[-*][ \t]\[([^\]]*)\][ \t]+(.*)$/u;
 
+/**
+ * Source of the inline field tokens this plugin writes into a task line.
+ * Exported so writers can locate the same tokens without re-declaring the list.
+ */
+export const INLINE_FIELD_TOKEN_SOURCE =
+  "📅\\s*\\d{4}-\\d{2}-\\d{2}|🛫\\s*\\d{4}-\\d{2}-\\d{2}|⏳\\s*\\d{4}-\\d{2}-\\d{2}|✅\\s*\\d{4}-\\d{2}-\\d{2}|➕\\s*\\d{4}-\\d{2}-\\d{2}|🆔\\s*\\S+|⛔\\s*\\S+|🔺|⏫|🔼|🔽|⏬|#[\\p{L}\\p{N}_/-]+|\\w+::\\s*\\S+";
+
 function extractValue(text: string, regex: RegExp): string | undefined {
   const match = text.match(regex);
   return match?.[1]?.trim();

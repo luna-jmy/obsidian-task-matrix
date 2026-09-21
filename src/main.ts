@@ -1,5 +1,6 @@
 import {
   App,
+  Component,
   ItemView,
   Notice,
   Plugin,
@@ -15,7 +16,22 @@ import {
   MarkdownRenderer,
 } from "obsidian";
 import { DEFAULT_SETTINGS, ParsedTask, TaskMatrixSettings, ViewMode, Priority } from "./types";
-import { parseTaskLine, sortTasks, computeGtdState, generateShortId, isoDateOffset } from "./task-parser";
+import { parseTaskLine, sortTasks, computeGtdState, generateShortId, isoDateOffset, getToday } from "./task-parser";
+import {
+  appendLine,
+  compactLine,
+  editFileContent,
+  editTaskLine,
+  EditResult,
+  getIndent,
+  insertLineUnderHeading,
+  replaceTaskDescription,
+  setCheckboxMarker,
+  setConflictTag,
+  setDateField,
+  setIdentifierField,
+  setPriority,
+} from "./task-writer";
 
 const VIEW_TYPE_TASK_MATRIX = "task-matrix-view";
 const ICONS = {
@@ -42,14 +58,41 @@ type DateFilterConfig = {
   value: string;
 };
 
+function notifyEditResult(result: EditResult, task: ParsedTask, message: string): void {
+  if (result === "missing") {
+    new Notice(`Line ${task.lineNumber} not found in ${task.filePath}`);
+    return;
+  }
+  if (result === "updated") new Notice(message);
+}
+
+/**
+ * Cheap fingerprint of everything a view renders. Re-rendering is skipped when a
+ * vault event produced an identical task list.
+ */
+function buildTaskSignature(tasks: ParsedTask[]): string {
+  return tasks
+    .map(
+      (task) =>
+        `${task.id}|${task.lineText}|${task.displayStatus}|${task.gtdState}|${task.quadrant}` +
+        `|${task.blocked}|${task.sectionHeading ?? ""}`,
+    )
+    .join("\n");
+}
+
 export default class TaskMatrixPlugin extends Plugin {
   settings: TaskMatrixSettings = DEFAULT_SETTINGS;
   tasks: ParsedTask[] = [];
+  /** False until the first index pass finished, so views can show a loading hint. */
+  tasksLoaded = false;
   private refreshTimer: number | null = null;
+  private refreshGeneration = 0;
+  /** Null means "never rendered", so the first pass always paints the views. */
+  private lastTaskSignature: string | null = null;
+  private shuttingDown = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
-    await this.refreshTasks();
 
     this.registerView(
       VIEW_TYPE_TASK_MATRIX,
@@ -83,9 +126,19 @@ export default class TaskMatrixPlugin extends Plugin {
 
     this.addSettingTab(new TaskMatrixSettingTab(this.app, this));
 
+    // Indexing waits for the layout to settle so plugin startup never blocks on a
+    // vault-wide scan; views show a loading hint until the first pass lands.
+    this.app.workspace.onLayoutReady(() => {
+      void this.refreshTasks();
+    });
   }
 
   onunload(): void {
+    this.shuttingDown = true;
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
   }
 
   async loadSettings(): Promise<void> {
@@ -95,6 +148,8 @@ export default class TaskMatrixPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    // View-side filters read settings directly, so invalidate the render cache.
+    this.lastTaskSignature = null;
     await this.refreshOpenViews();
   }
 
@@ -118,19 +173,33 @@ export default class TaskMatrixPlugin extends Plugin {
   }
 
   scheduleRefresh(): void {
+    if (this.shuttingDown) return;
     if (this.refreshTimer !== null) {
       window.clearTimeout(this.refreshTimer);
     }
 
     this.refreshTimer = window.setTimeout(() => {
-      void this.refreshTasks();
       this.refreshTimer = null;
+      void this.refreshTasks();
     }, 500);
   }
 
   async refreshTasks(showNotice = false): Promise<void> {
-    this.tasks = await this.collectTasks();
-    await this.refreshOpenViews();
+    const generation = ++this.refreshGeneration;
+    const tasks = await this.collectTasks();
+
+    // Ignore results from a superseded pass or from a pass that outlived the plugin.
+    if (this.shuttingDown || generation !== this.refreshGeneration) return;
+
+    this.tasks = tasks;
+    this.tasksLoaded = true;
+
+    const signature = buildTaskSignature(tasks);
+    if (signature !== this.lastTaskSignature) {
+      this.lastTaskSignature = signature;
+      await this.refreshOpenViews();
+    }
+
     if (showNotice) {
       new Notice(`Task matrix refreshed: ${this.tasks.length} tasks`);
     }
@@ -274,148 +343,55 @@ export default class TaskMatrixPlugin extends Plugin {
 
   // Task operations
   async toggleTaskStatus(task: ParsedTask): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${task.filePath}`);
-      return;
-    }
+    const completionMarkers = this.settings.completionMarkers;
+    const defaultCompleteMarker = completionMarkers[0] ?? "x";
+    const trackCompletionDate = this.settings.trackCompletionDate;
+    const today = getToday();
+    let wasCompleted = completionMarkers.includes(task.checkboxStatus.trim());
 
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
+    const result = await editTaskLine(this.app, task, (line) => {
+      // Re-read the marker from the latest content so a stale snapshot cannot
+      // flip the checkbox twice.
+      const currentMarker = /\[([^\]]*)\]/u.exec(line)?.[1]?.trim() ?? "";
+      wasCompleted = completionMarkers.includes(currentMarker);
 
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${task.lineNumber} not found in file`);
-      return;
-    }
+      let next = setCheckboxMarker(line, wasCompleted ? " " : defaultCompleteMarker);
+      if (trackCompletionDate) {
+        next = wasCompleted
+          ? next.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "")
+          : `${next} ✅ ${today}`;
+      }
+      return next;
+    });
 
-    const line = lines[lineIndex];
-    const isCompleted = this.settings.completionMarkers.includes(task.checkboxStatus.trim());
-    const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
-    const newMarker = isCompleted ? " " : defaultCompleteMarker;
-    let newLine = line.replace(/\[[^\]]*\]/u, `[${newMarker}]`);
-
-    // Add or remove completion date
-    if (!isCompleted && this.settings.trackCompletionDate) {
-      // Task is being completed - add completion date
-      const today = new Date().toISOString().split("T")[0];
-      newLine = `${newLine} ✅ ${today}`;
-    } else if (isCompleted && this.settings.trackCompletionDate) {
-      // Task is being reopened - remove completion date
-      newLine = newLine.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
-    }
-
-    if (newLine !== line) {
-      lines[lineIndex] = newLine;
-      await this.app.vault.modify(file, lines.join("\n"));
-      new Notice(isCompleted ? "Task reopened" : "Task completed");
-    }
+    notifyEditResult(result, task, wasCompleted ? "Task reopened" : "Task completed");
   }
 
   async cancelTask(task: ParsedTask): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${task.filePath}`);
-      return;
-    }
-
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
-
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${task.lineNumber} not found in file`);
-      return;
-    }
-
-    const line = lines[lineIndex];
-    const defaultCancelledMarker = this.settings.cancelledMarkers[0] ?? "-";
-    const newLine = line.replace(/\[[^\]]*\]/u, `[${defaultCancelledMarker}]`);
-
-    if (newLine !== line) {
-      lines[lineIndex] = newLine;
-      await this.app.vault.modify(file, lines.join("\n"));
-      new Notice("Task cancelled");
-    }
+    const cancelledMarker = this.settings.cancelledMarkers[0] ?? "-";
+    const result = await editTaskLine(this.app, task, (line) =>
+      setCheckboxMarker(line, cancelledMarker),
+    );
+    notifyEditResult(result, task, "Task cancelled");
   }
 
   async startTask(task: ParsedTask): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${task.filePath}`);
-      return;
-    }
-
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
-
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${task.lineNumber} not found in file`);
-      return;
-    }
-
-    const line = lines[lineIndex];
-    const today = new Date().toISOString().slice(0, 10);
-
-    // Add start date emoji if not present
-    let newLine = line;
-    if (!line.includes("🛫")) {
-      newLine = `${line} 🛫 ${today}`;
-    }
-
-    // Also add #doing tag if not present
-    if (!line.toLowerCase().includes("#doing")) {
-      newLine = `${newLine} #doing`;
-    }
-
-    if (newLine !== line) {
-      lines[lineIndex] = newLine;
-      await this.app.vault.modify(file, lines.join("\n"));
-      new Notice("Task started");
-    }
+    const today = getToday();
+    const result = await editTaskLine(this.app, task, (line) => {
+      const withStartDate = line.includes("🛫") ? line : `${line} 🛫 ${today}`;
+      return withStartDate.toLowerCase().includes("#doing")
+        ? withStartDate
+        : `${withStartDate} #doing`;
+    });
+    notifyEditResult(result, task, "Task started");
   }
 
   async deleteTask(task: ParsedTask): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${task.filePath}`);
-      return;
-    }
-
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
-
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${task.lineNumber} not found in file`);
-      return;
-    }
-
-    lines.splice(lineIndex, 1);
-    await this.app.vault.modify(file, lines.join("\n"));
-    new Notice("Task deleted");
+    const result = await editTaskLine(this.app, task, () => null);
+    notifyEditResult(result, task, "Task deleted");
   }
 
-  async updateTaskLine(task: ParsedTask, newLine: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${task.filePath}`);
-      return;
-    }
 
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
-
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${task.lineNumber} not found in file`);
-      return;
-    }
-
-    lines[lineIndex] = newLine;
-    await this.app.vault.modify(file, lines.join("\n"));
-  }
 
   // Check if there's a date conflict (start date > due date)
   private checkDateConflict(startDate: string | undefined, dueDate: string | undefined): boolean {
@@ -426,7 +402,7 @@ export default class TaskMatrixPlugin extends Plugin {
   // Drag and drop: move task to different state/quadrant
   async moveTaskToGTDState(task: ParsedTask, newState: ParsedTask["gtdState"]): Promise<void> {
     // Determine what changes are needed for this GTD state transition
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getToday();
     const updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
     let tagToAdd = "";
     let removeTags: string[] = [];
@@ -507,121 +483,78 @@ export default class TaskMatrixPlugin extends Plugin {
     shouldComplete: boolean,
     addConflictTag: boolean
   ): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
+    const completionMarker = this.settings.completionMarkers[0] ?? "x";
 
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
+    const result = await editTaskLine(this.app, task, (line) => {
+      // Keep the leading indentation so nested tasks stay nested.
+      const indent = getIndent(line);
+      let body = line.slice(indent.length);
 
-    if (lineIndex < 0 || lineIndex >= lines.length) return;
-
-    let line = lines[lineIndex];
-
-    // Remove old GTD tags
-    for (const tag of removeTags) {
-      const tagRegex = new RegExp(`\\s*${tag}\\b`, "gi");
-      line = line.replace(tagRegex, "");
-    }
-    // Also remove conflict tag if present
-    line = line.replace(/\s*#due-date-conflict\b/gi, "");
-    line = line.trim();
-
-    // Add appropriate tag for new state
-    if (tagToAdd && !line.toLowerCase().includes(tagToAdd.toLowerCase())) {
-      line += ` ${tagToAdd}`;
-    }
-
-    // Add conflict tag if needed
-    if (addConflictTag && !line.toLowerCase().includes("#due-date-conflict")) {
-      line += " #due-date-conflict";
-    }
-
-    // Mark as completed if needed
-    if (shouldComplete) {
-      const defaultCompleteMarker = this.settings.completionMarkers[0] ?? "x";
-      line = line.replace(/\[[^\]]*\]/u, `[${defaultCompleteMarker}]`);
-    }
-
-    // Update start date if needed
-    if (updates.startDate !== undefined) {
-      // Remove existing start date (emoji and date)
-      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
-      if (updates.startDate) {
-        line += ` 🛫 ${updates.startDate}`;
+      for (const tag of removeTags) {
+        body = body.replace(new RegExp(`\\s*${tag}\\b`, "giu"), "");
       }
-    }
+      body = setConflictTag(body, false);
 
-    // Update due date if needed
-    if (updates.dueDate !== undefined) {
-      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
-      if (updates.dueDate) {
-        line += ` 📅 ${updates.dueDate}`;
+      if (tagToAdd && !body.toLowerCase().includes(tagToAdd.toLowerCase())) {
+        body += ` ${tagToAdd}`;
       }
-    }
+      if (addConflictTag) {
+        body = setConflictTag(body, true);
+      }
+      if (shouldComplete) {
+        body = setCheckboxMarker(body, completionMarker);
+      }
+      if (updates.startDate !== undefined) {
+        body = setDateField(body, "🛫", updates.startDate);
+      }
+      if (updates.dueDate !== undefined) {
+        body = setDateField(body, "📅", updates.dueDate);
+      }
 
-    lines[lineIndex] = line;
-    await this.app.vault.modify(file, lines.join("\n"));
-    new Notice(`Moved to ${newState}`);
+      return compactLine(`${indent}${body}`);
+    });
+
+    if (result === "updated") new Notice(`Moved to ${newState}`);
   }
 
   async moveTaskToQuadrant(task: ParsedTask, newQuadrant: ParsedTask["quadrant"]): Promise<void> {
     if (task.quadrant === newQuadrant) return;
 
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = task.lineNumber - 1;
-
-    if (lineIndex < 0 || lineIndex >= lines.length) return;
-
-    let line = lines[lineIndex];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getToday();
 
     // Update priority and due date based on quadrant
-    let priorityMarker = "";
+    let priority: Priority = Priority.None;
     let shouldAddDueDate = false;
 
     switch (newQuadrant) {
       case "Q1":
-        priorityMarker = "🔼"; // High priority
+        priority = Priority.High;
         shouldAddDueDate = true;
         break;
       case "Q2":
-        priorityMarker = "🔼"; // High priority
+        priority = Priority.High;
         break;
       case "Q3":
-        priorityMarker = "🔽"; // Low priority
+        priority = Priority.Low;
         shouldAddDueDate = true;
         break;
       case "Q4":
-        priorityMarker = "⏬"; // Lowest priority
+        priority = Priority.Lowest;
         break;
     }
 
-    // Remove existing priority markers (use alternation instead of character class for emoji)
-    line = line.replace(/⏫|🔼|🔽|⏬/gu, "").trim();
+    const result = await editTaskLine(this.app, task, (line) => {
+      const indent = getIndent(line);
+      let body = setPriority(line.slice(indent.length), priority);
 
-    // Add new priority marker after checkbox
-    if (priorityMarker) {
-      const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
-      if (checkboxMatch) {
-        line = line.replace(checkboxMatch[1], checkboxMatch[1] + priorityMarker + " ");
-      }
-    }
+      // Always remove any existing due date before adding one, so an orphaned
+      // 📅 can never accumulate.
+      body = setDateField(body, "📅", shouldAddDueDate ? today : "");
 
-    // Handle due date based on quadrant
-    // Always remove any existing due date emoji (with or without date) first to avoid duplicates
-    line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "").trim();
-    if (shouldAddDueDate) {
-      line = line + ` 📅 ${today}`;
-    }
+      return compactLine(`${indent}${body}`);
+    });
 
-    lines[lineIndex] = line;
-    await this.app.vault.modify(file, lines.join("\n"));
-    new Notice(`Moved to ${newQuadrant}`);
+    if (result === "updated") new Notice(`Moved to ${newQuadrant}`);
   }
 
 }
@@ -642,6 +575,8 @@ class TaskMatrixView extends ItemView {
   private bodyEl: HTMLElement | null = null;
   private searchEl: HTMLInputElement | null = null;
   private searchDebounceTimer: number | null = null;
+  /** Owns everything the markdown renderer creates for the cards of one render pass. */
+  private markdownComponent: Component | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: TaskMatrixPlugin) {
     super(leaf);
@@ -667,9 +602,32 @@ class TaskMatrixView extends ItemView {
   onClose(): Promise<void> {
     if (this.searchDebounceTimer) {
       window.clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
     }
+    this.releaseMarkdownComponent();
+    this.shellEl = null;
+    this.bodyEl = null;
+    this.searchEl = null;
     this.contentEl.empty();
     return Promise.resolve();
+  }
+
+  /**
+   * Card bodies embed user markdown, which can register listeners through other
+   * plugins. Drop that component before rebuilding the DOM so nothing leaks
+   * across refreshes.
+   */
+  private releaseMarkdownComponent(): void {
+    this.markdownComponent?.unload();
+    this.markdownComponent = null;
+  }
+
+  private getMarkdownComponent(): Component {
+    if (!this.markdownComponent) {
+      this.markdownComponent = new Component();
+      this.markdownComponent.load();
+    }
+    return this.markdownComponent;
   }
 
   async render(): Promise<void> {
@@ -677,6 +635,7 @@ class TaskMatrixView extends ItemView {
     root.empty();
     root.addClass("task-matrix-view");
 
+    this.releaseMarkdownComponent();
     this.shellEl = root.createDiv({ cls: "task-matrix-shell" });
     this.renderHeader(this.shellEl);
     await this.renderBodyContainer(this.shellEl);
@@ -684,6 +643,7 @@ class TaskMatrixView extends ItemView {
 
   private async renderBodyContainer(parent: HTMLElement): Promise<void> {
     // Remove old body if exists
+    this.releaseMarkdownComponent();
     if (this.bodyEl) {
       this.bodyEl.remove();
     }
@@ -693,6 +653,7 @@ class TaskMatrixView extends ItemView {
 
   private async refreshBody(): Promise<void> {
     if (this.bodyEl) {
+      this.releaseMarkdownComponent();
       this.bodyEl.empty();
       await this.renderBodyContent(this.bodyEl);
     }
@@ -987,14 +948,24 @@ class TaskMatrixView extends ItemView {
   }
 
   private async renderBodyContent(parent: HTMLElement): Promise<void> {
+    if (!this.plugin.tasksLoaded) {
+      const loading = parent.createDiv({ cls: "task-matrix-empty" });
+      loading.createEl("h3", { text: "Loading tasks…" });
+      loading.createEl("p", { text: "The task index is built after Obsidian finishes loading." });
+      return;
+    }
+
     const tasks = this.visibleTasks;
     if (tasks.length === 0) {
+      const scanFolders = this.plugin.settings.scanFolders;
       const empty = parent.createDiv({ cls: "task-matrix-empty" });
       empty.createEl("h3", { text: "No tasks found" });
       empty.createEl("p", {
         text: this.searchQuery || this.getActiveDateFilterCount() > 0
           ? "The current search or date filters did not match any tasks."
-          : "Create markdown tasks in your vault, then refresh this view.",
+          : scanFolders.length > 0
+            ? `No tasks found in the scanned folders: ${scanFolders.join(", ")}. Adjust the scan folders setting to cover more of your vault.`
+            : "Create markdown tasks in your vault, then refresh this view.",
       });
       return;
     }
@@ -1104,7 +1075,7 @@ class TaskMatrixView extends ItemView {
   private mapTaskToGtdColumn(task: ParsedTask): ParsedTask["gtdState"] {
     if (task.gtdState === "To be Started") return "Inbox";
     if (task.gtdState === "Overdue") {
-      const todayIso = new Date().toISOString().slice(0, 10);
+      const todayIso = getToday();
       const desc = task.description.toLowerCase();
       const hasActiveTag = desc.includes("#doing") || desc.includes("#active") || desc.includes("#next");
       const hasStarted = Boolean(task.startDate && task.startDate <= todayIso);
@@ -1155,7 +1126,7 @@ class TaskMatrixView extends ItemView {
 
       // Define default values based on GTD state
       const getGtdDefaults = (state: ParsedTask["gtdState"]): Partial<ParsedTask> => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getToday();
         switch (state) {
           case "Waiting":
             return { gtdState: "Waiting" };
@@ -1214,24 +1185,24 @@ class TaskMatrixView extends ItemView {
   }
 
   private async renderCalendar(parent: HTMLElement, tasks: ParsedTask[]): Promise<void> {
-    const wrap = parent.createDiv({ cls: "task-calendar" });
-    const toolbar = wrap.createDiv({ cls: "task-calendar-toolbar" });
-    const modes = toolbar.createDiv({ cls: "task-calendar-segmented" });
-    const listBtn = modes.createEl("button", { text: "List", cls: `task-calendar-mode-btn${this.calendarMode === "list" ? " active" : ""}` });
-    const monthBtn = modes.createEl("button", { text: "Month", cls: `task-calendar-mode-btn${this.calendarMode === "month" ? " active" : ""}` });
-    const weekBtn = modes.createEl("button", { text: "Week", cls: `task-calendar-mode-btn${this.calendarMode === "week" ? " active" : ""}` });
+    const wrap = parent.createDiv({ cls: "task-matrix-calendar" });
+    const toolbar = wrap.createDiv({ cls: "task-matrix-calendar-toolbar" });
+    const modes = toolbar.createDiv({ cls: "task-matrix-calendar-segmented" });
+    const listBtn = modes.createEl("button", { text: "List", cls: `task-matrix-calendar-mode-btn${this.calendarMode === "list" ? " active" : ""}` });
+    const monthBtn = modes.createEl("button", { text: "Month", cls: `task-matrix-calendar-mode-btn${this.calendarMode === "month" ? " active" : ""}` });
+    const weekBtn = modes.createEl("button", { text: "Week", cls: `task-matrix-calendar-mode-btn${this.calendarMode === "week" ? " active" : ""}` });
     listBtn.addEventListener("click", () => { this.calendarMode = "list"; void this.render(); });
     monthBtn.addEventListener("click", () => { this.calendarMode = "month"; void this.render(); });
     weekBtn.addEventListener("click", () => { this.calendarMode = "week"; void this.render(); });
 
-    const nav = toolbar.createDiv({ cls: "task-calendar-nav" });
-    const prevBtn = nav.createEl("button", { text: "←", cls: "task-calendar-nav-btn" });
-    const titleEl = nav.createEl("div", { cls: "task-calendar-title" });
-    const todayBtn = nav.createEl("button", { text: "Today", cls: "task-calendar-nav-btn" });
-    const nextBtn = nav.createEl("button", { text: "→", cls: "task-calendar-nav-btn" });
-    const summaryWrap = nav.createDiv({ cls: "task-calendar-summary-wrap" });
-    const summaryBtn = summaryWrap.createEl("button", { text: "Summary", cls: "task-calendar-nav-btn" });
-    const summaryPopup = summaryWrap.createDiv({ cls: "task-calendar-summary-popup" });
+    const nav = toolbar.createDiv({ cls: "task-matrix-calendar-nav" });
+    const prevBtn = nav.createEl("button", { text: "←", cls: "task-matrix-calendar-nav-btn" });
+    const titleEl = nav.createEl("div", { cls: "task-matrix-calendar-title" });
+    const todayBtn = nav.createEl("button", { text: "Today", cls: "task-matrix-calendar-nav-btn" });
+    const nextBtn = nav.createEl("button", { text: "→", cls: "task-matrix-calendar-nav-btn" });
+    const summaryWrap = nav.createDiv({ cls: "task-matrix-calendar-summary-wrap" });
+    const summaryBtn = summaryWrap.createEl("button", { text: "Summary", cls: "task-matrix-calendar-nav-btn" });
+    const summaryPopup = summaryWrap.createDiv({ cls: "task-matrix-calendar-summary-popup" });
     if (!this.calendarSummaryOpen) summaryPopup.setAttribute("hidden", "hidden");
 
     const allItems = this.collectCalendarItems(tasks);
@@ -1455,16 +1426,16 @@ class TaskMatrixView extends ItemView {
     const visibleWeekdays = showWeekends
       ? weekdayOrder
       : weekdayOrder.filter((weekday) => weekday !== 0 && weekday !== 6);
-    const monthWrap = parent.createDiv({ cls: "task-calendar-month" });
-    const heads = monthWrap.createDiv({ cls: "task-calendar-heads" });
+    const monthWrap = parent.createDiv({ cls: "task-matrix-calendar-month" });
+    const heads = monthWrap.createDiv({ cls: "task-matrix-calendar-heads" });
     if (visibleWeekdays.length === 5) {
       heads.addClass("is-workweek");
     }
     for (const weekday of visibleWeekdays) {
-      const head = heads.createEl("div", { text: this.getWeekdayLabel(weekday), cls: "task-calendar-head" });
+      const head = heads.createEl("div", { text: this.getWeekdayLabel(weekday), cls: "task-matrix-calendar-head" });
       if (weekday === 0 || weekday === 6) head.addClass("weekend");
     }
-    const grid = monthWrap.createDiv({ cls: "task-calendar-month-grid" });
+    const grid = monthWrap.createDiv({ cls: "task-matrix-calendar-month-grid" });
     if (visibleWeekdays.length === 5) {
       grid.addClass("is-workweek");
     }
@@ -1483,15 +1454,15 @@ class TaskMatrixView extends ItemView {
       const isoDate = this.toCalendarIso(day);
       const inCurrentMonth = day.getMonth() === monthStart.getMonth();
       const isWeekend = weekday === 0 || weekday === 6;
-      const dayEl = grid.createDiv({ cls: `task-calendar-day${isWeekend ? " weekend-day" : ""}${inCurrentMonth ? "" : " outside"}${isoDate === todayIso ? " today" : ""}` });
-      dayEl.createEl("div", { text: String(day.getDate()), cls: "task-calendar-date" });
-      const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
+      const dayEl = grid.createDiv({ cls: `task-matrix-calendar-day${isWeekend ? " weekend-day" : ""}${inCurrentMonth ? "" : " outside"}${isoDate === todayIso ? " today" : ""}` });
+      dayEl.createEl("div", { text: String(day.getDate()), cls: "task-matrix-calendar-date" });
+      const itemsEl = dayEl.createDiv({ cls: "task-matrix-calendar-items" });
       const dayItems = itemsByDate[isoDate] ?? [];
       for (const entry of dayItems.slice(0, 4)) {
         this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
       if (dayItems.length > 4) {
-        itemsEl.createEl("span", { text: `+${dayItems.length - 4} more`, cls: "task-calendar-item" });
+        itemsEl.createEl("span", { text: `+${dayItems.length - 4} more`, cls: "task-matrix-calendar-item" });
       }
     }
   }
@@ -1509,16 +1480,16 @@ class TaskMatrixView extends ItemView {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       const isoDate = this.toCalendarIso(day);
-      const dayEl = container.createDiv({ cls: `task-calendar-day week-day${isWeekend ? " weekend-day" : ""}${isoDate === todayIso ? " today" : ""}` });
-      dayEl.createEl("div", { text: `${this.getWeekdayLabel(day.getDay())} ${day.getDate()}`, cls: "task-calendar-date" });
-      const itemsEl = dayEl.createDiv({ cls: "task-calendar-items" });
+      const dayEl = container.createDiv({ cls: `task-matrix-calendar-day week-day${isWeekend ? " weekend-day" : ""}${isoDate === todayIso ? " today" : ""}` });
+      dayEl.createEl("div", { text: `${this.getWeekdayLabel(day.getDay())} ${day.getDate()}`, cls: "task-matrix-calendar-date" });
+      const itemsEl = dayEl.createDiv({ cls: "task-matrix-calendar-items" });
       for (const entry of itemsByDate[isoDate] ?? []) {
         this.renderCalendarItem(itemsEl, entry.task, entry.type);
       }
     };
 
     if (!showWeekends) {
-      const weekGrid = parent.createDiv({ cls: "task-calendar-week task-calendar-week-compact" });
+      const weekGrid = parent.createDiv({ cls: "task-matrix-calendar-week task-matrix-calendar-week-compact" });
       for (let index = 0; index < 7; index++) {
         const weekday = weekdayOrder[index];
         if (weekday === 0 || weekday === 6) continue;
@@ -1527,15 +1498,15 @@ class TaskMatrixView extends ItemView {
       return;
     }
 
-    const weekSplit = parent.createDiv({ cls: "task-calendar-week-split" });
-    const weekdayGrid = weekSplit.createDiv({ cls: "task-calendar-week task-calendar-week-main" });
+    const weekSplit = parent.createDiv({ cls: "task-matrix-calendar-week-split" });
+    const weekdayGrid = weekSplit.createDiv({ cls: "task-matrix-calendar-week task-matrix-calendar-week-main" });
     for (let index = 0; index < 7; index++) {
       const weekday = weekdayOrder[index];
       if (weekday === 0 || weekday === 6) continue;
       renderDayCard(weekdayGrid, index, false);
     }
 
-    const weekendGrid = weekSplit.createDiv({ cls: "task-calendar-weekend" });
+    const weekendGrid = weekSplit.createDiv({ cls: "task-matrix-calendar-weekend" });
     for (const weekendWeekday of [6, 0]) {
       const index = weekdayOrder.indexOf(weekendWeekday);
       if (index >= 0) {
@@ -1549,7 +1520,7 @@ class TaskMatrixView extends ItemView {
     itemsByDate: Record<string, Array<{ task: ParsedTask; type: "due" | "start" | "scheduled" | "done" | "overdue" | "process" }>>,
     todayIso: string
   ): void {
-    const list = parent.createDiv({ cls: "task-calendar-list" });
+    const list = parent.createDiv({ cls: "task-matrix-calendar-list" });
     const monthStart = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1);
     const monthEnd = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + 1, 0);
     const showFullMonth = this.plugin.settings.calendarListShowFullMonth;
@@ -1557,13 +1528,13 @@ class TaskMatrixView extends ItemView {
       const isoDate = this.toCalendarIso(date);
       const dayItems = itemsByDate[isoDate] ?? [];
       if (!showFullMonth && dayItems.length === 0) continue;
-      const details = list.createEl("details", { cls: "task-calendar-list-day" });
+      const details = list.createEl("details", { cls: "task-matrix-calendar-list-day" });
       if (isoDate === todayIso) details.addClass("today");
       if (isoDate === todayIso) details.open = true;
       details.createEl("summary", { text: `${date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })} (${dayItems.length})` });
-      const content = details.createDiv({ cls: "task-calendar-list-content" });
+      const content = details.createDiv({ cls: "task-matrix-calendar-list-content" });
       if (dayItems.length === 0) {
-        content.createEl("span", { text: "No tasks", cls: "task-calendar-item" });
+        content.createEl("span", { text: "No tasks", cls: "task-matrix-calendar-item" });
       } else {
         for (const entry of dayItems) {
           this.renderCalendarItem(content, entry.task, entry.type);
@@ -1579,7 +1550,7 @@ class TaskMatrixView extends ItemView {
   ): void {
     const linkTarget = task.sectionHeading ? `${task.filePath}#${task.sectionHeading}` : task.filePath;
     const item = parent.createEl("a", {
-      cls: `task-calendar-item type-${type} internal-link`,
+      cls: `task-matrix-calendar-item type-${type} internal-link`,
       text: `${type.toUpperCase()} ${task.description}`,
     });
     item.setAttribute("href", linkTarget);
@@ -1639,7 +1610,7 @@ class TaskMatrixView extends ItemView {
 
       // Define default values based on quadrant
       const getQuadrantDefaults = (quadrant: ParsedTask["quadrant"]): Partial<ParsedTask> => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getToday();
         switch (quadrant) {
           case "Q1":
             return { priority: Priority.High, dueDate: today };
@@ -1750,8 +1721,16 @@ class TaskMatrixView extends ItemView {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (file instanceof TFile) {
       // Render the description as markdown to support inline code, dataview, etc.
+      // The render children belong to a component that is unloaded with the card
+      // container, so repeated refreshes cannot pile up listeners.
       const markdownContent = task.description || "*No description*";
-      await MarkdownRenderer.render(this.app, markdownContent, titleEl, task.filePath, this);
+      await MarkdownRenderer.render(
+        this.app,
+        markdownContent,
+        titleEl,
+        task.filePath,
+        this.getMarkdownComponent(),
+      );
     } else {
       titleEl.setText(task.description);
     }
@@ -2068,7 +2047,7 @@ class TaskEditModal extends Modal {
             (result) => {
               void (async () => {
               if (result.adjustDueDate) {
-                const today = new Date().toISOString().slice(0, 10);
+                const today = getToday();
                 updates.dueDate = today;
                 new Notice("Due date adjusted to today");
               } else if (result.addConflictTag) {
@@ -2180,23 +2159,28 @@ class TaskEditModal extends Modal {
       taskLine += " #due-date-conflict";
     }
 
-    // Read content and determine insertion point
-    const content = await this.app.vault.read(targetFile);
+    // Write through Vault.process so the note cannot be clobbered by an edit
+    // made between opening this modal and pressing Create.
     const { newTaskTargetHeading } = this.plugin.settings;
+    let insertionError: string | undefined;
 
-    let newContent: string;
     if (newTaskTargetHeading) {
-      const result = this.insertTaskUnderHeading(content, newTaskTargetHeading, taskLine);
-      if (!result.success) {
-        new Notice(`Cannot add task: ${result.error}`);
+      const inserted = await editFileContent(this.app, targetFile, (content) => {
+        const result = insertLineUnderHeading(content, newTaskTargetHeading, taskLine);
+        if (!result.success) {
+          insertionError = result.error;
+          return null;
+        }
+        return result.content ?? null;
+      });
+      if (!inserted && insertionError) {
+        new Notice(`Cannot add task: ${insertionError}`);
         return;
       }
-      newContent = result.content!;
     } else {
-      newContent = content.trim() + "\n" + taskLine;
+      await editFileContent(this.app, targetFile, (content) => appendLine(content, taskLine));
     }
 
-    await this.app.vault.modify(targetFile, newContent);
     new Notice(`Task added to ${targetFile.path}`);
   }
 
@@ -2212,148 +2196,45 @@ class TaskEditModal extends Modal {
       .replace(/DD/g, day);
   }
 
-  private insertTaskUnderHeading(
-    content: string,
-    heading: string,
-    taskLine: string
-  ): { success: boolean; content?: string; error?: string } {
-    const lines = content.split(/\r?\n/u);
-
-    // Find the target heading
-    const headingRegex = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
-    const headingIndex = lines.findIndex((line) => headingRegex.test(line.trim()));
-
-    if (headingIndex === -1) {
-      return { success: false, error: `Heading "${heading}" not found` };
-    }
-
-    // Determine heading level
-    const headingMatch = lines[headingIndex].match(/^(#{1,6})/);
-    if (!headingMatch) {
-      return { success: false, error: "Invalid heading format" };
-    }
-    const headingLevel = headingMatch[1].length;
-
-    // Find the end of this section (next heading of same or higher level, or end of file)
-    let insertIndex = headingIndex + 1;
-    for (let i = headingIndex + 1; i < lines.length; i++) {
-      const line = lines[i];
-      const nextHeadingMatch = line.match(/^(#{1,6})\s/);
-      if (nextHeadingMatch && nextHeadingMatch[1].length <= headingLevel) {
-        break;
-      }
-      insertIndex = i + 1;
-    }
-
-    // Insert task at the end of the section
-    // Find the last non-empty line in the section
-    let lastContentIndex = insertIndex - 1;
-    while (lastContentIndex > headingIndex && !lines[lastContentIndex].trim()) {
-      lastContentIndex--;
-    }
-
-    // Insert after the last content line
-    lines.splice(lastContentIndex + 1, 0, taskLine);
-
-    return { success: true, content: lines.join("\n") };
-  }
-
   private async saveTask(updates: Partial<ParsedTask>, addConflictTag: boolean = false): Promise<void> {
-    if (!this.task) return;
-    const file = this.app.vault.getAbstractFileByPath(this.task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`File not found: ${this.task.filePath}`);
-      return;
-    }
+    const task = this.task;
+    if (!task) return;
 
-    const content = await this.app.vault.read(file);
-    const lines = content.split(/\r?\n/u);
-    const lineIndex = this.task.lineNumber - 1;
+    const result = await editTaskLine(this.app, task, (line) => {
+      let next = line;
 
-    if (lineIndex < 0 || lineIndex >= lines.length) {
-      new Notice(`Line ${this.task.lineNumber} not found in file`);
-      return;
-    }
+      // Only rewrite the tokens the user actually changed. Untouched inline
+      // fields keep their original position and formatting, so other task
+      // plugins and the file diff stay stable.
+      const description = updates.description?.trim();
+      if (description !== undefined && description !== task.description) {
+        next = replaceTaskDescription(next, description);
+      }
+      if (updates.priority !== undefined && updates.priority !== task.priority) {
+        next = setPriority(next, updates.priority);
+      }
+      if (updates.dueDate !== undefined && updates.dueDate !== (task.dueDate ?? "")) {
+        next = setDateField(next, "📅", updates.dueDate);
+      }
+      if (updates.startDate !== undefined && updates.startDate !== (task.startDate ?? "")) {
+        next = setDateField(next, "🛫", updates.startDate);
+      }
+      if (updates.taskId !== undefined && updates.taskId !== (task.taskId ?? "")) {
+        next = setIdentifierField(next, "🆔", "id::", updates.taskId);
+      }
+      if (updates.dependsOn !== undefined && updates.dependsOn !== (task.dependsOn ?? "")) {
+        next = setIdentifierField(next, "⛔", "dependsOn::", updates.dependsOn);
+      }
+      if (/#due-date-conflict\b/iu.test(next) !== addConflictTag) {
+        next = setConflictTag(next, addConflictTag);
+      }
 
-    let line = lines[lineIndex];
+      // Nothing changed: leave the note untouched instead of normalising it.
+      if (next === line) return line;
+      return compactLine(next);
+    });
 
-    // Update description
-    const checkboxMatch = line.match(/^(\s*[-*]\s*\[[ xX/-]\]\s*)/);
-    if (checkboxMatch && updates.description) {
-      const prefix = checkboxMatch[1];
-      // Keep the checkbox and any inline fields, update description
-      const restOfLine = line.substring(prefix.length);
-      // Remove old description, keep inline fields
-      // Match emoji fields with optional dates, tags, and dataview inline fields
-      const inlineFields = restOfLine.match(/(\s*(?:📅\s*\d{4}-\d{2}-\d{2}|🛫\s*\d{4}-\d{2}-\d{2}|⏳\s*\d{4}-\d{2}-\d{2}|✅\s*\d{4}-\d{2}-\d{2}|➕\s*\d{4}-\d{2}-\d{2}|🔺|⏫|🔼|🔽|⏬|🆔\s*\S+|⛔\s*\S+|#\w+|::\s*\S+)\s*)/gu) || [];
-      // Filter out tags that already exist in the new description to avoid duplicates
-      const uniqueInlineFields = inlineFields.filter((field) => {
-        const trimmed = field.trim();
-        // Only check tags (starting with #)
-        if (trimmed.startsWith("#")) {
-          return !updates.description!.toLowerCase().includes(trimmed.toLowerCase());
-        }
-        return true;
-      });
-      line = prefix + updates.description + " " + uniqueInlineFields.join(" ");
-    }
-
-    // Update priority
-    if (updates.priority !== undefined) {
-      line = line.replace(/🔺|⏫|🔼|🔽|⏬/gu, "");
-      if (updates.priority === Priority.Critical) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔺 ");
-      else if (updates.priority === Priority.Highest) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏫ ");
-      else if (updates.priority === Priority.High) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔼 ");
-      else if (updates.priority === Priority.Low) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1🔽 ");
-      else if (updates.priority === Priority.Lowest) line = line.replace(/(\s*[-*]\s*\[[ xX/-]\]\s*)/, "$1⏬ ");
-    }
-
-    // Update due date - make date optional in regex to handle orphaned emojis
-    if (updates.dueDate !== undefined) {
-      line = line.replace(/\s*📅(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
-      if (updates.dueDate) line += ` 📅 ${updates.dueDate}`;
-    }
-
-    // Update start date - make date optional in regex to handle orphaned emojis
-    if (updates.startDate !== undefined) {
-      line = line.replace(/\s*🛫(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
-      if (updates.startDate) line += ` 🛫 ${updates.startDate}`;
-    }
-
-    // Update created date
-
-    // Update created date - make date optional in regex to handle orphaned emojis
-    if (updates.createdDate !== undefined) {
-      line = line.replace(/\s*➕(?:\s*\d{4}-\d{2}-\d{2})?/gu, "");
-      if (updates.createdDate) line += ` ➕ ${updates.createdDate}`;
-    }
-
-    // Update task ID
-    if (updates.taskId !== undefined) {
-      line = line.replace(/\s*🆔\s*\S+/g, "");
-      line = line.replace(/\bid::\s*\S+/gi, "");
-      if (updates.taskId) line += ` 🆔 ${updates.taskId}`;
-    }
-
-    // Update depends on
-    if (updates.dependsOn !== undefined) {
-      line = line.replace(/\s*⛔\s*\S+/g, "");
-      line = line.replace(/\bdependsOn::\s*\S+/gi, "");
-      if (updates.dependsOn) line += ` ⛔ ${updates.dependsOn}`;
-    }
-
-    // Handle conflict tag
-    line = line.replace(/\s*#due-date-conflict\b/gi, "");
-    if (addConflictTag) {
-      line += " #due-date-conflict";
-    }
-
-    // Clean up extra spaces
-    line = line.replace(/\s+/g, " ").trim();
-
-    lines[lineIndex] = line;
-    await this.app.vault.modify(file, lines.join("\n"));
-    new Notice("Task updated");
+    notifyEditResult(result, task, "Task updated");
   }
 
   onClose(): void {
@@ -2473,10 +2354,13 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Scan folders")
-      .setDesc("Comma-separated list of folder paths to scan for tasks. Leave empty to scan the whole vault.")
+      // Kept dynamic so the hint always matches the shipped defaults.
+      .setDesc(
+        `Folders to scan for tasks, separated by commas. Defaults to ${DEFAULT_SETTINGS.scanFolders.join(", ")}. Leave empty to scan the whole vault.`,
+      )
       .addText((text) =>
         text
-          .setPlaceholder("Projects/tasks, inbox")
+          .setPlaceholder(DEFAULT_SETTINGS.scanFolders.join(", "))
           .setValue(this.plugin.settings.scanFolders.join(", "))
           .onChange((value) => {
             this.plugin.settings.scanFolders = value.split(",").map(s => s.trim()).filter(Boolean);
@@ -2663,7 +2547,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Target note path")
-      .setDesc("Path template for new tasks. Use yyyy, mm, dd for date substitution. Leave empty to use fallback logic.")
+      .setDesc("Path template for new tasks. Date placeholders are replaced with the current date. Leave empty to use the active note.")
       .addText((text) =>
         text
           .setPlaceholder("Daily/YYYY-MM-DD.md")
@@ -2726,8 +2610,8 @@ class TaskMatrixSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Calendar view").setHeading();
 
     new Setting(containerEl)
-      .setName("Calendar: first day of week")
-      .setDesc("Choose whether calendar weeks start on monday or sunday.")
+      .setName("First day of week")
+      .setDesc("Choose the first day shown in week and month views.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("monday", "Monday")
@@ -2740,8 +2624,8 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Calendar week view: show weekends")
-      .setDesc("Show saturday and sunday columns in calendar week mode.")
+      .setName("Show weekends in week view")
+      .setDesc("Show weekend columns in the week view.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showCalendarWeekends).onChange((value) => {
           this.plugin.settings.showCalendarWeekends = value;
@@ -2750,8 +2634,8 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Calendar month view: show weekends")
-      .setDesc("Show saturday and sunday columns in calendar month mode.")
+      .setName("Show weekends in month view")
+      .setDesc("Show weekend columns in the month view.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showCalendarMonthWeekends).onChange((value) => {
           this.plugin.settings.showCalendarMonthWeekends = value;
@@ -2760,7 +2644,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Calendar: show in-progress tasks")
+      .setName("Show in-progress tasks")
       .setDesc("For tasks with both start and due dates, show them on each day between start and due in calendar views.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.showCalendarInProcessTasks).onChange((value) => {
@@ -2770,7 +2654,7 @@ class TaskMatrixSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Calendar list: show full month")
+      .setName("Show full month in list")
       .setDesc("When enabled, list mode shows every day of the month. When disabled, only shows dates that have tasks.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.calendarListShowFullMonth).onChange((value) => {

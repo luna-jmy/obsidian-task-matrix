@@ -87,7 +87,8 @@ export interface TaskMatrixSettings {
 }
 
 export const DEFAULT_SETTINGS: TaskMatrixSettings = {
-  scanFolders: [],
+  // Defaults keep the first index pass small instead of scanning the whole vault.
+  scanFolders: ["500 Journal", "100 Projects"],
   excludeFolders: [],
   defaultView: "eisenhower",
   includeCompleted: true,
