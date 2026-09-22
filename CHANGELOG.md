@@ -3,10 +3,16 @@
 ## 1.0.0
 - New: Interface rebuilt to match the Project Master layout — one toolbar row, one filter and search row, then the panel grid
 - New: List, GTD and Matrix views render as equally sized containers holding task cards
+- Change: The List view is now the Note list — one container per note, and with **Group by folder** those containers sit under collapsible folder sections; same task cards as GTD and Matrix, just shorter, with the note path not repeated on the cards and no dragging between containers
+- Change: The `+` in a note container adds the task to that note rather than to the default target
 - New: Filter bar with search, status chips, start and due date ranges, sorting, a live `shown/total` count and a clear button
 - New: Gantt view — a read-only timeline with day, week, month and year scales, weekend shading, a today marker, duration labels, milestones and critical tasks, grouped by folder, GTD state, quadrant, or not at all
 - New: Bar colours are configurable — one colour per Mermaid Gantt state: `active` (open tasks), `done` (completed), `crit` (marked with 🔺) and other
 - New: The Gantt can group sections by note — one section per note, named after it and ordered by path
+- New: Right-click a Gantt bar to edit the task or open its note
+- New: The task editor has a tags field — a list field with the tags already used in your vault as clickable candidates; only the tag set is rewritten, and only when it changed
+- Change: The task editor's description is a two-line field, so longer descriptions are easier to read and edit
+- Fix: The task editor no longer stretches to nearly the full window width when many tag candidates are shown
 - New: The Gantt parses task fields with its own rules: `🛫` / `⏳` (start, with `⏳` as fallback), `📅`, `🆔`, `⛔`, Dataview-style `[start:: …]` fields, `🔺` for critical tasks and `🚩` / `#milestone` for milestones
 - New: The settings page is split into tabs — General, New tasks, View preferences, and Calendar and Gantt
 - New: New tasks go to today's journal by default (`500 Journal/{{date:YYYY-MM-DD}}`); when that note does not exist yet it is created from a template note you pick in the settings, and the folders along the way are created too. The path and template support `{{title}}`, `{{date}}`, `{{time}}` and `{{date:FORMAT}}`, while `<% … %>` commands are left to Templater (optional)

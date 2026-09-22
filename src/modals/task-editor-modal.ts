@@ -11,7 +11,9 @@ import {
   setDateField,
   setIdentifierField,
   setPriority,
+  setTags,
 } from "../parser/task-writer";
+import { addListFieldSetting } from "./list-field";
 import { priorityLabel } from "../services/filter-service";
 import { ensureNote, resolvePlaceholders } from "../services/note-service";
 import { hasDateConflict } from "../services/task-actions";
@@ -29,6 +31,34 @@ export interface TaskEditorHost {
 
 /** 编辑结果。`conflictTag` 不是任务字段，而是「这次保存要不要打冲突标记」的意图 */
 export type TaskEditorUpdates = Partial<ParsedTask> & { conflictTag?: boolean };
+
+/**
+ * 日期冲突标记。
+ *
+ * 它是一枚标签，但**不归标签字段管**：写不写由保存时的冲突对话框决定，
+ * 标签字段只负责用户自己加的那些。所以它既不进标签字段，也不会被标签字段顺手删掉。
+ */
+const CONFLICT_TAG = "#due-date-conflict";
+
+/** 标签集合是否相同（忽略 `#` 与前缀、忽略顺序） */
+function sameTags(a: readonly string[], b: readonly string[]): boolean {
+  const normalize = (list: readonly string[]): string =>
+    list
+      .map((tag) => tag.replace(/^#+/u, "").toLowerCase())
+      .sort()
+      .join("\n");
+  return normalize(a) === normalize(b);
+}
+
+/**
+ * 任务在笔记里只占一行，所以换行与连续空白并成一个空格。
+ *
+ * 描述用两行文本域只是为了看着宽松、好改，不代表任务行能存多行 ——
+ * 不并的话，写进笔记的会是一条断成两行的任务，解析器只认得出第一行。
+ */
+function oneLine(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
 
 /**
  * 新建 / 编辑任务。
@@ -64,14 +94,42 @@ export class TaskEditorModal extends Modal {
     let dueDate = this.isCreateMode ? (this.defaults.dueDate ?? "") : (source?.dueDate ?? "");
     let taskId = this.isCreateMode ? "" : (source?.taskId ?? "");
     let dependsOn = this.isCreateMode ? "" : (source?.dependsOn ?? "");
+    // 冲突标记不进标签字段：它是冲突对话框的产物，列在这儿只会让人以为能随手删
+    let tags = this.isCreateMode
+      ? [...(this.defaults.tags ?? [])]
+      : (source?.tags ?? []).filter((tag) => tag !== CONFLICT_TAG);
 
-    new Setting(form).setName(t("描述")).addText((text) =>
-      text
-        .setPlaceholder(t("任务描述"))
-        .setValue(description)
-        .onChange((value) => {
+    new Setting(form)
+      .setName(t("描述"))
+      .setDesc(t("任务在笔记里只占一行，换行会被并成一个空格。"))
+      .addTextArea((area) => {
+        area.setPlaceholder(t("任务描述"));
+        area.setValue(description);
+        // 两行：够看清稍长的描述，又不至于把弹窗撑高
+        area.inputEl.rows = 2;
+        area.inputEl.addClass("tm-form__description");
+        area.onChange((value) => {
           description = value;
-        }),
+        });
+      });
+
+    /*
+     * 标签：输入框 + 「库里已经用过的标签」点选。
+     *
+     * 手打最容易打出「工作」与「工作项」这种并存变体，之后按标签筛就是两拨；
+     * 候选值只来自库里**真正出现过的**标签，不预置、不猜。
+     */
+    addListFieldSetting(
+      form,
+      t("标签"),
+      tags,
+      (list) => {
+        tags = list;
+      },
+      {
+        desc: t("多个标签用逗号分隔；也可以点下面的已有标签。"),
+        suggestions: this.knownTags(),
+      },
     );
 
     new Setting(form).setName(t("优先级")).addDropdown((dropdown) => {
@@ -140,13 +198,41 @@ export class TaskEditorModal extends Modal {
           .setButtonText(this.isCreateMode ? t("创建") : t("保存"))
           .setCta()
           .onClick(() => {
-            void this.submit({ description, priority, startDate, dueDate, taskId, dependsOn });
+            void this.submit({
+              description,
+              priority,
+              startDate,
+              dueDate,
+              taskId,
+              dependsOn,
+              tags,
+            });
           }),
       );
   }
 
   onClose(): void {
     this.contentEl.empty();
+  }
+
+  /**
+   * 库里已经用过的标签，按出现次数排序，取前 40 个。
+   *
+   * 截断是有意的：候选排的价值在于「常用的那几个一眼就在」，把几百个标签全铺出来
+   * 反而要在一堆长尾里找。想用的没在候选里，直接手打即可。
+   */
+  private knownTags(): string[] {
+    const counts = new Map<string, number>();
+    for (const task of this.host.tasks) {
+      for (const tag of task.tags) {
+        if (tag === CONFLICT_TAG) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 40)
+      .map(([tag]) => tag);
   }
 
   /** 依赖候选：未完成、有 ID、且不是自己；按截止日由近到远 */
@@ -197,7 +283,7 @@ export class TaskEditorModal extends Modal {
   }
 
   private async createTask(updates: TaskEditorUpdates): Promise<boolean> {
-    const description = updates.description?.trim() ?? "";
+    const description = oneLine(updates.description ?? "");
     if (description.length === 0) {
       new Notice(t("请填写任务描述"));
       return false;
@@ -216,10 +302,21 @@ export class TaskEditorModal extends Modal {
     if (updates.taskId) line = setIdentifierField(line, "🆔", "id::", updates.taskId);
     if (updates.dependsOn) line = setIdentifierField(line, "⛔", "dependsOn::", updates.dependsOn);
 
-    // 从容器头「+」进来的：带上那个容器的状态
-    if (this.defaults.gtdState === "Waiting") line += " #waiting";
-    else if (this.defaults.gtdState === "In Progress") line += " #doing";
-    if (updates.conflictTag === true) line += " #due-date-conflict";
+    /*
+     * 状态标签（从容器头「+」进来的）与用户填的标签一起写。
+     *
+     * 必须合并成一次 setTags：它会先剥掉行上所有标签再统一补回末尾，
+     * 分成两次写的话，后一次会把前一次刚加的那个当旧标签删掉。
+     */
+    const stateTag =
+      this.defaults.gtdState === "Waiting"
+        ? "#waiting"
+        : this.defaults.gtdState === "In Progress"
+          ? "#doing"
+          : "";
+    const tags = [...(updates.tags ?? []), ...(stateTag.length > 0 ? [stateTag] : [])];
+    if (tags.length > 0) line = setTags(line, tags);
+    if (updates.conflictTag === true) line += ` ${CONFLICT_TAG}`;
 
     const heading = this.host.settings.newTaskTargetHeading;
     let failure: string | undefined;
@@ -252,6 +349,15 @@ export class TaskEditorModal extends Modal {
    * 而不是提示用户先自己去建一篇 —— 新建任务本来就该是一步的事。
    */
   private async resolveTargetFile(): Promise<TFile | null> {
+    // 从容器头「+」进来的：落点就是那个容器对应的笔记（列表按笔记分组时是那篇笔记，
+    // GTD/象限容器不带这个字段，走下面设置里的落点）
+    const explicit = this.isCreateMode ? this.defaults.filePath : undefined;
+    if (explicit !== undefined && explicit.length > 0) {
+      const file = this.host.app.vault.getAbstractFileByPath(explicit);
+      if (file instanceof TFile) return file;
+      // 笔记刚被删/改名：不在这里自作主张重建，落回设置里的路径更安全
+    }
+
     const { newTaskTargetPath, newTaskTemplatePath } = this.host.settings;
     if (newTaskTargetPath.length > 0) {
       const path = resolvePlaceholders(newTaskTargetPath);
@@ -276,7 +382,7 @@ export class TaskEditorModal extends Modal {
     const task = this.task;
     if (task === null) return false;
 
-    const description = updates.description?.trim() ?? "";
+    const description = oneLine(updates.description ?? "");
     if (description.length === 0) {
       new Notice(t("请填写任务描述"));
       return false;
@@ -288,6 +394,15 @@ export class TaskEditorModal extends Modal {
       // 只改用户真的动过的字段，其余 token 连位置都不动 —— 别的任务插件
       // 与 git diff 都会因此保持稳定
       if (description !== task.description) next = replaceTaskDescription(next, description);
+      /*
+       * 标签变了才动它：没变就一个字符都不碰 —— 标签在行里的位置、写法保持原样，
+       * 别的编辑器插的字也就不受影响。真变了则统一落到行尾（见 setTags 的说明）。
+       */
+      if (updates.tags !== undefined && !sameTags(updates.tags, task.tags)) {
+        // 冲突标记归冲突对话框管，不归标签字段：重写标签时原样带上，别把它顺手删了
+        const keepConflict = new RegExp(`${CONFLICT_TAG}\\b`, "iu").test(next);
+        next = setTags(next, keepConflict ? [...updates.tags, CONFLICT_TAG] : updates.tags);
+      }
       if (updates.priority !== undefined && updates.priority !== task.priority) {
         next = setPriority(next, updates.priority);
       }

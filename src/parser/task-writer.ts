@@ -16,6 +16,13 @@ export type EditResult = "updated" | "unchanged" | "missing";
 
 const CHECKBOX_PREFIX = /^([ \t]*[-*][ \t]*\[[^\]]*\][ \t]*)/u;
 const LEADING_INDENT = /^[ \t]*/u;
+/**
+ * 标签 token。
+ *
+ * 必须前面是行首或空白（与 task-parser 取标签的规则一致，否则 `issue#123`
+ * 这种写法会被误判成标签），替换时连带吃掉前导空白，避免删完留下双空格。
+ */
+const TAG_TOKEN = /(?:^|\s)#[\p{L}\p{N}_/-]+/gu;
 
 const PRIORITY_MARKERS: Record<Priority, string> = {
   [Priority.Critical]: "🔺",
@@ -82,8 +89,37 @@ export function appendLine(content: string, line: string): string {
 }
 
 /**
+ * 重写任务行上的标签集合。
+ *
+ * 只增删标签 token：描述正文、内联字段、缩进都原样不动。标签统一落到行尾 ——
+ * 标签在行内没有位置语义，而「记住每个标签原来在哪」会在别的编辑器插字之后
+ * 变成猜谜；「保持写在末尾」是能预期的。
+ *
+ * 传进来的标签带不带 `#` 都收（统一后再加上），重复的只留一个。
+ * **语义标签也在这一套 token 里**（`#doing`、`#waiting`、`#due-date-conflict`…），
+ * 所以调用方要把想保留的标签一并传进来 —— 这个函数不做「哪些标签该留」的判断。
+ */
+export function setTags(line: string, tags: readonly string[]): string {
+  const indent = getIndent(line);
+  const body = line.slice(indent.length).replace(TAG_TOKEN, "");
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    const name = tag.trim().replace(/^#+/u, "").toLowerCase();
+    if (name.length === 0 || seen.has(name)) continue;
+    seen.add(name);
+    unique.push(name);
+  }
+
+  if (unique.length === 0) return compactLine(`${indent}${body}`);
+  const rendered = unique.map((name) => `#${name}`).join(" ");
+  return compactLine(`${indent}${body.trimEnd()} ${rendered}`);
+}
+
+/**
  * Finds the line a task was parsed from. Line numbers drift whenever anything
- * edits the note between parsing and writing, so the recorded text is verified
+ * edits the note between parsing and writing, so the recorded line text is verified
  * first and then used as a fallback key.
  */
 export function locateTaskLine(lines: string[], task: ParsedTask): number {

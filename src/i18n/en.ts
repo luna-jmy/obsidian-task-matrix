@@ -14,6 +14,7 @@ export const EN: Record<string, string> = {
   "重新扫描任务": "Rescan tasks",
   "打开任务矩阵": "Open task matrix",
   "列表": "List",
+  "笔记列表": "Note list",
   "矩阵": "Matrix",
   "日历": "Calendar",
   "GTD": "GTD",
@@ -217,6 +218,15 @@ export const EN: Record<string, string> = {
 
   // ── task editor ──────────────────────────────────────────────────
   "编辑任务": "Edit task",
+  "打开笔记": "Open note",
+  "标签": "Tags",
+  "多个标签用逗号分隔；也可以点下面的已有标签。":
+    "Separate tags with commas, or click one of the existing tags below.",
+  "多个值用逗号分隔": "Separate values with commas",
+  "点一下追加": "Click to add",
+  "点一下移除": "Click to remove",
+  "任务在笔记里只占一行，换行会被并成一个空格。":
+    "A task is a single line in the note, so line breaks are joined into one space.",
   "描述": "Description",
   "任务描述": "Task description",
   "任务 ID": "Task ID",
@@ -313,9 +323,10 @@ export const EN: Record<string, string> = {
   "列表视图": "List view",
   "按文件夹分组": "Group by folder",
   "按笔记分组": "Group by note",
-  "列表视图里按所在文件夹划分容器。": "Split list view containers by folder.",
+  "关闭时一条笔记一个容器；开启时改为一个文件夹一个容器。任务都以清单行列出。":
+    "Off: one container per note. On: one container per folder. Either way the tasks are listed as compact rows.",
   "分组层级": "Folder depth",
-  "取文件路径的前几层作为容器名。": "How many leading folders to use as the container name.",
+  "取文件路径的前几层作为分区名。": "How many leading folders to use as the section name.",
   "归档, 模板": "Archive, Templates",
 
   // ── settings: calendar ───────────────────────────────────────────

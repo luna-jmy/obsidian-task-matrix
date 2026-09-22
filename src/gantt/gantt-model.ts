@@ -6,6 +6,7 @@ import {
   gtdStateLabel,
   panelKeyForFolder,
   panelKeyForGtd,
+  noteNameOf,
   panelKeyForNote,
   panelKeyForQuadrant,
   quadrantSubtitle,
@@ -191,11 +192,6 @@ function sectionOf(
     default:
       return { key: "all", name: t("全部任务") };
   }
-}
-
-/** 笔记名：去掉路径与 `.md` 扩展名 */
-function noteNameOf(filePath: string): string {
-  return filePath.slice(filePath.lastIndexOf("/") + 1).replace(/\.md$/u, "");
 }
 
 /**

@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => TaskMatrixPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian10 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 
 // src/i18n/en.ts
 var EN = {
@@ -34,6 +34,7 @@ var EN = {
   "\u91CD\u65B0\u626B\u63CF\u4EFB\u52A1": "Rescan tasks",
   "\u6253\u5F00\u4EFB\u52A1\u77E9\u9635": "Open task matrix",
   "\u5217\u8868": "List",
+  "\u7B14\u8BB0\u5217\u8868": "Note list",
   "\u77E9\u9635": "Matrix",
   "\u65E5\u5386": "Calendar",
   "GTD": "GTD",
@@ -211,6 +212,13 @@ var EN = {
   "\u7C89": "Pink",
   // ── task editor ──────────────────────────────────────────────────
   "\u7F16\u8F91\u4EFB\u52A1": "Edit task",
+  "\u6253\u5F00\u7B14\u8BB0": "Open note",
+  "\u6807\u7B7E": "Tags",
+  "\u591A\u4E2A\u6807\u7B7E\u7528\u9017\u53F7\u5206\u9694\uFF1B\u4E5F\u53EF\u4EE5\u70B9\u4E0B\u9762\u7684\u5DF2\u6709\u6807\u7B7E\u3002": "Separate tags with commas, or click one of the existing tags below.",
+  "\u591A\u4E2A\u503C\u7528\u9017\u53F7\u5206\u9694": "Separate values with commas",
+  "\u70B9\u4E00\u4E0B\u8FFD\u52A0": "Click to add",
+  "\u70B9\u4E00\u4E0B\u79FB\u9664": "Click to remove",
+  "\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002": "A task is a single line in the note, so line breaks are joined into one space.",
   "\u63CF\u8FF0": "Description",
   "\u4EFB\u52A1\u63CF\u8FF0": "Task description",
   "\u4EFB\u52A1 ID": "Task ID",
@@ -286,9 +294,9 @@ var EN = {
   "\u5217\u8868\u89C6\u56FE": "List view",
   "\u6309\u6587\u4EF6\u5939\u5206\u7EC4": "Group by folder",
   "\u6309\u7B14\u8BB0\u5206\u7EC4": "Group by note",
-  "\u5217\u8868\u89C6\u56FE\u91CC\u6309\u6240\u5728\u6587\u4EF6\u5939\u5212\u5206\u5BB9\u5668\u3002": "Split list view containers by folder.",
+  "\u5173\u95ED\u65F6\u4E00\u6761\u7B14\u8BB0\u4E00\u4E2A\u5BB9\u5668\uFF1B\u5F00\u542F\u65F6\u6539\u4E3A\u4E00\u4E2A\u6587\u4EF6\u5939\u4E00\u4E2A\u5BB9\u5668\u3002\u4EFB\u52A1\u90FD\u4EE5\u6E05\u5355\u884C\u5217\u51FA\u3002": "Off: one container per note. On: one container per folder. Either way the tasks are listed as compact rows.",
   "\u5206\u7EC4\u5C42\u7EA7": "Folder depth",
-  "\u53D6\u6587\u4EF6\u8DEF\u5F84\u7684\u524D\u51E0\u5C42\u4F5C\u4E3A\u5BB9\u5668\u540D\u3002": "How many leading folders to use as the container name.",
+  "\u53D6\u6587\u4EF6\u8DEF\u5F84\u7684\u524D\u51E0\u5C42\u4F5C\u4E3A\u5206\u533A\u540D\u3002": "How many leading folders to use as the section name.",
   "\u5F52\u6863, \u6A21\u677F": "Archive, Templates",
   // ── settings: calendar ───────────────────────────────────────────
   "\u65E5\u5386\u89C6\u56FE": "Calendar view",
@@ -1056,7 +1064,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
   renderDisplay(containerEl) {
     new import_obsidian.Setting(containerEl).setName(t("\u663E\u793A")).setHeading();
     new import_obsidian.Setting(containerEl).setName(t("\u9ED8\u8BA4\u89C6\u56FE")).setDesc(t("\u6253\u5F00\u65F6\u5148\u663E\u793A\u54EA\u4E00\u79CD\u9762\u677F\u3002")).addDropdown(
-      (dropdown) => dropdown.addOption("eisenhower", t("\u77E9\u9635")).addOption("gtd", t("GTD")).addOption("list", t("\u5217\u8868")).addOption("calendar", t("\u65E5\u5386")).addOption("gantt", t("\u7518\u7279")).setValue(this.settings.defaultView).onChange((value) => {
+      (dropdown) => dropdown.addOption("eisenhower", t("\u77E9\u9635")).addOption("gtd", t("GTD")).addOption("list", t("\u7B14\u8BB0\u5217\u8868")).addOption("calendar", t("\u65E5\u5386")).addOption("gantt", t("\u7518\u7279")).setValue(this.settings.defaultView).onChange((value) => {
         this.settings.defaultView = value;
         this.persist();
       })
@@ -1143,7 +1151,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
   }
   renderList(containerEl) {
     new import_obsidian.Setting(containerEl).setName(t("\u5217\u8868\u89C6\u56FE")).setHeading();
-    new import_obsidian.Setting(containerEl).setName(t("\u6309\u6587\u4EF6\u5939\u5206\u7EC4")).setDesc(t("\u5217\u8868\u89C6\u56FE\u91CC\u6309\u6240\u5728\u6587\u4EF6\u5939\u5212\u5206\u5BB9\u5668\u3002")).addToggle(
+    new import_obsidian.Setting(containerEl).setName(t("\u6309\u6587\u4EF6\u5939\u5206\u7EC4")).setDesc(t("\u5173\u95ED\u65F6\u4E00\u6761\u7B14\u8BB0\u4E00\u4E2A\u5BB9\u5668\uFF1B\u5F00\u542F\u65F6\u6539\u4E3A\u4E00\u4E2A\u6587\u4EF6\u5939\u4E00\u4E2A\u5BB9\u5668\u3002\u4EFB\u52A1\u90FD\u4EE5\u6E05\u5355\u884C\u5217\u51FA\u3002")).addToggle(
       (toggle2) => toggle2.setValue(this.settings.listGroupByFolder).onChange((value) => {
         this.settings.listGroupByFolder = value;
         this.persist();
@@ -1151,7 +1159,7 @@ var TaskMatrixSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     if (!this.settings.listGroupByFolder) return;
-    new import_obsidian.Setting(containerEl).setName(t("\u5206\u7EC4\u5C42\u7EA7")).setDesc(t("\u53D6\u6587\u4EF6\u8DEF\u5F84\u7684\u524D\u51E0\u5C42\u4F5C\u4E3A\u5BB9\u5668\u540D\u3002")).addSlider(
+    new import_obsidian.Setting(containerEl).setName(t("\u5206\u7EC4\u5C42\u7EA7")).setDesc(t("\u53D6\u6587\u4EF6\u8DEF\u5F84\u7684\u524D\u51E0\u5C42\u4F5C\u4E3A\u5206\u533A\u540D\u3002")).addSlider(
       (slider) => slider.setLimits(1, 5, 1).setValue(this.settings.listGroupByFolderDepth).setDynamicTooltip().onChange((value) => {
         this.settings.listGroupByFolderDepth = value;
         this.persist();
@@ -1472,7 +1480,7 @@ function pickViewIcon(iconIds, candidates = ICON_CANDIDATES) {
 }
 
 // src/views/matrix-view.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 
 // src/gantt/gantt-labels.ts
 var GANTT_GROUPINGS = [
@@ -1552,6 +1560,9 @@ function panelKeyForFolder(folder) {
 function panelKeyForNote(filePath) {
   return `note:${filePath}`;
 }
+function noteNameOf(filePath) {
+  return filePath.slice(filePath.lastIndexOf("/") + 1).replace(/\.md$/u, "");
+}
 function buildPanels(tasks, mode, settings) {
   switch (mode) {
     case "gtd":
@@ -1565,35 +1576,37 @@ function buildPanels(tasks, mode, settings) {
   }
 }
 function buildListPanels(tasks, settings) {
-  if (!settings.listGroupByFolder) {
-    return {
-      grid: "fixed",
-      panels: [
-        {
-          key: "all",
-          title: t("\u5168\u90E8\u4EFB\u52A1"),
-          tasks: [...tasks]
-        }
-      ]
-    };
-  }
-  const grouped = /* @__PURE__ */ new Map();
+  if (!settings.listGroupByFolder) return buildNoteContainers(tasks);
+  const byFolder = /* @__PURE__ */ new Map();
   for (const task of tasks) {
     const folder = folderPathOf(task.filePath, settings.listGroupByFolderDepth);
-    const bucket = grouped.get(folder);
-    if (bucket === void 0) grouped.set(folder, [task]);
+    const bucket = byFolder.get(folder);
+    if (bucket === void 0) byFolder.set(folder, [task]);
     else bucket.push(task);
   }
-  const panels = [...grouped.keys()].sort((a, b) => a.localeCompare(b)).map((folder) => ({
+  const sections = [...byFolder.keys()].sort((a, b) => a.localeCompare(b)).map((folder) => ({
     key: panelKeyForFolder(folder),
     title: folder === "" ? t("\u6839\u76EE\u5F55") : folder,
-    subtitle: taskCountLabel(grouped.get(folder)?.length ?? 0),
-    tasks: grouped.get(folder) ?? []
+    // 分区里装的仍然是笔记容器：复用「按笔记分容器」这一份，口径不漂移
+    panels: buildNoteContainers(byFolder.get(folder) ?? []).panels
   }));
-  return { grid: gridFor(panels.length), panels };
+  return { grid: "flow", sections, panels: [] };
 }
-function gridFor(panelCount) {
-  return panelCount > 1 ? "flow" : "fixed";
+function buildNoteContainers(tasks) {
+  const grouped = /* @__PURE__ */ new Map();
+  for (const task of tasks) {
+    const bucket = grouped.get(task.filePath);
+    if (bucket === void 0) grouped.set(task.filePath, [task]);
+    else bucket.push(task);
+  }
+  const panels = [...grouped.keys()].sort((a, b) => a.localeCompare(b)).map((filePath) => ({
+    key: panelKeyForNote(filePath),
+    title: noteNameOf(filePath),
+    tasks: grouped.get(filePath) ?? [],
+    noteMeta: "hidden",
+    addDefaults: { filePath }
+  }));
+  return { grid: "flow", panels };
 }
 function folderPathOf(filePath, depth) {
   const parts = filePath.split("/");
@@ -1760,9 +1773,6 @@ function sectionOf(task, options, today) {
     default:
       return { key: "all", name: t("\u5168\u90E8\u4EFB\u52A1") };
   }
-}
-function noteNameOf(filePath) {
-  return filePath.slice(filePath.lastIndexOf("/") + 1).replace(/\.md$/u, "");
 }
 function gtdColumnFor(task, options, today) {
   const parsed = options.parsedByLine.get(`${task.filePath}:${task.lineNumber}`);
@@ -1935,6 +1945,9 @@ function buildTimeScale(rangeStart, rangeEnd, zoom, options = {}) {
     dateForX: (x) => addDaysIso(startIso, Math.floor(x / dayWidth))
   };
 }
+
+// src/gantt/gantt-view.ts
+var import_obsidian3 = require("obsidian");
 
 // src/gantt/bar-colors.ts
 function barColorKey(row) {
@@ -2248,6 +2261,7 @@ ${t("{count} \u5929", { count: row.calendarDays })}`;
   registerInteraction() {
     this.component.registerDomEvent(this.root, "click", (evt) => this.onClick(evt));
     this.component.registerDomEvent(this.root, "keydown", (evt) => this.onKeyDown(evt));
+    this.component.registerDomEvent(this.root, "contextmenu", (evt) => this.onContextMenu(evt));
     this.component.registerDomEvent(this.root, "wheel", (evt) => this.onWheel(evt), {
       passive: false
     });
@@ -2279,6 +2293,27 @@ ${t("{count} \u5929", { count: row.calendarDays })}`;
       evt.preventDefault();
       this.callbacks.onOpenTask(task);
     }
+  }
+  /**
+   * 右键任务条：编辑任务 / 打开笔记。
+   *
+   * 为什么是右键而不是条上的按钮：任务条是一段 SVG，塞不进 HTML 按钮（塞进去也要自己
+   * 处理定位、缩放、命中）。右键菜单是 Obsidian 同类场景的通行做法（文件树、关系图），
+   * Project Master 的甘特条也是这么做的 —— 两个插件的手感因此一致。
+   * 单击仍然是「打开笔记」，与面板卡片一致。
+   */
+  onContextMenu(evt) {
+    const task = this.taskOf(evt.target);
+    if (task === null) return;
+    evt.preventDefault();
+    const menu = new import_obsidian3.Menu();
+    menu.addItem(
+      (item) => item.setTitle(t("\u7F16\u8F91\u4EFB\u52A1")).setIcon("pencil").onClick(() => this.callbacks.onEditTask(task))
+    );
+    menu.addItem(
+      (item) => item.setTitle(t("\u6253\u5F00\u7B14\u8BB0")).setIcon("file-text").onClick(() => this.callbacks.onOpenTask(task))
+    );
+    menu.showAtMouseEvent(evt);
   }
   onKeyDown(evt) {
     const task = this.taskOf(evt.target);
@@ -2423,6 +2458,7 @@ var GanttBoard = class {
     const viewHost = host.createDiv({ cls: "tm-gantt-board__view" });
     this.view = new GanttView(component, viewHost, {
       onOpenTask: (task) => callbacks.onOpenTask(task),
+      onEditTask: (task) => callbacks.onEditTask(task),
       onToggleSection: (key) => callbacks.onToggleSection(key),
       onZoom: (direction, anchor) => callbacks.onZoomStep(direction, anchor)
     });
@@ -2441,8 +2477,8 @@ var GanttBoard = class {
 };
 
 // src/modals/confirm-modals.ts
-var import_obsidian3 = require("obsidian");
-var DateConflictModal = class extends import_obsidian3.Modal {
+var import_obsidian4 = require("obsidian");
+var DateConflictModal = class extends import_obsidian4.Modal {
   constructor(app, startDate, dueDate, settle) {
     super(app);
     this.startDate = startDate;
@@ -2462,9 +2498,9 @@ var DateConflictModal = class extends import_obsidian3.Modal {
       text: t("\u8981\u628A\u622A\u6B62\u65E5\u671F\u8C03\u6574\u5230\u4ECA\u5929\uFF0C\u8FD8\u662F\u4FDD\u7559\u539F\u65E5\u671F\u5E76\u6807\u8BB0\u4E3A\u51B2\u7A81\uFF1F")
     });
     const buttons = this.contentEl.createDiv({ cls: "tm-modal__buttons" });
-    new import_obsidian3.ButtonComponent(buttons).setButtonText(t("\u53D6\u6D88")).onClick(() => this.close());
-    new import_obsidian3.ButtonComponent(buttons).setButtonText(t("\u6807\u8BB0\u51B2\u7A81")).onClick(() => this.answer("mark-conflict"));
-    new import_obsidian3.ButtonComponent(buttons).setButtonText(t("\u8C03\u6574\u622A\u6B62\u65E5\u671F")).setCta().onClick(() => this.answer("adjust-due"));
+    new import_obsidian4.ButtonComponent(buttons).setButtonText(t("\u53D6\u6D88")).onClick(() => this.close());
+    new import_obsidian4.ButtonComponent(buttons).setButtonText(t("\u6807\u8BB0\u51B2\u7A81")).onClick(() => this.answer("mark-conflict"));
+    new import_obsidian4.ButtonComponent(buttons).setButtonText(t("\u8C03\u6574\u622A\u6B62\u65E5\u671F")).setCta().onClick(() => this.answer("adjust-due"));
   }
   onClose() {
     this.contentEl.empty();
@@ -2476,7 +2512,7 @@ var DateConflictModal = class extends import_obsidian3.Modal {
     this.close();
   }
 };
-var DeleteTaskModal = class extends import_obsidian3.Modal {
+var DeleteTaskModal = class extends import_obsidian4.Modal {
   constructor(app, description, settle) {
     super(app);
     this.description = description;
@@ -2491,8 +2527,8 @@ var DeleteTaskModal = class extends import_obsidian3.Modal {
       text: t("\u786E\u5B9A\u8981\u5220\u9664\u300C{description}\u300D\u5417\uFF1F\u8FD9\u4E00\u884C\u4F1A\u4ECE\u7B14\u8BB0\u91CC\u79FB\u9664\u3002", { description: this.description })
     });
     const buttons = this.contentEl.createDiv({ cls: "tm-modal__buttons" });
-    new import_obsidian3.ButtonComponent(buttons).setButtonText(t("\u53D6\u6D88")).onClick(() => this.close());
-    new import_obsidian3.ButtonComponent(buttons).setButtonText(t("\u5220\u9664")).setWarning().onClick(() => {
+    new import_obsidian4.ButtonComponent(buttons).setButtonText(t("\u53D6\u6D88")).onClick(() => this.close());
+    new import_obsidian4.ButtonComponent(buttons).setButtonText(t("\u5220\u9664")).setWarning().onClick(() => {
       this.answered = true;
       this.settle(true);
       this.close();
@@ -2515,12 +2551,13 @@ function askDeleteTask(app, description) {
 }
 
 // src/modals/task-editor-modal.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/parser/task-writer.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var CHECKBOX_PREFIX = /^([ \t]*[-*][ \t]*\[[^\]]*\][ \t]*)/u;
 var LEADING_INDENT = /^[ \t]*/u;
+var TAG_TOKEN = /(?:^|\s)#[\p{L}\p{N}_/-]+/gu;
 var PRIORITY_MARKERS2 = {
   ["critical" /* Critical */]: "\u{1F53A}",
   ["highest" /* Highest */]: "\u23EB",
@@ -2564,6 +2601,21 @@ function appendLine(content, line) {
   const separator = content.endsWith("\n") ? "" : detectEol(content);
   return `${content}${separator}${line}${detectEol(content)}`;
 }
+function setTags(line, tags) {
+  const indent = getIndent(line);
+  const body = line.slice(indent.length).replace(TAG_TOKEN, "");
+  const unique = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const tag of tags) {
+    const name = tag.trim().replace(/^#+/u, "").toLowerCase();
+    if (name.length === 0 || seen.has(name)) continue;
+    seen.add(name);
+    unique.push(name);
+  }
+  if (unique.length === 0) return compactLine(`${indent}${body}`);
+  const rendered = unique.map((name) => `#${name}`).join(" ");
+  return compactLine(`${indent}${body.trimEnd()} ${rendered}`);
+}
 function locateTaskLine(lines, task) {
   const preferred = task.lineNumber - 1;
   if (preferred >= 0 && preferred < lines.length && lines[preferred] === task.lineText) {
@@ -2587,8 +2639,8 @@ async function editFileContent(app, file, transform) {
 }
 async function editTaskLine(app, task, transform) {
   const target = app.vault.getAbstractFileByPath(task.filePath);
-  if (!(target instanceof import_obsidian4.TFile)) {
-    new import_obsidian4.Notice(t("\u627E\u4E0D\u5230\u6587\u4EF6\uFF1A{path}", { path: task.filePath }));
+  if (!(target instanceof import_obsidian5.TFile)) {
+    new import_obsidian5.Notice(t("\u627E\u4E0D\u5230\u6587\u4EF6\uFF1A{path}", { path: task.filePath }));
     return "missing";
   }
   let result = "missing";
@@ -2689,11 +2741,57 @@ function insertLineUnderHeading(content, heading, line) {
   return { success: true, content: joinWithEol(split) };
 }
 
+// src/modals/list-field.ts
+var import_obsidian6 = require("obsidian");
+function toggleListValue(list, value) {
+  return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
+}
+function parseListInput(value) {
+  return value.split(/[,，\s]+/u).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+}
+function formatListInput(list) {
+  return list.join(", ");
+}
+function addListFieldSetting(host, name, initial, assign, options = {}) {
+  let current2 = [...initial];
+  let text = null;
+  new import_obsidian6.Setting(host).setName(name).setDesc(options.desc ?? t("\u591A\u4E2A\u503C\u7528\u9017\u53F7\u5206\u9694")).addText((component) => {
+    text = component;
+    component.setValue(formatListInput(initial));
+    component.onChange((value) => {
+      current2 = parseListInput(value);
+      assign(current2);
+      renderChips2();
+    });
+  });
+  const suggestions = options.suggestions ?? [];
+  if (suggestions.length === 0) return;
+  const chips = host.createDiv({ cls: "tm-value-chips" });
+  const renderChips2 = () => {
+    chips.empty();
+    for (const value of suggestions) {
+      const selected = current2.includes(value);
+      const chip = chips.createEl("button", {
+        cls: `tm-value-chip${selected ? " is-active" : ""}`,
+        text: value,
+        attr: { type: "button", title: selected ? t("\u70B9\u4E00\u4E0B\u79FB\u9664") : t("\u70B9\u4E00\u4E0B\u8FFD\u52A0") }
+      });
+      chip.addEventListener("click", () => {
+        current2 = toggleListValue(current2, value);
+        assign(current2);
+        text?.setValue(formatListInput(current2));
+        renderChips2();
+      });
+    }
+  };
+  renderChips2();
+}
+
 // src/services/note-service.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var CORE_DATE_FORMAT = "YYYY-MM-DD";
 var CORE_TIME_FORMAT = "HH:mm";
-var now = import_obsidian5.moment;
+var now = import_obsidian7.moment;
 function resolvePlaceholders(text, options = {}) {
   const at = now();
   const formatted = (raw, fallback) => {
@@ -2709,7 +2807,7 @@ function resolvePlaceholders(text, options = {}) {
   ).replace(/YYYY/gu, at.format("YYYY")).replace(/MM/gu, at.format("MM")).replace(/DD/gu, at.format("DD"));
 }
 async function ensureFolder(app, folderPath) {
-  const normalized = (0, import_obsidian5.normalizePath)(folderPath.trim()).replace(/^\/+|\/+$/gu, "");
+  const normalized = (0, import_obsidian7.normalizePath)(folderPath.trim()).replace(/^\/+|\/+$/gu, "");
   if (normalized.length === 0 || normalized === ".") return;
   let current2 = "";
   for (const segment of normalized.split("/")) {
@@ -2724,27 +2822,27 @@ function templateCandidates(raw) {
   const link = /^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/u.exec(value);
   if (link !== null) value = (link[1] ?? "").trim();
   value = value.replace(/^["'`]+|["'`]+$/gu, "");
-  const path = (0, import_obsidian5.normalizePath)(value).replace(/^\/+|\/+$/gu, "");
+  const path = (0, import_obsidian7.normalizePath)(value).replace(/^\/+|\/+$/gu, "");
   if (path.length === 0) return [];
   return path.toLowerCase().endsWith(".md") ? [path] : [path, `${path}.md`];
 }
 function findTemplate(app, raw) {
   for (const candidate of templateCandidates(raw)) {
     const file = app.vault.getAbstractFileByPath(candidate);
-    if (file instanceof import_obsidian5.TFile) return file;
+    if (file instanceof import_obsidian7.TFile) return file;
   }
   return null;
 }
 async function ensureNote(app, path, options = { templatePath: "" }) {
-  const normalized = (0, import_obsidian5.normalizePath)(path);
+  const normalized = (0, import_obsidian7.normalizePath)(path);
   const existing = app.vault.getAbstractFileByPath(normalized);
-  if (existing instanceof import_obsidian5.TFile) return existing;
+  if (existing instanceof import_obsidian7.TFile) return existing;
   const slash = normalized.lastIndexOf("/");
   await ensureFolder(app, slash === -1 ? "" : normalized.slice(0, slash));
   const rawTemplate = options.templatePath.trim();
   const template = rawTemplate.length === 0 ? null : findTemplate(app, rawTemplate);
   if (rawTemplate.length > 0 && template === null) {
-    new import_obsidian5.Notice(t("\u627E\u4E0D\u5230\u6A21\u677F\u7B14\u8BB0\uFF1A{path}\uFF08\u5DF2\u6309\u7A7A\u767D\u7B14\u8BB0\u521B\u5EFA\uFF09", { path: rawTemplate }));
+    new import_obsidian7.Notice(t("\u627E\u4E0D\u5230\u6A21\u677F\u7B14\u8BB0\uFF1A{path}\uFF08\u5DF2\u6309\u7A7A\u767D\u7B14\u8BB0\u521B\u5EFA\uFF09", { path: rawTemplate }));
   }
   const name = slash === -1 ? normalized : normalized.slice(slash + 1);
   const title = name.replace(/\.md$/u, "");
@@ -2759,18 +2857,18 @@ async function runTemplateCommands(app, file) {
   try {
     await templater.overwrite_file_commands(file);
   } catch {
-    new import_obsidian5.Notice(t("\u6A21\u677F\u547D\u4EE4\u672A\u5168\u90E8\u6267\u884C\uFF0C\u7B14\u8BB0\u5DF2\u6309\u6A21\u677F\u539F\u6587\u521B\u5EFA\uFF1B\u53EF\u7A0D\u540E\u6267\u884C\u4E00\u6B21\u6A21\u677F\u547D\u4EE4\u91CD\u8DD1"));
+    new import_obsidian7.Notice(t("\u6A21\u677F\u547D\u4EE4\u672A\u5168\u90E8\u6267\u884C\uFF0C\u7B14\u8BB0\u5DF2\u6309\u6A21\u677F\u539F\u6587\u521B\u5EFA\uFF1B\u53EF\u7A0D\u540E\u6267\u884C\u4E00\u6B21\u6A21\u677F\u547D\u4EE4\u91CD\u8DD1"));
   }
 }
 
 // src/services/task-actions.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 function notifyEditResult(result, task, message) {
   if (result === "missing") {
-    new import_obsidian6.Notice(t("\u5728 {path}:{line} \u627E\u4E0D\u5230\u8BE5\u4EFB\u52A1\u884C", { path: task.filePath, line: task.lineNumber }));
+    new import_obsidian8.Notice(t("\u5728 {path}:{line} \u627E\u4E0D\u5230\u8BE5\u4EFB\u52A1\u884C", { path: task.filePath, line: task.lineNumber }));
     return;
   }
-  if (result === "updated") new import_obsidian6.Notice(message);
+  if (result === "updated") new import_obsidian8.Notice(message);
 }
 function hasDateConflict(startDate, dueDate) {
   if (!startDate || !dueDate) return false;
@@ -2870,7 +2968,7 @@ async function moveTaskToGtdState(app, settings, task, newState, resolveConflict
     if (updates.dueDate !== void 0) body = setDateField(body, "\u{1F4C5}", updates.dueDate);
     return compactLine(`${indent}${body}`);
   });
-  if (result === "updated") new import_obsidian6.Notice(t("\u5DF2\u79FB\u52A8\u5230\u300C{state}\u300D", { state: newState }));
+  if (result === "updated") new import_obsidian8.Notice(t("\u5DF2\u79FB\u52A8\u5230\u300C{state}\u300D", { state: newState }));
 }
 async function moveTaskToQuadrant(app, task, newQuadrant) {
   if (task.quadrant === newQuadrant) return;
@@ -2899,11 +2997,19 @@ async function moveTaskToQuadrant(app, task, newQuadrant) {
     body = setDateField(body, "\u{1F4C5}", shouldAddDueDate ? today : "");
     return compactLine(`${indent}${body}`);
   });
-  if (result === "updated") new import_obsidian6.Notice(t("\u5DF2\u79FB\u52A8\u5230 {quadrant}", { quadrant: newQuadrant }));
+  if (result === "updated") new import_obsidian8.Notice(t("\u5DF2\u79FB\u52A8\u5230 {quadrant}", { quadrant: newQuadrant }));
 }
 
 // src/modals/task-editor-modal.ts
-var TaskEditorModal = class extends import_obsidian7.Modal {
+var CONFLICT_TAG = "#due-date-conflict";
+function sameTags(a, b) {
+  const normalize = (list) => list.map((tag) => tag.replace(/^#+/u, "").toLowerCase()).sort().join("\n");
+  return normalize(a) === normalize(b);
+}
+function oneLine(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+var TaskEditorModal = class extends import_obsidian9.Modal {
   constructor(host, task, defaults = {}) {
     super(host.app);
     this.host = host;
@@ -2922,12 +3028,29 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
     let dueDate = this.isCreateMode ? this.defaults.dueDate ?? "" : source?.dueDate ?? "";
     let taskId = this.isCreateMode ? "" : source?.taskId ?? "";
     let dependsOn = this.isCreateMode ? "" : source?.dependsOn ?? "";
-    new import_obsidian7.Setting(form).setName(t("\u63CF\u8FF0")).addText(
-      (text) => text.setPlaceholder(t("\u4EFB\u52A1\u63CF\u8FF0")).setValue(description).onChange((value) => {
+    let tags = this.isCreateMode ? [...this.defaults.tags ?? []] : (source?.tags ?? []).filter((tag) => tag !== CONFLICT_TAG);
+    new import_obsidian9.Setting(form).setName(t("\u63CF\u8FF0")).setDesc(t("\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002")).addTextArea((area) => {
+      area.setPlaceholder(t("\u4EFB\u52A1\u63CF\u8FF0"));
+      area.setValue(description);
+      area.inputEl.rows = 2;
+      area.inputEl.addClass("tm-form__description");
+      area.onChange((value) => {
         description = value;
-      })
+      });
+    });
+    addListFieldSetting(
+      form,
+      t("\u6807\u7B7E"),
+      tags,
+      (list) => {
+        tags = list;
+      },
+      {
+        desc: t("\u591A\u4E2A\u6807\u7B7E\u7528\u9017\u53F7\u5206\u9694\uFF1B\u4E5F\u53EF\u4EE5\u70B9\u4E0B\u9762\u7684\u5DF2\u6709\u6807\u7B7E\u3002"),
+        suggestions: this.knownTags()
+      }
     );
-    new import_obsidian7.Setting(form).setName(t("\u4F18\u5148\u7EA7")).addDropdown((dropdown) => {
+    new import_obsidian9.Setting(form).setName(t("\u4F18\u5148\u7EA7")).addDropdown((dropdown) => {
       for (const level of [
         "none" /* None */,
         "lowest" /* Lowest */,
@@ -2943,20 +3066,20 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
         priority = value;
       });
     });
-    new import_obsidian7.Setting(form).setName(t("\u5F00\u59CB\u65E5\u671F")).addText((text) => {
+    new import_obsidian9.Setting(form).setName(t("\u5F00\u59CB\u65E5\u671F")).addText((text) => {
       text.inputEl.type = "date";
       text.setValue(startDate).onChange((value) => {
         startDate = value;
       });
     });
-    new import_obsidian7.Setting(form).setName(t("\u622A\u6B62\u65E5\u671F")).addText((text) => {
+    new import_obsidian9.Setting(form).setName(t("\u622A\u6B62\u65E5\u671F")).addText((text) => {
       text.inputEl.type = "date";
       text.setValue(dueDate).onChange((value) => {
         dueDate = value;
       });
     });
     let idText = null;
-    new import_obsidian7.Setting(form).setName(t("\u4EFB\u52A1 ID")).setDesc(t("\u7528\u4E8E\u88AB\u5176\u4ED6\u4EFB\u52A1\u4F9D\u8D56")).addText((text) => {
+    new import_obsidian9.Setting(form).setName(t("\u4EFB\u52A1 ID")).setDesc(t("\u7528\u4E8E\u88AB\u5176\u4ED6\u4EFB\u52A1\u4F9D\u8D56")).addText((text) => {
       idText = text;
       text.setValue(taskId).onChange((value) => {
         taskId = value.trim();
@@ -2967,7 +3090,7 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
         idText?.setValue(taskId);
       })
     );
-    new import_obsidian7.Setting(form).setName(t("\u4F9D\u8D56\u4EFB\u52A1")).addDropdown((dropdown) => {
+    new import_obsidian9.Setting(form).setName(t("\u4F9D\u8D56\u4EFB\u52A1")).addDropdown((dropdown) => {
       dropdown.addOption("", t("\u4E0D\u4F9D\u8D56"));
       for (const [id, label] of this.dependencyOptions(source?.taskId ?? "")) {
         dropdown.addOption(id, label);
@@ -2977,14 +3100,38 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
       });
     });
     const buttons = this.contentEl.createDiv({ cls: "tm-modal__buttons" });
-    new import_obsidian7.Setting(buttons).addButton((button) => button.setButtonText(t("\u53D6\u6D88")).onClick(() => this.close())).addButton(
+    new import_obsidian9.Setting(buttons).addButton((button) => button.setButtonText(t("\u53D6\u6D88")).onClick(() => this.close())).addButton(
       (button) => button.setButtonText(this.isCreateMode ? t("\u521B\u5EFA") : t("\u4FDD\u5B58")).setCta().onClick(() => {
-        void this.submit({ description, priority, startDate, dueDate, taskId, dependsOn });
+        void this.submit({
+          description,
+          priority,
+          startDate,
+          dueDate,
+          taskId,
+          dependsOn,
+          tags
+        });
       })
     );
   }
   onClose() {
     this.contentEl.empty();
+  }
+  /**
+   * 库里已经用过的标签，按出现次数排序，取前 40 个。
+   *
+   * 截断是有意的：候选排的价值在于「常用的那几个一眼就在」，把几百个标签全铺出来
+   * 反而要在一堆长尾里找。想用的没在候选里，直接手打即可。
+   */
+  knownTags() {
+    const counts = /* @__PURE__ */ new Map();
+    for (const task of this.host.tasks) {
+      for (const tag of task.tags) {
+        if (tag === CONFLICT_TAG) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 40).map(([tag]) => tag);
   }
   /** 依赖候选：未完成、有 ID、且不是自己；按截止日由近到远 */
   dependencyOptions(selfId) {
@@ -3011,7 +3158,7 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
       if (choice === "cancel") return;
       if (choice === "adjust-due") {
         updates.dueDate = todayIso();
-        new import_obsidian7.Notice(t("\u5DF2\u628A\u622A\u6B62\u65E5\u671F\u8C03\u6574\u4E3A\u4ECA\u5929"));
+        new import_obsidian9.Notice(t("\u5DF2\u628A\u622A\u6B62\u65E5\u671F\u8C03\u6574\u4E3A\u4ECA\u5929"));
       } else {
         updates.conflictTag = true;
       }
@@ -3022,9 +3169,9 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
     this.close();
   }
   async createTask(updates) {
-    const description = updates.description?.trim() ?? "";
+    const description = oneLine(updates.description ?? "");
     if (description.length === 0) {
-      new import_obsidian7.Notice(t("\u8BF7\u586B\u5199\u4EFB\u52A1\u63CF\u8FF0"));
+      new import_obsidian9.Notice(t("\u8BF7\u586B\u5199\u4EFB\u52A1\u63CF\u8FF0"));
       return false;
     }
     const target = await this.resolveTargetFile();
@@ -3037,9 +3184,10 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
     if (updates.startDate) line = setDateField(line, "\u{1F6EB}", updates.startDate);
     if (updates.taskId) line = setIdentifierField(line, "\u{1F194}", "id::", updates.taskId);
     if (updates.dependsOn) line = setIdentifierField(line, "\u26D4", "dependsOn::", updates.dependsOn);
-    if (this.defaults.gtdState === "Waiting") line += " #waiting";
-    else if (this.defaults.gtdState === "In Progress") line += " #doing";
-    if (updates.conflictTag === true) line += " #due-date-conflict";
+    const stateTag = this.defaults.gtdState === "Waiting" ? "#waiting" : this.defaults.gtdState === "In Progress" ? "#doing" : "";
+    const tags = [...updates.tags ?? [], ...stateTag.length > 0 ? [stateTag] : []];
+    if (tags.length > 0) line = setTags(line, tags);
+    if (updates.conflictTag === true) line += ` ${CONFLICT_TAG}`;
     const heading = this.host.settings.newTaskTargetHeading;
     let failure;
     if (heading.length > 0) {
@@ -3052,13 +3200,13 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
         return result.content ?? null;
       });
       if (!inserted && failure !== void 0) {
-        new import_obsidian7.Notice(t("\u65E0\u6CD5\u6DFB\u52A0\u4EFB\u52A1\uFF1A{reason}", { reason: failure }));
+        new import_obsidian9.Notice(t("\u65E0\u6CD5\u6DFB\u52A0\u4EFB\u52A1\uFF1A{reason}", { reason: failure }));
         return false;
       }
     } else {
       await editFileContent(this.host.app, target, (content) => appendLine(content, line));
     }
-    new import_obsidian7.Notice(t("\u5DF2\u6DFB\u52A0\u5230 {path}", { path: target.path }));
+    new import_obsidian9.Notice(t("\u5DF2\u6DFB\u52A0\u5230 {path}", { path: target.path }));
     return true;
   }
   /**
@@ -3068,19 +3216,24 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
    * 而不是提示用户先自己去建一篇 —— 新建任务本来就该是一步的事。
    */
   async resolveTargetFile() {
+    const explicit = this.isCreateMode ? this.defaults.filePath : void 0;
+    if (explicit !== void 0 && explicit.length > 0) {
+      const file = this.host.app.vault.getAbstractFileByPath(explicit);
+      if (file instanceof import_obsidian9.TFile) return file;
+    }
     const { newTaskTargetPath, newTaskTemplatePath } = this.host.settings;
     if (newTaskTargetPath.length > 0) {
       const path = resolvePlaceholders(newTaskTargetPath);
       try {
         return await ensureNote(this.host.app, path, { templatePath: newTaskTemplatePath });
       } catch {
-        new import_obsidian7.Notice(t("\u65E0\u6CD5\u521B\u5EFA\u76EE\u6807\u7B14\u8BB0\uFF1A{path}", { path }));
+        new import_obsidian9.Notice(t("\u65E0\u6CD5\u521B\u5EFA\u76EE\u6807\u7B14\u8BB0\uFF1A{path}", { path }));
         return null;
       }
     }
     const active = this.host.app.workspace.getActiveFile();
     if (active === null || active.extension !== "md") {
-      new import_obsidian7.Notice(t("\u8BF7\u5148\u5728\u8BBE\u7F6E\u91CC\u6307\u5B9A\u76EE\u6807\u7B14\u8BB0\uFF0C\u6216\u6253\u5F00\u4E00\u4E2A Markdown \u6587\u4EF6"));
+      new import_obsidian9.Notice(t("\u8BF7\u5148\u5728\u8BBE\u7F6E\u91CC\u6307\u5B9A\u76EE\u6807\u7B14\u8BB0\uFF0C\u6216\u6253\u5F00\u4E00\u4E2A Markdown \u6587\u4EF6"));
       return null;
     }
     return active;
@@ -3088,14 +3241,18 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
   async saveTask(updates) {
     const task = this.task;
     if (task === null) return false;
-    const description = updates.description?.trim() ?? "";
+    const description = oneLine(updates.description ?? "");
     if (description.length === 0) {
-      new import_obsidian7.Notice(t("\u8BF7\u586B\u5199\u4EFB\u52A1\u63CF\u8FF0"));
+      new import_obsidian9.Notice(t("\u8BF7\u586B\u5199\u4EFB\u52A1\u63CF\u8FF0"));
       return false;
     }
     const result = await editTaskLine(this.host.app, task, (line) => {
       let next = line;
       if (description !== task.description) next = replaceTaskDescription(next, description);
+      if (updates.tags !== void 0 && !sameTags(updates.tags, task.tags)) {
+        const keepConflict = new RegExp(`${CONFLICT_TAG}\\b`, "iu").test(next);
+        next = setTags(next, keepConflict ? [...updates.tags, CONFLICT_TAG] : updates.tags);
+      }
       if (updates.priority !== void 0 && updates.priority !== task.priority) {
         next = setPriority(next, updates.priority);
       }
@@ -3118,10 +3275,10 @@ var TaskEditorModal = class extends import_obsidian7.Modal {
       return compactLine(next);
     });
     if (result === "missing") {
-      new import_obsidian7.Notice(t("\u5728 {path}:{line} \u627E\u4E0D\u5230\u8BE5\u4EFB\u52A1\u884C", { path: task.filePath, line: task.lineNumber }));
+      new import_obsidian9.Notice(t("\u5728 {path}:{line} \u627E\u4E0D\u5230\u8BE5\u4EFB\u52A1\u884C", { path: task.filePath, line: task.lineNumber }));
       return false;
     }
-    if (result === "updated") new import_obsidian7.Notice(t("\u4EFB\u52A1\u5DF2\u66F4\u65B0"));
+    if (result === "updated") new import_obsidian9.Notice(t("\u4EFB\u52A1\u5DF2\u66F4\u65B0"));
     return true;
   }
 };
@@ -3777,7 +3934,7 @@ var FilterBar = class {
 };
 
 // src/panels/task-card.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 var TASK_DRAG_MIME = "text/tm-task-id";
 var QUADRANTS2 = ["Q1", "Q2", "Q3", "Q4"];
 var GTD_QUICK_TARGETS = [
@@ -3787,7 +3944,7 @@ var GTD_QUICK_TARGETS = [
 ];
 async function renderTaskCard(host, task, context, callbacks) {
   const card = host.createDiv({ cls: `tm-card${task.blocked ? " tm-card--blocked" : ""}` });
-  card.draggable = true;
+  card.draggable = context.mode !== "list";
   card.dataset.taskId = task.id;
   card.addEventListener("dragstart", (event) => {
     event.dataTransfer?.setData(TASK_DRAG_MIME, task.id);
@@ -3801,8 +3958,8 @@ async function renderTaskCard(host, task, context, callbacks) {
   const head = card.createDiv({ cls: "tm-card__head" });
   const titleEl = head.createDiv({ cls: "tm-card__title" });
   const file = context.app.vault.getAbstractFileByPath(task.filePath);
-  if (file instanceof import_obsidian8.TFile && task.description.length > 0) {
-    await import_obsidian8.MarkdownRenderer.render(
+  if (file instanceof import_obsidian10.TFile && task.description.length > 0) {
+    await import_obsidian10.MarkdownRenderer.render(
       context.app,
       task.description,
       titleEl,
@@ -3817,12 +3974,20 @@ async function renderTaskCard(host, task, context, callbacks) {
     text: statusLabel(task.displayStatus)
   });
   renderChips(card, task);
-  card.createDiv({
-    cls: "tm-card__meta",
-    text: `${task.filePath}:${task.lineNumber} \xB7 ${gtdStateLabel(task.gtdState)}`
-  });
+  card.createDiv({ cls: "tm-card__meta", text: metaText(task, context) });
   renderActions(card, task, context, callbacks);
   return card;
+}
+function metaText(task, context) {
+  const state = gtdStateLabel(task.gtdState);
+  switch (context.noteMeta ?? "path") {
+    case "hidden":
+      return state;
+    case "name":
+      return `${noteNameOf(task.filePath)} \xB7 ${state}`;
+    default:
+      return `${task.filePath}:${task.lineNumber} \xB7 ${state}`;
+  }
 }
 function renderChips(card, task) {
   const chips = card.createDiv({ cls: "tm-card__chips" });
@@ -3913,7 +4078,7 @@ var PanelBoard = class {
     this.renderGeneration = 0;
     this.host.addClass("tm-board");
   }
-  async render(panels, options) {
+  async render(grouping, options) {
     const generation = ++this.renderGeneration;
     this.host.empty();
     if (!options.loaded) {
@@ -3922,14 +4087,48 @@ var PanelBoard = class {
       loading.createEl("p", { text: t("\u7D22\u5F15\u5728 Obsidian \u5E03\u5C40\u5C31\u7EEA\u540E\u5F00\u59CB\uFF0C\u5927\u5E93\u9700\u8981\u4E00\u70B9\u65F6\u95F4\u3002") });
       return;
     }
+    const panels = grouping.sections ?? grouping.panels;
     if (panels.length === 0) {
       this.host.createDiv({ cls: "tm-empty", text: t("\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u6761\u4EF6\u7684\u4EFB\u52A1") });
       return;
     }
+    if (grouping.sections !== void 0) {
+      const list = this.host.createDiv({ cls: "tm-sections" });
+      for (const section of grouping.sections) {
+        if (generation !== this.renderGeneration) return;
+        await this.renderSection(list, section, options, generation);
+      }
+      return;
+    }
     const grid = this.host.createDiv({
-      cls: `tm-board__grid tm-board__grid--${options.grid}`
+      cls: `tm-board__grid tm-board__grid--${grouping.grid}`
     });
-    for (const panel of panels) {
+    for (const panel of grouping.panels) {
+      if (generation !== this.renderGeneration) return;
+      await this.renderPanel(grid, panel, options, generation);
+    }
+  }
+  /**
+   * 分区：可折叠的分组标题 + 里面的笔记容器。
+   *
+   * 分区刻意**不做容器**（不套边框盒子）：分区里已经是容器了，再套一层，
+   * 每格宽度要被三层 padding 挤掉。标题行承担「这是哪一组、有几篇」的信息，
+   * 折叠状态与面板容器共用同一套 key。
+   */
+  async renderSection(list, section, options, generation) {
+    const collapsed = options.collapsedKeys.has(section.key);
+    const el = list.createDiv({ cls: `tm-section${collapsed ? " is-collapsed" : ""}` });
+    el.dataset.panelKey = section.key;
+    const head = el.createDiv({ cls: "tm-section__head" });
+    head.createSpan({ cls: "tm-section__chevron", text: collapsed ? "\u25B8" : "\u25BE" });
+    head.createEl("h3", { cls: "tm-section__title", text: section.title });
+    head.createSpan({
+      cls: "tm-section__count",
+      text: String(section.panels.reduce((total, panel) => total + panel.tasks.length, 0))
+    });
+    head.addEventListener("click", () => this.callbacks.onToggleCollapse(section.key));
+    const grid = el.createDiv({ cls: "tm-board__grid tm-board__grid--flow tm-section__body" });
+    for (const panel of section.panels) {
       if (generation !== this.renderGeneration) return;
       await this.renderPanel(grid, panel, options, generation);
     }
@@ -3967,7 +4166,8 @@ var PanelBoard = class {
       await renderTaskCard(body, task, {
         app: this.app,
         markdownComponent: options.markdownComponent,
-        mode: panel.dropTarget?.kind === "quadrant" ? "eisenhower" : panel.dropTarget?.kind === "gtd" ? "gtd" : "list"
+        mode: panel.dropTarget?.kind === "quadrant" ? "eisenhower" : panel.dropTarget?.kind === "gtd" ? "gtd" : "list",
+        noteMeta: panel.noteMeta
       }, this.callbacks);
     }
   }
@@ -4016,10 +4216,10 @@ function modeLabel(mode) {
     case "calendar":
       return t("\u65E5\u5386");
     default:
-      return t("\u5217\u8868");
+      return t("\u7B14\u8BB0\u5217\u8868");
   }
 }
-var MatrixView = class extends import_obsidian9.ItemView {
+var MatrixView = class extends import_obsidian11.ItemView {
   constructor(leaf, host) {
     super(leaf);
     this.host = host;
@@ -4070,7 +4270,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
     return t("\u4EFB\u52A1\u77E9\u9635");
   }
   getIcon() {
-    return pickViewIcon((0, import_obsidian9.getIconIds)());
+    return pickViewIcon((0, import_obsidian11.getIconIds)());
   }
   // ────────────────────────────── 生命周期 ──────────────────────────────
   /**
@@ -4228,6 +4428,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.ganttHost = body.createDiv({ cls: "tm-board-host is-hidden" });
     this.gantt = new GanttBoard(this.ganttHost, this, {
       onOpenTask: (task) => void this.host.openNote(task.filePath),
+      onEditTask: (task) => this.openGanttTaskEditor(task),
       onToggleSection: (key) => this.toggleCollapse(key),
       onZoomStep: (direction, anchor) => this.stepGanttZoom(direction, anchor)
     });
@@ -4300,9 +4501,11 @@ var MatrixView = class extends import_obsidian9.ItemView {
       this.renderCalendar(filtered);
     } else {
       const grouping = buildPanels(ordered, this.mode, settings);
-      this.lastCollapsibleKeys = grouping.panels.map((panel) => panel.key);
-      void this.board?.render(grouping.panels, {
-        grid: grouping.grid,
+      this.lastCollapsibleKeys = [
+        ...grouping.sections?.map((section) => section.key) ?? [],
+        ...grouping.panels.map((panel) => panel.key)
+      ];
+      void this.board?.render(grouping, {
         collapsedKeys: this.collapsedKeys,
         markdownComponent,
         loaded: this.host.isIndexReady()
@@ -4451,6 +4654,26 @@ var MatrixView = class extends import_obsidian9.ItemView {
     };
     new TaskEditorModal(editorHost, task, defaults).open();
   }
+  /**
+   * 甘特里的「编辑任务」。
+   *
+   * 甘特解析器只产出它自己那套字段（`GanttTask`），而编辑界面要的是面板解析器的
+   * `ParsedTask`（它认得标签、依赖、GTD 状态）。两者是同一条线上跑出来的，
+   * 按 `文件:行号` 就能对上 —— 也正是甘特做 GTD/象限分组时用的同一个索引。
+   *
+   * 对不上时（理论上极少：面板解析器与甘特解析器认的行会略有出入）退回到「打开笔记」，
+   * 总比右键点了没反应好；宁可多一步，也不能让人以为坏了。
+   */
+  openGanttTaskEditor(ganttTask) {
+    const parsed = this.host.getTasks().find(
+      (task) => task.filePath === ganttTask.filePath && task.lineNumber === ganttTask.lineNumber
+    );
+    if (parsed === void 0) {
+      void this.host.openNote(ganttTask.filePath);
+      return;
+    }
+    this.openEditor(parsed, {});
+  }
   async confirmDelete(task) {
     const confirmed = await askDeleteTask(this.host.app, task.description);
     if (!confirmed) return;
@@ -4476,7 +4699,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
    */
   getMarkdownComponent() {
     if (this.markdownComponent === null) {
-      this.markdownComponent = new import_obsidian9.Component();
+      this.markdownComponent = new import_obsidian11.Component();
       this.markdownComponent.load();
     }
     return this.markdownComponent;
@@ -4489,7 +4712,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
 
 // src/main.ts
 var REFRESH_DEBOUNCE_MS = 500;
-var TaskMatrixPlugin = class extends import_obsidian10.Plugin {
+var TaskMatrixPlugin = class extends import_obsidian12.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -4511,7 +4734,7 @@ var TaskMatrixPlugin = class extends import_obsidian10.Plugin {
       VIEW_TYPE_TASK_MATRIX,
       (leaf) => new MatrixView(leaf, this)
     );
-    const icon = pickViewIcon((0, import_obsidian10.getIconIds)());
+    const icon = pickViewIcon((0, import_obsidian12.getIconIds)());
     this.addRibbonIcon(icon, t("\u6253\u5F00\u4EFB\u52A1\u77E9\u9635"), () => {
       void this.activateView();
     });
@@ -4557,7 +4780,7 @@ var TaskMatrixPlugin = class extends import_obsidian10.Plugin {
   }
   /** 界面语言落到运行时；语言变了要重绘已打开的视图 */
   applyUiLanguage() {
-    return applyLanguageSetting(this.settings.uiLanguage, detectLocale(import_obsidian10.moment.locale()));
+    return applyLanguageSetting(this.settings.uiLanguage, detectLocale(import_obsidian12.moment.locale()));
   }
   /**
    * 落盘设置。
@@ -4595,8 +4818,8 @@ var TaskMatrixPlugin = class extends import_obsidian10.Plugin {
   /** 按路径打开笔记（甘特手里只有任务，没有 ParsedTask） */
   async openNote(path) {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof import_obsidian10.TFile)) {
-      new import_obsidian10.Notice(t("\u627E\u4E0D\u5230\u6587\u4EF6\uFF1A{path}", { path }));
+    if (!(file instanceof import_obsidian12.TFile)) {
+      new import_obsidian12.Notice(t("\u627E\u4E0D\u5230\u6587\u4EF6\uFF1A{path}", { path }));
       return;
     }
     const leaf = this.app.workspace.getLeaf(true);
@@ -4623,7 +4846,7 @@ ${ganttSignature(index.ganttTasks)}`;
       this.lastSignature = signature;
       this.redrawViews();
     }
-    if (showNotice) new import_obsidian10.Notice(t("\u5DF2\u5237\u65B0\uFF1A{count} \u4E2A\u4EFB\u52A1", { count: index.tasks.length }));
+    if (showNotice) new import_obsidian12.Notice(t("\u5DF2\u5237\u65B0\uFF1A{count} \u4E2A\u4EFB\u52A1", { count: index.tasks.length }));
   }
   /** 设置变更后视图侧的筛选口径也会变，所以要强制重绘一次 */
   redrawViews() {

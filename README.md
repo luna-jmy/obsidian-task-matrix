@@ -18,7 +18,7 @@ The interface ships in Chinese and English and follows the Obsidian language by 
 
 | View | Layout | Best for |
 |------|--------|----------|
-| **📋 List** | One container, or one per folder when grouping is on | Browsing everything |
+| **📋 Note list** | A container per note; with grouping on, those containers sit under collapsible folder sections | Browsing everything |
 | **📥 GTD** | Four containers: Inbox, In progress, Waiting, Done | Working through a flow |
 | **🔳 Matrix** | Four containers: Q1–Q4 | Deciding what matters |
 | **🗓 Calendar** | Month, week or list | Planning by date |
@@ -32,6 +32,7 @@ The Gantt is a mode rather than a panel layout: the view opens in panel mode, an
 
 - Bar colours are configurable in the settings, one per Mermaid Gantt state: `active` for open tasks, `done` for completed ones, `crit` for tasks marked `🔺`, and a colour for everything else. Type any CSS colour (`var(--color-blue)`, a colour name) or click a swatch.
 - The time axis starts on the current month and scrolls to today; `Ctrl` + wheel zooms between day, week, month and year.
+- **Right-click a bar** to edit the task or open its note (a left click opens the note, same as a card in the panel views).
 - Sections group by folder, note, GTD state or quadrant — or turn grouping off for a single flat list. Grouping by note gives one section per note (named after the note, ordered by path), which keeps a note's tasks together even when they span several folders' worth of projects. Section keys for folder, GTD state and quadrant are shared with the panel views, so collapsing a section in the Gantt also collapses the matching container there.
 - The left column lists tasks and follows the timeline's vertical scroll; clicking a task or its bar opens the note.
 - A task with only one date still gets a bar: the missing end is inferred and drawn with a dashed orange outline, and the sidebar shows 「missing dates」.
@@ -55,12 +56,16 @@ Each card shows the rendered description, a status badge, and chips for priority
 - ✓ Complete / ↺ Reopen (optionally adds `✅ YYYY-MM-DD`)
 - ▶ Start (adds `🛫` and `#doing`)
 - ✕ Cancel
-- ✎ Edit — description, priority, dates, ID, dependency
+- ✎ Edit — description (a two-line field), priority, dates, tags, ID, dependency
 - 🗑 Delete
 - 1–4 and 收/进/等 quick moves in the Matrix and GTD views
 - Click the card to open the note it lives in
 
 A task whose `⛔` dependency is unfinished gets a red left border.
+
+**The Note list uses the same task cards as GTD and Matrix** — complete, start, cancel, edit, delete all work — with two differences: the note path is not repeated on every card (the container is the note; with folder grouping the card shows just the note name), and cards cannot be dragged between containers (a list container is a place, not a status). With grouping on, the note containers sit under collapsible folder sections; the expand/collapse button in the toolbar covers sections and containers alike.
+
+In the editor, **Tags** is a list field: type them separated by commas, or click one of the tags already used in your vault (most used first) to add or remove it. Only the tag set is rewritten — the rest of the line, including where the inline fields sit, stays as it was. If you never touch the field, the line is not rewritten at all.
 
 ### 🧠 How tasks are classified
 
@@ -112,11 +117,13 @@ Settings are grouped the same way the view is:
 - **Show completed tasks without a due date**
 
 #### New tasks
-- **Target note path**: where new tasks go (supports `YYYY`, `MM`, `DD` placeholders). Empty means the note you have open
+- **Target note path**: where new tasks go, today's journal by default; supports `{{title}}`, `{{date}}`, `{{time}}` and `{{date:FORMAT}}`. The note is created when missing. Empty means the note you have open
 - **Target heading**: insert under this heading; empty appends at the end of the note
+- **Journal template**: the note to copy when the target note does not exist yet (`{{title}}` is its file name; `<% … %>` commands are left to Templater)
 
 #### List view
-- **Group by folder** and **Folder depth** (1–5)
+- **Group by folder**: off, the list shows one small container per note (hover the header to add a task, which goes into that note); on, the same cards are grouped under folder headings instead of containers
+- **Folder depth** (1–5) — only used while grouping by folder is on
 
 #### Calendar view
 - **First day of week**, weekends in the month and week views, whole month in the list view, and spreading in-progress tasks across their date range

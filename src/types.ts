@@ -139,8 +139,28 @@ export interface PanelSpec {
   subtitle?: string;
   tasks: ParsedTask[];
   dropTarget?: PanelDropTarget;
+  /**
+   * 卡片元信息行里笔记的显示方式（缺省 = `path`，即 GTD/矩阵的现状）。
+   *
+   * 列表模式的容器本身就以笔记/文件夹为单位：按笔记分容器时容器标题就是笔记名，
+   * 卡片里再写一遍完整路径是噪声（`hidden`）；按文件夹分容器时同容器里有多篇笔记，
+   * 显示笔记名（不带路径）刚好够区分（`name`）。
+   */
+  noteMeta?: "path" | "name" | "hidden";
   /** 容器头「+」新建任务时的预填值 */
   addDefaults?: Partial<ParsedTask>;
+}
+
+/**
+ * 列表模式（笔记列表）开启「按文件夹分组」时的分区。
+ *
+ * 分区是**分组的一层标题**，不是容器：里面装的是笔记容器（`panels`），
+ * 自己只有一行可折叠的头。折叠 key 与面板容器共用一套 `collapsedKeys`。
+ */
+export interface PanelSection {
+  key: string;
+  title: string;
+  panels: PanelSpec[];
 }
 
 export interface TaskMatrixSettings {

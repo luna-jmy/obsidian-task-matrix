@@ -70,7 +70,7 @@ function modeLabel(mode: ViewMode): string {
     case "calendar":
       return t("日历");
     default:
-      return t("列表");
+      return t("笔记列表");
   }
 }
 
@@ -376,6 +376,7 @@ export class MatrixView extends ItemView {
     this.ganttHost = body.createDiv({ cls: "tm-board-host is-hidden" });
     this.gantt = new GanttBoard(this.ganttHost, this, {
       onOpenTask: (task) => void this.host.openNote(task.filePath),
+      onEditTask: (task) => this.openGanttTaskEditor(task),
       onToggleSection: (key) => this.toggleCollapse(key),
       onZoomStep: (direction, anchor) => this.stepGanttZoom(direction, anchor),
     });
@@ -467,9 +468,12 @@ export class MatrixView extends ItemView {
       this.renderCalendar(filtered);
     } else {
       const grouping: GroupingResult = buildPanels(ordered, this.mode, settings);
-      this.lastCollapsibleKeys = grouping.panels.map((panel) => panel.key);
-      void this.board?.render(grouping.panels, {
-        grid: grouping.grid,
+      // 分区与容器共用一套折叠 key：全收/全开对两层都生效
+      this.lastCollapsibleKeys = [
+        ...(grouping.sections?.map((section) => section.key) ?? []),
+        ...grouping.panels.map((panel) => panel.key),
+      ];
+      void this.board?.render(grouping, {
         collapsedKeys: this.collapsedKeys,
         markdownComponent,
         loaded: this.host.isIndexReady(),
@@ -653,6 +657,29 @@ export class MatrixView extends ItemView {
       onSaved: () => this.host.requestRescan(),
     };
     new TaskEditorModal(editorHost, task, defaults).open();
+  }
+
+  /**
+   * 甘特里的「编辑任务」。
+   *
+   * 甘特解析器只产出它自己那套字段（`GanttTask`），而编辑界面要的是面板解析器的
+   * `ParsedTask`（它认得标签、依赖、GTD 状态）。两者是同一条线上跑出来的，
+   * 按 `文件:行号` 就能对上 —— 也正是甘特做 GTD/象限分组时用的同一个索引。
+   *
+   * 对不上时（理论上极少：面板解析器与甘特解析器认的行会略有出入）退回到「打开笔记」，
+   * 总比右键点了没反应好；宁可多一步，也不能让人以为坏了。
+   */
+  private openGanttTaskEditor(ganttTask: GanttTask): void {
+    const parsed = this.host
+      .getTasks()
+      .find(
+        (task) => task.filePath === ganttTask.filePath && task.lineNumber === ganttTask.lineNumber,
+      );
+    if (parsed === undefined) {
+      void this.host.openNote(ganttTask.filePath);
+      return;
+    }
+    this.openEditor(parsed, {});
   }
 
   private async confirmDelete(task: ParsedTask): Promise<void> {

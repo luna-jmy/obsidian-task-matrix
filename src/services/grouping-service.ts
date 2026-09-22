@@ -2,6 +2,7 @@ import { t } from "../i18n";
 import {
   EisenhowerQuadrant,
   GTDState,
+  PanelSection,
   PanelSpec,
   ParsedTask,
   Priority,
@@ -18,8 +19,18 @@ import { todayIso } from "../utils/date";
  * 日历模式不走这里（它有自己的时间轴布局，见 calendar-service）。
  */
 export interface GroupingResult {
-  /** 容器网格的列策略：fixed = 数量固定的 4 格等宽撑满；flow = 随数量铺 */
+  /**
+   * 容器网格的列策略。
+   *
+   * - `fixed`：数量固定的 4 格等宽撑满 —— GTD、矩阵；
+   * - `flow`：随数量铺 —— 笔记列表（一格 = 一条笔记的容器），行高矮一档。
+   */
   grid: "fixed" | "flow";
+  /**
+   * 分区：笔记列表开启「按文件夹分组」时出现，分区里装的是笔记容器，
+   * 此时 `panels` 为空。其余模式不设这个字段。
+   */
+  sections?: PanelSection[];
   panels: PanelSpec[];
 }
 
@@ -79,6 +90,11 @@ export function panelKeyForNote(filePath: string): string {
   return `note:${filePath}`;
 }
 
+/** 笔记名：去掉路径与 `.md` 扩展名（列表容器与甘特分节共用同一个口径） */
+export function noteNameOf(filePath: string): string {
+  return filePath.slice(filePath.lastIndexOf("/") + 1).replace(/\.md$/u, "");
+}
+
 export function buildPanels(
   tasks: readonly ParsedTask[],
   mode: ViewMode,
@@ -101,51 +117,62 @@ export function buildPanels(
 
 // ────────────────────────────── 列表 ──────────────────────────────
 
+/**
+ * 笔记列表的两种形态。
+ *
+ * - 不按文件夹分组：**一条笔记一个容器**，里面是这个笔记的任务卡片。按笔记聚拢
+ *   最贴近任务的来源，也让人一眼看出「这几件事出自同一篇记录」。
+ * - 按文件夹分组：笔记容器归入**可折叠的文件夹分区**（分区是分组标题，不是容器 ——
+ *   容器套容器的三层盒子只会把每格挤小）。
+ *
+ * 两种形态的格子都是笔记容器、都走 `flow` 网格；差别只是多不多那一层分区。
+ */
 function buildListPanels(
   tasks: readonly ParsedTask[],
   settings: TaskMatrixSettings,
 ): GroupingResult {
-  if (!settings.listGroupByFolder) {
-    return {
-      grid: "fixed",
-      panels: [
-        {
-          key: "all",
-          title: t("全部任务"),
-          tasks: [...tasks],
-        },
-      ],
-    };
-  }
+  if (!settings.listGroupByFolder) return buildNoteContainers(tasks);
 
-  const grouped = new Map<string, ParsedTask[]>();
+  const byFolder = new Map<string, ParsedTask[]>();
   for (const task of tasks) {
     const folder = folderPathOf(task.filePath, settings.listGroupByFolderDepth);
-    const bucket = grouped.get(folder);
-    if (bucket === undefined) grouped.set(folder, [task]);
+    const bucket = byFolder.get(folder);
+    if (bucket === undefined) byFolder.set(folder, [task]);
+    else bucket.push(task);
+  }
+
+  const sections: PanelSection[] = [...byFolder.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((folder) => ({
+      key: panelKeyForFolder(folder),
+      title: folder === "" ? t("根目录") : folder,
+      // 分区里装的仍然是笔记容器：复用「按笔记分容器」这一份，口径不漂移
+      panels: buildNoteContainers(byFolder.get(folder) ?? []).panels,
+    }));
+
+  return { grid: "flow", sections, panels: [] };
+}
+
+/** 一条笔记一个容器；容器头「+」新建的任务写回**那篇笔记**，不是设置里的默认落点 */
+function buildNoteContainers(tasks: readonly ParsedTask[]): GroupingResult {
+  const grouped = new Map<string, ParsedTask[]>();
+  for (const task of tasks) {
+    const bucket = grouped.get(task.filePath);
+    if (bucket === undefined) grouped.set(task.filePath, [task]);
     else bucket.push(task);
   }
 
   const panels: PanelSpec[] = [...grouped.keys()]
     .sort((a, b) => a.localeCompare(b))
-    .map((folder) => ({
-      key: panelKeyForFolder(folder),
-      title: folder === "" ? t("根目录") : folder,
-      subtitle: taskCountLabel(grouped.get(folder)?.length ?? 0),
-      tasks: grouped.get(folder) ?? [],
+    .map((filePath) => ({
+      key: panelKeyForNote(filePath),
+      title: noteNameOf(filePath),
+      tasks: grouped.get(filePath) ?? [],
+      noteMeta: "hidden",
+      addDefaults: { filePath },
     }));
 
-  return { grid: gridFor(panels.length), panels };
-}
-
-/**
- * 只有一个容器时用 `fixed`（auto-fit + 1fr）让它吃满整行。
- *
- * `flow` 用的是 auto-fill：它会把空轨道也建出来，孤零零一个容器只占最左侧一格、
- * 右边空一大片。这不是「对称」，是对齐失败。
- */
-function gridFor(panelCount: number): "fixed" | "flow" {
-  return panelCount > 1 ? "flow" : "fixed";
+  return { grid: "flow", panels };
 }
 
 /** 取文件路径的前 depth 层文件夹；depth 为 0 或文件在根目录时返回空串 */

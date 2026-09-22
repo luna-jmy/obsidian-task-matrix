@@ -1,4 +1,4 @@
-import { Component } from "obsidian";
+import { Component, Menu } from "obsidian";
 import { t } from "../i18n";
 import { GanttTask } from "../parser/gantt-parser";
 import { DEFAULT_GANTT_BAR_COLORS, GanttBarColors } from "../types";
@@ -40,6 +40,8 @@ const WHEEL_STEP_THRESHOLD = 40;
 export interface GanttCallbacks {
   /** 点击任务条 / 侧栏链接 → 打开所在笔记 */
   onOpenTask(task: GanttTask): void;
+  /** 右键任务条 → 编辑任务（打开任务编辑界面） */
+  onEditTask(task: GanttTask): void;
   /** 点击分节头 → 折叠/展开（key 与面板视图共用，两边折叠状态一致） */
   onToggleSection(key: string): void;
   /**
@@ -440,6 +442,7 @@ export class GanttView {
   private registerInteraction(): void {
     this.component.registerDomEvent(this.root, "click", (evt) => this.onClick(evt));
     this.component.registerDomEvent(this.root, "keydown", (evt) => this.onKeyDown(evt));
+    this.component.registerDomEvent(this.root, "contextmenu", (evt) => this.onContextMenu(evt));
     // passive:false —— 要在 Ctrl+滚轮 时 preventDefault，否则会连带缩放整个界面
     this.component.registerDomEvent(this.root, "wheel", (evt) => this.onWheel(evt), {
       passive: false,
@@ -477,6 +480,35 @@ export class GanttView {
       evt.preventDefault();
       this.callbacks.onOpenTask(task);
     }
+  }
+
+  /**
+   * 右键任务条：编辑任务 / 打开笔记。
+   *
+   * 为什么是右键而不是条上的按钮：任务条是一段 SVG，塞不进 HTML 按钮（塞进去也要自己
+   * 处理定位、缩放、命中）。右键菜单是 Obsidian 同类场景的通行做法（文件树、关系图），
+   * Project Master 的甘特条也是这么做的 —— 两个插件的手感因此一致。
+   * 单击仍然是「打开笔记」，与面板卡片一致。
+   */
+  private onContextMenu(evt: MouseEvent): void {
+    const task = this.taskOf(evt.target);
+    if (task === null) return;
+    evt.preventDefault();
+
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle(t("编辑任务"))
+        .setIcon("pencil")
+        .onClick(() => this.callbacks.onEditTask(task)),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle(t("打开笔记"))
+        .setIcon("file-text")
+        .onClick(() => this.callbacks.onOpenTask(task)),
+    );
+    menu.showAtMouseEvent(evt);
   }
 
   private onKeyDown(evt: KeyboardEvent): void {

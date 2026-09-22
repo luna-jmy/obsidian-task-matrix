@@ -286,7 +286,7 @@ export class TaskMatrixSettingTab extends PluginSettingTab {
         dropdown
           .addOption("eisenhower", t("矩阵"))
           .addOption("gtd", t("GTD"))
-          .addOption("list", t("列表"))
+          .addOption("list", t("笔记列表"))
           .addOption("calendar", t("日历"))
           .addOption("gantt", t("甘特"))
           .setValue(this.settings.defaultView)
@@ -451,7 +451,7 @@ export class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("按文件夹分组"))
-      .setDesc(t("列表视图里按所在文件夹划分容器。"))
+      .setDesc(t("关闭时一条笔记一个容器；开启时改为一个文件夹一个容器。任务都以清单行列出。"))
       .addToggle((toggle) =>
         toggle.setValue(this.settings.listGroupByFolder).onChange((value) => {
           this.settings.listGroupByFolder = value;
@@ -464,7 +464,7 @@ export class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("分组层级"))
-      .setDesc(t("取文件路径的前几层作为容器名。"))
+      .setDesc(t("取文件路径的前几层作为分区名。"))
       .addSlider((slider) =>
         slider
           .setLimits(1, 5, 1)

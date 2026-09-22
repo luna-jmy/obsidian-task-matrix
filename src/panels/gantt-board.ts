@@ -14,6 +14,8 @@ import { GanttBarColors, GanttGrouping } from "../types";
  */
 export interface GanttBoardCallbacks {
   onOpenTask(task: GanttTask): void;
+  /** 右键任务条 → 编辑任务 */
+  onEditTask(task: GanttTask): void;
   onToggleSection(key: string): void;
   /** Ctrl + 滚轮：direction +1 = 更细 */
   onZoomStep(direction: 1 | -1, anchor: ZoomAnchor | null): void;
@@ -45,6 +47,7 @@ export class GanttBoard {
     // 包一层箭头函数而不是直接传方法引用：直接传会丢掉 `this`（调用方那边也会丢）
     this.view = new GanttView(component, viewHost, {
       onOpenTask: (task) => callbacks.onOpenTask(task),
+      onEditTask: (task) => callbacks.onEditTask(task),
       onToggleSection: (key) => callbacks.onToggleSection(key),
       onZoom: (direction, anchor) => callbacks.onZoomStep(direction, anchor),
     });

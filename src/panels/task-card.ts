@@ -1,6 +1,6 @@
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 import { t } from "../i18n";
-import { gtdColumnOf, gtdStateLabel } from "../services/grouping-service";
+import { gtdColumnOf, gtdStateLabel, noteNameOf } from "../services/grouping-service";
 import { priorityLabel, statusLabel } from "../services/filter-service";
 import { EisenhowerQuadrant, GTDState, ParsedTask, Priority, ViewMode } from "../types";
 import { todayIso } from "../utils/date";
@@ -17,6 +17,14 @@ export interface TaskCardContext {
   /** 卡片内联 Markdown 的宿主组件，随容器重建一起卸载 */
   markdownComponent: Component;
   mode: ViewMode;
+  /**
+   * 底部元信息行里笔记的显示方式。
+   *
+   * - `path`（缺省）：完整路径 + 行号 —— GTD/矩阵，容器与笔记无关；
+   * - `name`：只显示笔记名 —— 列表按文件夹分容器时，同容器里有多篇笔记要区分；
+   * - `hidden`：不显示 —— 列表按笔记分容器时，容器标题就是笔记名，再写一遍是噪声。
+   */
+  noteMeta?: "path" | "name" | "hidden";
 }
 
 export interface TaskCardCallbacks {
@@ -49,7 +57,12 @@ export async function renderTaskCard(
   callbacks: TaskCardCallbacks,
 ): Promise<HTMLElement> {
   const card = host.createDiv({ cls: `tm-card${task.blocked ? " tm-card--blocked" : ""}` });
-  card.draggable = true;
+  /*
+   * 拖拽换容器只在有投放目标的视图里成立（GTD/矩阵）。
+   * 列表容器的落点是「笔记/文件夹」，把任务拖去另一篇笔记不是移动，是改写来源 ——
+   * 那是编辑的事，不该靠拖拽顺手指一下就发生。
+   */
+  card.draggable = context.mode !== "list";
   card.dataset.taskId = task.id;
 
   card.addEventListener("dragstart", (event) => {
@@ -84,13 +97,23 @@ export async function renderTaskCard(
   });
 
   renderChips(card, task);
-  card.createDiv({
-    cls: "tm-card__meta",
-    text: `${task.filePath}:${task.lineNumber} · ${gtdStateLabel(task.gtdState)}`,
-  });
+  card.createDiv({ cls: "tm-card__meta", text: metaText(task, context) });
 
   renderActions(card, task, context, callbacks);
   return card;
+}
+
+/** 元信息行：按容器形态决定笔记显示到什么程度（见 TaskCardContext.noteMeta） */
+function metaText(task: ParsedTask, context: TaskCardContext): string {
+  const state = gtdStateLabel(task.gtdState);
+  switch (context.noteMeta ?? "path") {
+    case "hidden":
+      return state;
+    case "name":
+      return `${noteNameOf(task.filePath)} · ${state}`;
+    default:
+      return `${task.filePath}:${task.lineNumber} · ${state}`;
+  }
 }
 
 function renderChips(card: HTMLElement, task: ParsedTask): void {
