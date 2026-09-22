@@ -1,17 +1,20 @@
 import { App, Notice } from "obsidian";
 import { t } from "../i18n";
+import { gtdRulesOf, matchesAnyTag } from "../parser/task-parser";
 import {
   compactLine,
   editTaskLine,
   EditResult,
+  getDateField,
   getIndent,
+  removeTagToken,
   setCheckboxMarker,
   setConflictTag,
   setDateField,
   setPriority,
 } from "../parser/task-writer";
 import { GTDState, EisenhowerQuadrant, ParsedTask, Priority, TaskMatrixSettings } from "../types";
-import { todayIso } from "../utils/date";
+import { isoDateOffset, todayIso } from "../utils/date";
 
 /**
  * 任务写操作。
@@ -78,11 +81,17 @@ export async function cancelTask(
   notifyEditResult(result, task, t("任务已取消"));
 }
 
-export async function startTask(app: App, task: ParsedTask): Promise<void> {
+export async function startTask(
+  app: App,
+  settings: TaskMatrixSettings,
+  task: ParsedTask,
+): Promise<void> {
   const today = todayIso();
+  // 与拖到「进行中」写同一个标签：两处入口写的不该是两个词
+  const tag = gtdRulesOf(settings).inProgressTags[0] ?? "#doing";
   const result = await editTaskLine(app, task, (line) => {
     const withStartDate = line.includes("🛫") ? line : `${line} 🛫 ${today}`;
-    return withStartDate.toLowerCase().includes("#doing") ? withStartDate : `${withStartDate} #doing`;
+    return matchesAnyTag(withStartDate, [tag]) ? withStartDate : `${withStartDate} ${tag}`;
   });
   notifyEditResult(result, task, t("任务已开始"));
 }
@@ -100,34 +109,49 @@ export async function moveTaskToGtdState(
   resolveConflict: ConflictResolver,
 ): Promise<void> {
   const today = todayIso();
+  const rules = gtdRulesOf(settings);
+  /** 两套状态标签的全集：离开一列时要把另一列的词也摘掉 */
+  const allStateTags = [...rules.waitingTags, ...rules.inProgressTags];
   const updates: Partial<Pick<ParsedTask, "startDate" | "scheduledDate" | "dueDate">> = {};
   let tagToAdd = "";
   let removeTags: string[] = [];
   let shouldComplete = false;
 
+  /*
+   * 写入的标签取自设置里的清单第一个（判定与写入共用同一份词表）：
+   * 若写入一个判定不认识的标签，任务落盘后会被立刻算到别的列去 ——
+   * 那正是「拖到收件箱却出现在进行中」这类问题的另一种形态。
+   */
   switch (newState) {
     case "Waiting":
-      tagToAdd = "#waiting";
-      removeTags = ["#doing", "#active", "#next"];
+      tagToAdd = rules.waitingTags[0] ?? "";
+      removeTags = [...rules.inProgressTags];
       break;
     case "In Progress":
-      tagToAdd = "#doing";
-      removeTags = ["#waiting", "#delegated", "#blocked"];
+      tagToAdd = rules.inProgressTags[0] ?? "";
+      removeTags = [...rules.waitingTags];
+      // 固定规则：进行中的任务本来就该有开始日，补今天
       updates.startDate = today;
       break;
     case "To be Started":
-      removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+      removeTags = [...allStateTags];
       break;
     case "Overdue":
       updates.dueDate = today;
-      removeTags = ["#waiting", "#delegated", "#blocked"];
+      removeTags = [...rules.waitingTags];
       break;
     case "Done":
       shouldComplete = true;
-      removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+      removeTags = [...allStateTags];
       break;
     case "Inbox":
-      removeTags = ["#doing", "#active", "#next", "#waiting", "#delegated", "#blocked"];
+      removeTags = [...allStateTags];
+      /*
+       * 固定规则：收件箱是「还没开工」，而「开始日已过 = 进行中」是判定链里的一条。
+       * 两者必须一起做 —— 不清掉开始日的话，拖进收件箱的任务会立刻被判定回进行中，
+       * 看起来就是「拖了没反应」。
+       */
+      updates.startDate = "";
       break;
   }
 
@@ -159,8 +183,9 @@ export async function moveTaskToGtdState(
     const indent = getIndent(line);
     let body = line.slice(indent.length);
 
+    // 整词删除：`#waiting` 不会把 `#waiting-for-review` 啃成 `-for-review`
     for (const tag of removeTags) {
-      body = body.replace(new RegExp(`\\s*${tag}\\b`, "giu"), "");
+      body = removeTagToken(body, tag);
     }
     body = setConflictTag(body, false);
 
@@ -180,37 +205,38 @@ export async function moveTaskToGtdState(
 
 export async function moveTaskToQuadrant(
   app: App,
+  settings: TaskMatrixSettings,
   task: ParsedTask,
   newQuadrant: EisenhowerQuadrant,
 ): Promise<void> {
   if (task.quadrant === newQuadrant) return;
 
   const today = todayIso();
-  let priority = Priority.None;
-  let shouldAddDueDate = false;
-
-  switch (newQuadrant) {
-    case "Q1":
-      priority = Priority.High;
-      shouldAddDueDate = true;
-      break;
-    case "Q2":
-      priority = Priority.High;
-      break;
-    case "Q3":
-      priority = Priority.Low;
-      shouldAddDueDate = true;
-      break;
-    case "Q4":
-      priority = Priority.Lowest;
-      break;
-  }
+  /*
+   * 象限由两轴决定，两轴都得按「落进去」的方向写，没有可选项：
+   * - 重要性 = 优先级标记（写哪个由设置决定，且只能选所在那一侧的档位）；
+   * - 紧急没有任务标记，只由「截止日落在不在紧急窗口内」决定 —— 所以紧急那一侧
+   *   补今天的截止日，不紧急那一侧清掉会造成紧急的日期。
+   * 少做任何一条，任务都会弹回另一格，那不是参数而是功能坏掉。
+   */
+  const priority = settings.quadrantPriorities[newQuadrant] ?? Priority.None;
+  const urgentSide = newQuadrant === "Q1" || newQuadrant === "Q3";
+  const urgentDeadline = isoDateOffset(settings.urgentDaysRange - 1);
 
   const result = await editTaskLine(app, task, (line) => {
     const indent = getIndent(line);
     let body = setPriority(line.slice(indent.length), priority);
-    // 先无条件清掉旧的截止日再加，孤儿 📅 就永远不会堆积
-    body = setDateField(body, "📅", shouldAddDueDate ? today : "");
+
+    // 以行上的当前日期为准判断，不用点击那一刻的快照
+    const currentDue = getDateField(body, "📅");
+    if (urgentSide) {
+      body = setDateField(body, "📅", today);
+    } else {
+      // 只清掉「会让它落进紧急窗口」的日期：窗口外的日期是用户自己排的，不该顺手删
+      if (currentDue !== undefined && currentDue <= urgentDeadline) {
+        body = setDateField(body, "📅", "");
+      }
+    }
     return compactLine(`${indent}${body}`);
   });
 

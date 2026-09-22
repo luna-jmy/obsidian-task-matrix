@@ -16,6 +16,21 @@ export const GANTT_GROUPINGS: readonly GanttGrouping[] = [
   "quadrant",
 ];
 
+/**
+ * 甘特这块主区里的两个页签。
+ *
+ * 时间轴与 Mermaid 预览是同一份数据的两种呈现（预览由当前时间轴的状态生成），
+ * 所以放在同一块主区里做成页签，而不是两个顶级模式 —— 后者会让人以为
+ * 「预览」是另一套数据。
+ */
+export type GanttView = "gantt" | "mermaid";
+
+export const GANTT_VIEWS: readonly GanttView[] = ["gantt", "mermaid"];
+
+export function ganttViewLabel(view: GanttView): string {
+  return view === "mermaid" ? t("Mermaid 预览") : t("甘特");
+}
+
 export function ganttGroupingLabel(grouping: GanttGrouping): string {
   switch (grouping) {
     case "folder":

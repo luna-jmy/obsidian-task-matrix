@@ -1,5 +1,5 @@
 import { App, Notice, TFile } from "obsidian";
-import { INLINE_FIELD_TOKEN_SOURCE } from "./task-parser";
+import { escapeRegExp, INLINE_FIELD_TOKEN_SOURCE } from "./task-parser";
 import { ParsedTask, Priority } from "../types";
 import { t } from "../i18n";
 
@@ -86,6 +86,25 @@ export function appendLine(content: string, line: string): string {
   if (content.length === 0) return `${line}${detectEol(content)}`;
   const separator = content.endsWith("\n") ? "" : detectEol(content);
   return `${content}${separator}${line}${detectEol(content)}`;
+}
+
+/** 读取行上某个 emoji 字段的日期值（没有则 undefined） */
+export function getDateField(line: string, emoji: string): string | undefined {
+  const pattern = new RegExp(`${emoji}\\s*(\\d{4}-\\d{2}-\\d{2})`, "u");
+  return pattern.exec(line)?.[1];
+}
+
+/**
+ * 删掉行上的某一个标签 token（连前导空白一起），其余原样保留。
+ *
+ * 整词匹配：`#waiting` 不会啃掉 `#waiting-for-review`（那是另一个标签）。
+ * 标签名里的 `#` 可省。
+ */
+export function removeTagToken(line: string, tag: string): string {
+  const name = tag.trim().replace(/^#+/u, "");
+  if (name.length === 0) return line;
+  const pattern = new RegExp(`(?:^|\\s)#${escapeRegExp(name)}(?![\\p{L}\\p{N}_/-])`, "giu");
+  return line.replace(pattern, "");
 }
 
 /**
@@ -219,13 +238,18 @@ export function replaceTaskDescription(line: string, description: string): strin
   return `${prefix}${parts.join(" ")}`;
 }
 
-/** Writes the checkbox content, e.g. ` `, `x` or `-`. */
+/**
+ * 写入复选框里的标记，例如 ` `、`x`、`-`。
+ *
+ * 复选框**本身就在 `CHECKBOX_PREFIX` 里**，所以要在这个前缀内部替换、再把前缀后面的
+ * 正文原样拼回。曾经的写法是先切掉前缀、再从剩下的正文里找复选框 —— 那里当然没有，
+ * 于是整行原样返回：完成/取消按钮点了没反应，问题就出在这儿。
+ */
 export function setCheckboxMarker(line: string, marker: string): string {
-  const prefixMatch = CHECKBOX_PREFIX.exec(line);
-  if (!prefixMatch) return line;
-  const prefix = prefixMatch[1];
-  const rest = line.slice(prefix.length).replace(/^\[[^\]]*\]/u, `[${marker}]`);
-  return `${prefix}${rest}`;
+  const match = CHECKBOX_PREFIX.exec(line);
+  if (match === null) return line;
+  const prefix = match[1];
+  return `${prefix.replace(/\[[^\]]*\]/u, `[${marker}]`)}${line.slice(prefix.length)}`;
 }
 
 export function setPriority(line: string, priority: Priority): string {

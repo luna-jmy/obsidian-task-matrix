@@ -1,8 +1,8 @@
 import { Component, Menu } from "obsidian";
 import { t } from "../i18n";
 import { GanttTask } from "../parser/gantt-parser";
-import { DEFAULT_GANTT_BAR_COLORS, GanttBarColors } from "../types";
-import { addDaysIso, weekdayOfIso } from "../utils/date";
+import { DEFAULT_GANTT_BAR_COLORS, GANTT_SIDEBAR_MIN_WIDTH, GanttBarColors } from "../types";
+import { clampSplitWidth, SplitResizer } from "../utils/split-resizer";
 import { barClass, barColorKey } from "./bar-colors";
 import { GanttModel, GanttRow } from "./gantt-model";
 import { buildTimeScale, GanttZoom, TimeScale } from "./time-scale";
@@ -37,10 +37,37 @@ const MIN_DAY_WIDTH_FOR_OFF_DAYS = 3;
 /** Ctrl+滚轮的累计阈值：触控板一次滑动会连发很多小 delta，攒够一格才走一档 */
 const WHEEL_STEP_THRESHOLD = 40;
 
+/** 拖动平移的判定阈值（px）：小于它算点击，不算拖动 */
+const PAN_THRESHOLD_PX = 4;
+
+/** 时间轴拖动平移的现场 */
+interface PanState {
+  pointerX: number;
+  pointerY: number;
+  /** 按下时的滚动位置：平移是「从这儿开始算位移」，不是在当前位置上累加 */
+  startLeft: number;
+  startTop: number;
+  /** 是否已经越过阈值（越过之后就不再当点击看） */
+  moved: boolean;
+}
+
+/**
+ * 任务列（左侧那一列）的宽度。
+ *
+ * 之前是写死的 `30%` 且 `max-width: 320px`：任务名稍长就被省略号切掉，
+ * 而甘特模式下没有别的面板可以腾地方，用户只能干看着。改成可拖。
+ * 上下限取自 types 里的那一份（设置页填数字时用的是同一套），
+ * 拖动时另按容器宽度现算上限，保证时间轴永远留得下 `TIMELINE_MIN_WIDTH`。
+ */
+const TIMELINE_MIN_WIDTH = 220;
+
+/** 宽度 CSS 变量名：拖动时改它，样式表里的默认值只是「没人拖过」时的兜底 */
+const SIDEBAR_WIDTH_VAR = "--tm-gantt-sidebar-width";
+
 export interface GanttCallbacks {
-  /** 点击任务条 / 侧栏链接 → 打开所在笔记 */
+  /** 点击任务条 / 任务列里的名字 → 打开所在笔记 */
   onOpenTask(task: GanttTask): void;
-  /** 右键任务条 → 编辑任务（打开任务编辑界面） */
+  /** 右键任务条 / 点任务列上的 ✎ → 编辑任务（打开任务编辑界面） */
   onEditTask(task: GanttTask): void;
   /** 点击分节头 → 折叠/展开（key 与面板视图共用，两边折叠状态一致） */
   onToggleSection(key: string): void;
@@ -51,6 +78,8 @@ export interface GanttCallbacks {
    *               否则缩放时视野会「跑掉」（用户正盯着的那天跳到别处）
    */
   onZoom(direction: 1 | -1, anchor: ZoomAnchor | null): void;
+  /** 任务列宽度拖完（松手 / 键盘调整）→ 由调用方落盘。拖动过程不走这里 */
+  onSidebarWidthCommit(width: number): void;
 }
 
 /** 缩放锚点：某个日期 + 它距可视时间轴左边缘的像素偏移 */
@@ -64,6 +93,16 @@ export interface GanttRenderOptions {
   anchor?: ZoomAnchor;
   /** 四类 Mermaid 状态各自的条色（来自设置） */
   colors: GanttBarColors;
+  /** 任务列宽度（px，来自设置）；上限由 CSS 与实际容器宽度兜底 */
+  sidebarWidth: number;
+  /**
+   * 非工作日色带（已合并成连续区间）。
+   *
+   * 由调用方从 `services/holiday-schedule` 算好传进来：**必须与 Mermaid 导出的
+   * excludes/includes 同源**，否则会出现「图上画成工作日、导出却是非工作日」。
+   * 视图自己不读设置，也不重算一遍日历。
+   */
+  offDays: Array<{ start: string; end: string }>;
 }
 
 /** 侧栏与时间轴共用的纵向布局条目，保证两侧行高严格对齐 */
@@ -85,6 +124,8 @@ export class GanttView {
    * 双方各自写的 flex 属性会互相覆盖。
    */
   private frame: HTMLElement | null = null;
+  /** 任务列本身（拖动分隔条时调整宽度的目标） */
+  private sidebarEl: HTMLElement | null = null;
   private sidebarHeadEl: HTMLElement | null = null;
   private sidebarBodyEl: HTMLElement | null = null;
   private timelineEl: HTMLElement | null = null;
@@ -93,8 +134,16 @@ export class GanttView {
   private scale: TimeScale | null = null;
   private layout: LayoutEntry[] = [];
   private wheelAccumulator = 0;
+  /** 拖动平移的现场（null = 没在拖） */
+  private pan: PanState | null = null;
+  /** 刚刚拖过时间轴：吞掉随之而来的那次 click（浏览器在 pointerup 后一定补发） */
+  private suppressNextClick = false;
+  /** 还欠一次「落到今天」：容器当时量不到宽度，等 ResizeObserver 报出宽度再补 */
+  private pendingScrollToToday = false;
   /** 本轮配色：跟着每次 render 一起传进来，视图自己不留一份可能过期的副本 */
   private colors: GanttBarColors = DEFAULT_GANTT_BAR_COLORS;
+  /** 本轮非工作日色带，同样每次 render 一起进来 */
+  private offDays: Array<{ start: string; end: string }> = [];
   /**
    * 任务 id → 任务。
    *
@@ -116,11 +165,14 @@ export class GanttView {
   render(model: GanttModel, zoom: GanttZoom, today: string, options: GanttRenderOptions): void {
     const { anchor, colors } = options;
     this.colors = colors;
+    this.offDays = options.offDays;
     this.scale = buildTimeScale(model.rangeStart, model.rangeEnd, zoom, { today });
     this.layout = buildLayout(model);
     this.taskIndex = new Map(model.rows.map((row) => [row.task.id, row.task]));
 
     this.ensureFrame();
+    // 宽度先按设置写一次：拖过之后这里不断被覆盖，两边不会漂移
+    this.applySidebarWidth(options.sidebarWidth);
     const head = this.sidebarHeadEl;
     const body = this.sidebarBodyEl;
     const canvas = this.canvasEl;
@@ -158,14 +210,124 @@ export class GanttView {
     this.frame = frame;
 
     const sidebar = frame.createDiv({ cls: "tm-gantt__sidebar" });
+    this.sidebarEl = sidebar;
     this.sidebarHeadEl = sidebar.createDiv({ cls: "tm-gantt__sidebar-head" });
     this.sidebarBodyEl = sidebar.createDiv({ cls: "tm-gantt__sidebar-body" });
+
+    /*
+     * 任务列与时间轴之间那道可拖的分隔条。
+     *
+     * `role="separator"` + tabindex：键盘用户能用方向键调宽度（SplitResizer 里实现），
+     * 拖拽本身是鼠标/触屏的便利，不是唯一入口。
+     */
+    const handle = frame.createDiv({
+      cls: "tm-gantt__resizer",
+      attr: {
+        role: "separator",
+        "aria-orientation": "vertical",
+        "aria-label": t("拖动调整任务列宽度"),
+        tabindex: "0",
+      },
+    });
+    new SplitResizer(this.component, {
+      target: sidebar,
+      handle,
+      min: GANTT_SIDEBAR_MIN_WIDTH,
+      // 上限现算：时间轴至少要留得下 TIMELINE_MIN_WIDTH
+      max: () => frame.getBoundingClientRect().width - TIMELINE_MIN_WIDTH,
+      onResize: (width) => this.applySidebarWidth(width),
+      onCommit: (width) => this.callbacks.onSidebarWidthCommit(width),
+    });
 
     this.timelineEl = frame.createDiv({ cls: "tm-gantt__timeline" });
     this.canvasEl = this.timelineEl.createDiv({ cls: "tm-gantt__canvas" });
 
     this.component.registerDomEvent(this.timelineEl, "scroll", () => this.syncScroll());
+    this.registerPanning(this.timelineEl);
+    this.watchTimelineWidth(this.timelineEl);
     this.frameBuilt = true;
+  }
+
+  /**
+   * 布局稳定后再补一次「落到今天」。
+   *
+   * 视图挂载与索引就绪的先后不保证：首次渲染时容器可能还没有宽度（视图在收起的侧栏里、
+   * 或页签在后台），`clientWidth` 是 0，这种时候按 0 算会把视野甩到很远的地方，只能等
+   * 它真的被量出宽度再滚。**只靠「下一次渲染」不够** —— 索引就绪之后可能根本不会再有
+   * 下一次渲染，用户就永远停在时间轴最左端（最早的日期）。
+   */
+  private watchTimelineWidth(timeline: HTMLElement): void {
+    const view = timeline.ownerDocument.defaultView;
+    // 从所属窗口取构造器：弹出窗口（popout）里 DOM 归属不能错
+    const Observer = view?.ResizeObserver;
+    if (Observer === undefined) return;
+    const observer = new Observer(() => {
+      if (!this.pendingScrollToToday || timeline.clientWidth === 0) return;
+      this.scrollToToday();
+    });
+    observer.observe(timeline);
+    this.component.register(() => observer.disconnect());
+  }
+
+  /**
+   * 时间轴的拖动平移（按住拖动，桌面端鼠标 / 触控笔）。
+   *
+   * 甘特的常态是「横向看时间」，而横向滚动条在 Obsidian 里是浮层、又细，
+   * 不好找也不好抓；按住拖动是最直接的手势。触屏不接这一套 ——
+   * 那里本来就是滑动滚动，再叠一层平移会互相打架。
+   *
+   * 拖动超过阈值就吞掉随后那次 click：否则「拖完顺手打开一篇笔记」
+   * （浏览器在 pointerup 后一定补发 click）。
+   */
+  private registerPanning(timeline: HTMLElement): void {
+    const doc = timeline.ownerDocument;
+    this.component.registerDomEvent(timeline, "pointerdown", (evt) => {
+      if (evt.button !== 0 || evt.pointerType === "touch") return;
+      // 用户自己动手了：欠着的那次「落到今天」取消，别等布局一稳就把视野抢回去
+      this.pendingScrollToToday = false;
+      this.pan = {
+        pointerX: evt.clientX,
+        pointerY: evt.clientY,
+        startLeft: timeline.scrollLeft,
+        startTop: timeline.scrollTop,
+        moved: false,
+      };
+    });
+    this.component.registerDomEvent(doc, "pointermove", (evt) => {
+      const pan = this.pan;
+      if (pan === null || this.timelineEl === null) return;
+      const dx = evt.clientX - pan.pointerX;
+      const dy = evt.clientY - pan.pointerY;
+      // 阈值：手抖一两个像素不该被当成拖动，否则单击打开笔记会时不时失灵
+      if (!pan.moved && Math.abs(dx) + Math.abs(dy) < PAN_THRESHOLD_PX) return;
+      if (!pan.moved) {
+        pan.moved = true;
+        timeline.addClass("is-panning");
+      }
+      evt.preventDefault();
+      timeline.scrollLeft = pan.startLeft - dx;
+      timeline.scrollTop = pan.startTop - dy;
+    });
+    const endPan = (): void => {
+      const pan = this.pan;
+      if (pan === null) return;
+      this.pan = null;
+      this.suppressNextClick = pan.moved;
+      timeline.removeClass("is-panning");
+    };
+    this.component.registerDomEvent(doc, "pointerup", endPan);
+    this.component.registerDomEvent(doc, "pointercancel", endPan);
+  }
+
+  /**
+   * 把宽度写进 CSS 变量（不写内联 width）。
+   *
+   * 变量只负责这一件事，样式表里 `max-width: calc(100% - …)` 之类的兜底规则照样生效 ——
+   * 窗口被拖窄后，昨天存的宽度不会把时间轴挤没。
+   */
+  private applySidebarWidth(width: number): void {
+    const value = clampSplitWidth(width, GANTT_SIDEBAR_MIN_WIDTH, Number.MAX_SAFE_INTEGER);
+    this.frame?.style.setProperty(SIDEBAR_WIDTH_VAR, `${value}px`);
   }
 
   private renderSidebar(host: HTMLElement): void {
@@ -203,6 +365,27 @@ export class GanttView {
           attr: { title: t("起止日期不完整，图上那一段是推导出来的") },
         });
       }
+
+      /*
+       * 编辑按钮。
+       *
+       * 任务条是一段 SVG，塞不进 HTML 按钮（塞进去也要自己处理定位与缩放），所以
+       * 编辑入口一直只有右键 —— 那不是「看得到」的入口。任务列里的每一行与条子严格
+       * 一一对应，把按钮放在这儿既不遮挡条子，又天然是个 `<button>`：
+       * 键盘 Tab 能到、读屏能念（右键菜单两条都做不到）。
+       *
+       * 图标沿用任务卡片上的 `✎`，两个视图的「编辑」是同一个记号。
+       */
+      const edit = rowEl.createEl("button", {
+        cls: "tm-gantt__row-edit",
+        text: "✎",
+        attr: {
+          type: "button",
+          title: t("编辑任务"),
+          "aria-label": `${t("编辑任务")}：${row.task.name}`,
+        },
+      });
+      edit.dataset.editTask = row.task.id;
     }
   }
 
@@ -273,14 +456,14 @@ export class GanttView {
   }
 
   /**
-   * 周末底带：画在所有内容之下，只做背景提示。
+   * 非工作日底带：画在所有内容之下，只做背景提示。
    *
-   * 只画周末，没有节假日 —— 任务矩阵没有节假日日历这层配置，凭空造一个
-   * 工作日口径反而会让人对不上账。
+   * 内容 = 周末（开关打开时）∪ 法定节假日 − 调休补班日，由调用方按同一份日历算好
+   * （见 GanttRenderOptions.offDays）。视图这里只负责按日期画矩形。
    */
   private renderOffDays(host: SVGElement, scale: TimeScale, height: number): void {
     if (scale.dayWidth < MIN_DAY_WIDTH_FOR_OFF_DAYS) return;
-    for (const band of weekendBands(scale.startIso, scale.endIso)) {
+    for (const band of this.offDays) {
       const x = scale.xForDate(band.start);
       const rect = this.svg("rect");
       rect.setAttribute("class", "tm-gantt__off-day");
@@ -332,12 +515,24 @@ export class GanttView {
     );
 
     const title = this.svg("title");
-    title.textContent = `${row.task.name}\n${row.start} → ${row.end}\n${t("{count} 天", { count: row.calendarDays })}`;
+    /*
+     * 悬停把两种口径都报出来：条上的文字是压缩过的（`45 工作日`），这里给全。
+     * 设置为「不显示」时连天数都不提 —— 那正是用户想要的「别标天数」。
+     */
+    title.textContent =
+      row.durationLabel === null
+        ? `${row.task.name}\n${row.start} → ${row.end}`
+        : `${row.task.name}\n${row.start} → ${row.end}\n` +
+          t("自然日 {calendar} 天 · 工作日 {workday} 天", {
+            calendar: row.calendarDays,
+            workday: row.workdayDays,
+          });
     bar.appendChild(title);
     host.appendChild(bar);
 
-    if (!row.task.milestone) {
-      this.renderDurationLabel(host, `${row.calendarDays}`, x, width, barY, barHeight);
+    // 里程碑是「一个时刻」，没有跨度可言；口径设为「不显示」时整块都不画
+    if (!row.task.milestone && row.durationLabel !== null) {
+      this.renderDurationLabel(host, row.durationLabel, x, width, barY, barHeight);
     }
   }
 
@@ -465,6 +660,12 @@ export class GanttView {
   }
 
   private onClick(evt: MouseEvent): void {
+    // 刚拖过时间轴：这一下是拖动的余波，不当点击（否则拖完顺手打开一篇笔记）
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
+
     const el = this.elementOf(evt.target);
     if (el === null) return;
 
@@ -472,6 +673,15 @@ export class GanttView {
     if (toggle !== null && toggle !== undefined) {
       evt.preventDefault();
       this.callbacks.onToggleSection(toggle);
+      return;
+    }
+
+    // 编辑按钮要排在「打开笔记」前面：它就在任务行里，会先命中行的 data-task-id
+    const editId = el.closest("[data-edit-task]")?.getAttribute("data-edit-task");
+    if (editId !== null && editId !== undefined) {
+      evt.preventDefault();
+      const editable = this.taskIndex.get(editId);
+      if (editable !== undefined) this.callbacks.onEditTask(editable);
       return;
     }
 
@@ -485,10 +695,10 @@ export class GanttView {
   /**
    * 右键任务条：编辑任务 / 打开笔记。
    *
-   * 为什么是右键而不是条上的按钮：任务条是一段 SVG，塞不进 HTML 按钮（塞进去也要自己
-   * 处理定位、缩放、命中）。右键菜单是 Obsidian 同类场景的通行做法（文件树、关系图），
-   * Project Master 的甘特条也是这么做的 —— 两个插件的手感因此一致。
-   * 单击仍然是「打开笔记」，与面板卡片一致。
+   * 任务条本身是一段 SVG，塞不进 HTML 按钮（塞进去也要自己处理定位、缩放、命中），
+   * 所以条子上的等价入口是右键菜单 —— Obsidian 同类场景的通行做法（文件树、关系图），
+   * Project Master 的甘特条也是这么做的。**但右键不能是唯一入口**：任务列里的行与条子
+   * 一一对应，编辑按钮放在那儿（见 renderSidebar）。单击仍然是「打开笔记」，与卡片一致。
    */
   private onContextMenu(evt: MouseEvent): void {
     const task = this.taskOf(evt.target);
@@ -512,6 +722,11 @@ export class GanttView {
   }
 
   private onKeyDown(evt: KeyboardEvent): void {
+    const el = this.elementOf(evt.target);
+    // 行内按钮（✎）有自己的键盘行为：回车/空格该走它自己的 click，
+    // 不能被这里抢成「打开笔记」（两种情况同时发生过一次就够糟糕了）
+    if (el !== null && el.closest("[data-edit-task]") !== null) return;
+
     const task = this.taskOf(evt.target);
     if (task === null) return;
     // 键盘等价入口：不依赖鼠标（可访问性）
@@ -555,14 +770,20 @@ export class GanttView {
   /**
    * 打开时把视野落到今天：甘特的常态就是盯着最近这几周。
    *
-   * @returns 是否真的滚了。容器还隐藏着（例如视图在收起的侧栏里）时 clientWidth 是 0，
-   *          这时按 0 算会把视野甩到很远的地方；宁可这次不滚，等下一次渲染再来。
+   * @returns 是否真的滚了。容器还量不到宽度时（视图在收起的侧栏里、页签在后台）
+   *          `clientWidth` 是 0，按 0 算会把视野甩到很远的地方；这时记下「还欠一次
+   *          定位」，等 ResizeObserver 报出真实宽度再补（见 watchTimelineWidth）。
    */
   scrollToToday(): boolean {
     const scale = this.scale;
     const timeline = this.timelineEl;
     if (scale === null || timeline === null || scale.todayX === null) return false;
-    if (timeline.clientWidth === 0) return false;
+    if (timeline.clientWidth === 0) {
+      this.pendingScrollToToday = true;
+      return false;
+    }
+    this.pendingScrollToToday = false;
+    // 今天落在可视区左侧 1/3 处：前面留一点上下文，后面给接下来的日子
     timeline.scrollLeft = Math.max(0, scale.todayX - timeline.clientWidth / 3);
     return true;
   }
@@ -658,27 +879,3 @@ function summaryLabel(model: GanttModel): string {
   return `${base} · ${t("{count} 个没有日期", { count: model.skipped.length })}`;
 }
 
-/**
- * 区间内的周末，合并成连续色带。
- *
- * 合并是必须的：不合并的话一年就要插 104 个矩形，而相邻的周六周日本来就该
- * 连成一条；合并后一年只剩 52 条。
- */
-function weekendBands(startIso: string, endIso: string): Array<{ start: string; end: string }> {
-  const bands: Array<{ start: string; end: string }> = [];
-  let current: { start: string; end: string } | null = null;
-
-  for (let cursor = startIso; cursor <= endIso; cursor = addDaysIso(cursor, 1)) {
-    const weekday = weekdayOfIso(cursor);
-    const isWeekend = weekday === 0 || weekday === 6;
-    if (isWeekend) {
-      if (current === null) current = { start: cursor, end: cursor };
-      else current.end = cursor;
-    } else if (current !== null) {
-      bands.push(current);
-      current = null;
-    }
-  }
-  if (current !== null) bands.push(current);
-  return bands;
-}

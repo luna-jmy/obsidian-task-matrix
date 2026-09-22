@@ -9,6 +9,8 @@ import {
   TaskMatrixSettings,
   ViewMode,
 } from "../types";
+import { DEFAULT_GTD_RULES, GtdRules, gtdRulesOf, matchesAnyTag } from "../parser/task-parser";
+import { scanFolderOf } from "./task-index";
 import { todayIso } from "../utils/date";
 
 /**
@@ -102,7 +104,7 @@ export function buildPanels(
 ): GroupingResult {
   switch (mode) {
     case "gtd":
-      return buildGtdPanels(tasks);
+      return buildGtdPanels(tasks, gtdRulesOf(settings));
     case "eisenhower":
       return buildQuadrantPanels(tasks);
     case "calendar":
@@ -135,7 +137,7 @@ function buildListPanels(
 
   const byFolder = new Map<string, ParsedTask[]>();
   for (const task of tasks) {
-    const folder = folderPathOf(task.filePath, settings.listGroupByFolderDepth);
+    const folder = groupFolderOf(task.filePath, settings);
     const bucket = byFolder.get(folder);
     if (bucket === undefined) byFolder.set(folder, [task]);
     else bucket.push(task);
@@ -175,12 +177,21 @@ function buildNoteContainers(tasks: readonly ParsedTask[]): GroupingResult {
   return { grid: "flow", panels };
 }
 
-/** 取文件路径的前 depth 层文件夹；depth 为 0 或文件在根目录时返回空串 */
-export function folderPathOf(filePath: string, depth: number): string {
-  const parts = filePath.split("/");
-  parts.pop();
-  if (parts.length === 0) return "";
-  return parts.slice(0, Math.max(depth, 1)).join("/");
+/**
+ * 任务按文件夹分组时的分组名（笔记列表的分区、甘特「按文件夹分组」的分节共用）。
+ *
+ * 优先返回设置里**扫描目录的原文**：用户是按那几个目录组织资料的，分组标题就该是
+ * 那几个目录（`300 Resources/360 WorkMemos`），而不是被截断的一级名 ——
+ * 截断后「300 Resources」下所有子目录会挤成一格，看不出东西在哪。
+ *
+ * 没配扫描目录（扫全库）时退回笔记自己的文件夹路径，同样不截断：
+ * 根目录下的笔记返回空串。
+ */
+export function groupFolderOf(filePath: string, settings: TaskMatrixSettings): string {
+  const scanned = scanFolderOf(filePath, settings.scanFolders);
+  if (scanned !== null) return scanned;
+  const slash = filePath.lastIndexOf("/");
+  return slash === -1 ? "" : filePath.slice(0, slash);
 }
 
 // ────────────────────────────── GTD ──────────────────────────────
@@ -188,27 +199,33 @@ export function folderPathOf(filePath: string, depth: number): string {
 /**
  * 任务的 GTD 落列。
  *
- * 与原实现同一口径：「待开始」并进收件箱；「逾期」按有没有真的开工
- * （有开始日或带着 #doing/#active/#next）决定进进行中还是回收到收件箱。
+ * 「待开始」并进收件箱；「逾期」按有没有真的开工（有开始日或带着进行中标签）
+ * 决定进进行中还是回收到收件箱。判定用的标签清单来自设置（见 gtdRulesOf）。
  */
-export function gtdColumnOf(task: ParsedTask, today: string = todayIso()): GTDState {
+export function gtdColumnOf(
+  task: ParsedTask,
+  today: string = todayIso(),
+  rules: GtdRules = DEFAULT_GTD_RULES,
+): GTDState {
   if (task.gtdState === "To be Started") return "Inbox";
   if (task.gtdState !== "Overdue") return task.gtdState;
 
   const description = task.description.toLowerCase();
-  const hasActiveTag = description.includes("#doing") || description.includes("#active") || description.includes("#next");
+  const hasActiveTag = matchesAnyTag(description, rules.inProgressTags);
   const hasStarted = Boolean(task.startDate && task.startDate <= today);
   return hasStarted || hasActiveTag ? "In Progress" : "Inbox";
 }
 
-function buildGtdPanels(tasks: readonly ParsedTask[]): GroupingResult {
+function buildGtdPanels(tasks: readonly ParsedTask[], rules: GtdRules): GroupingResult {
   const today = todayIso();
   const panels = GTD_COLUMNS.map((state): PanelSpec => {
     const columnTasks = tasks.filter((task) => {
       if (task.displayStatus === "cancelled") return false;
       // 「已完成」列只认勾选完成，不认取消 —— 取消的任务不进任何一列
-      if (state === "Done") return task.displayStatus === "completed" && gtdColumnOf(task, today) === state;
-      return task.displayStatus !== "completed" && gtdColumnOf(task, today) === state;
+      if (state === "Done") {
+        return task.displayStatus === "completed" && gtdColumnOf(task, today, rules) === state;
+      }
+      return task.displayStatus !== "completed" && gtdColumnOf(task, today, rules) === state;
     });
 
     return {

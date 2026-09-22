@@ -193,6 +193,31 @@ export const EN: Record<string, string> = {
     "Some template commands did not run. The note was created from the template as written; run the template command again later if needed.",
   "无法创建目标笔记：{path}": "Could not create the target note: {path}",
 
+  // ── filter bar: collapse ─────────────────────────────────────────
+  "收起筛选": "Hide filters",
+  "展开筛选": "Show filters",
+
+  // ── Gantt: jump to today ─────────────────────────────────────────
+  "定位到今天": "Jump to today",
+  "把时间轴复位到今天的位置": "Scroll the timeline back to today",
+
+  // ── Gantt bar duration ───────────────────────────────────────────
+  "条上显示天数": "Days on bars",
+  "在甘特条上标出天数。「工作日」= 自然日 − 周末（需在 Mermaid 预览页签打开「排除周末」）− 法定节假日排期 + 补班日；与导出的 excludes/includes、图上的灰色列是同一份口径。":
+    "Label each bar with its length. Workdays = calendar days − weekends (turn on Exclude weekends on the Mermaid preview tab) − public holidays + make-up workdays, the same calendar behind the exported excludes/includes and the shaded columns.",
+  "不显示": "Do not show",
+  "自然日（含首尾）": "Calendar days (inclusive)",
+  "工作日": "Workdays",
+  "{count} 工作日": "{count} workdays",
+  "自然日 {calendar} 天 · 工作日 {workday} 天": "{calendar} calendar days · {workday} workdays",
+  "条子太窄放不下时会挪到条子右侧显示。": "When a bar is too narrow, the label moves to its right.",
+
+  // ── Gantt task column ────────────────────────────────────────────
+  "任务列宽度": "Task column width",
+  "甘特左侧任务列的宽度（px）。也可以直接在甘特里拖动任务列与时间轴之间的分隔条。":
+    "Width of the Gantt's task column in pixels. You can also drag the divider between the task column and the timeline.",
+  "拖动调整任务列宽度": "Drag to resize the task column",
+
   // ── settings: gantt colours ──────────────────────────────────────
   "甘特视图": "Gantt view",
   "甘特条配色": "Bar colours",
@@ -216,17 +241,89 @@ export const EN: Record<string, string> = {
   "紫": "Purple",
   "粉": "Pink",
 
+  // ── Mermaid preview: options and image export ───────────────────
+  "排除日期": "Excluded dates",
+  "调休上班": "Make-up workdays",
+  "把周六周日标成非工作日：自绘甘特图与导出的图都会把它们画成灰色列。注意：任务条长度始终按起止日期算（自然日），不会因为跳过周末而缩短。":
+    "Mark Saturdays and Sundays as non-working days: both the built-in Gantt and the exported diagram shade them. Note that bar lengths always follow the start and end dates (calendar days) and are never shortened by skipping weekends.",
+  "临时补充的排除日期。支持区间 2026-10-01~2026-10-07（也认「至」），多条用逗号分隔；这些日子在图上会画成灰色的非工作日。成规模的法定节假日建议在设置里按年份维护「法定节假日排期」，导出时会自动套用。":
+    "Extra excluded dates. Ranges work too (2026-10-01~2026-10-07, and 至 as well), separated by commas; these days are shaded as non-working days. For a full year of public holidays, keep the per-year schedule in the settings instead — it is applied automatically.",
+  "临时补充的调休补班日。写法同上；这些日子强制算工作日（优先级高于排除），用于把「周六但要上班」从灰色里捞回来。年度排期里的补班日会自动套用，这里只填例外。":
+    "Extra make-up workdays. Same syntax; these days count as working days (they win over exclusions), which pulls a working Saturday out of the shading. Make-up days from the yearly schedule apply automatically — only add exceptions here.",
+  "导出 SVG": "Export SVG",
+  "导出 JPG": "Export JPG",
+  "把预览里的图存成矢量图（.svg）：放大不糊，也能再拿去别的工具里改。":
+    "Save the preview as a vector image (.svg): stays sharp at any size and can be edited in other tools.",
+  "把预览里的图存成位图（.jpg，2 倍分辨率、底色跟随主题）：适合贴进聊天或文档。":
+    "Save the preview as a bitmap (.jpg at 2x, background follows the theme): handy for chat or documents.",
+  "预览里还没有可导出的图，等它渲染完再点一次": "The preview has no diagram to export yet — wait for it to render and try again",
+  "导出图片失败：{message}": "Image export failed: {message}",
+  "已导出并复制路径：{path}": "Exported and copied the path: {path}",
+  "已导出 {path}（复制路径失败，请到附件目录查找）": "Exported {path} (copying the path failed; look for it in your attachment folder)",
+  "甘特图": "Gantt",
+
+  // ── settings: public holiday schedule ────────────────────────────
+  "法定节假日排期": "Public holiday schedule",
+  "按年份维护「放假」与「调休上班」。导出时按甘特图跨到的年份自动套用，不必在图上的面板里手打每一天。":
+    "Keep holidays and make-up workdays per year. Whatever the Gantt spans is applied automatically, so there is no need to type each day into the panel.",
+  "还没有排期": "No schedule yet",
+  "点下面的按钮添加一个年度，之后按国务院公告的区间填即可。":
+    "Add a year with the button below, then fill in the ranges as they are announced.",
+  "{year} · 放假": "{year} · Holidays",
+  "区间写成 10-01~10-07（`~` 与「至」都认）；跨年区间如 12-30~01-02 自动算到次年。":
+    "Ranges look like 10-01~10-07 (`~` or 至 both work); a range that crosses the new year, such as 12-30~01-02, rolls into the next year automatically.",
+  "{year} · 调休上班": "{year} · Make-up workdays",
+  "这些日子强制算工作日（优先级高于放假），用于把「周六但要上班」从灰色非工作日里捞回来。":
+    "These days always count as working days (they win over holidays), which pulls a working Saturday out of the shading.",
+  "删除该年度排期": "Delete this year",
+  "新增年度": "Add a year",
+  "每年公告出来后，添一个年度再填区间即可。": "Once a year is announced, add it and fill in the ranges.",
+  "添加年份": "Add year",
+  "排除日期与调休上班": "Excluded dates and make-up workdays",
+  "同样在「Mermaid 预览」页签上临时填写（写完整日期，可跨年度）。成规模的法定节假日请到「法定节假日排期」一页按年份维护。":
+    "Also filled in on the Mermaid preview tab, as full dates, and they may span years. For a whole year of public holidays use the Public holiday schedule tab instead.",
+
+  // ── Mermaid preview and export ───────────────────────────────────
+  "Mermaid 预览": "Mermaid preview",
+  "Mermaid 代码已复制到剪贴板": "Mermaid code copied to the clipboard",
+  "复制失败，请重试": "Copy failed, please try again",
+  "已更新 {path} 的落点标记之间": "Updated the marked block in {path}",
+  "没找到落点标记，已追加到 {path} 文末": "No markers found; appended to the end of {path}",
+  "Mermaid 的 gantt 语法不支持逐任务配色：设置里的四种条色只影响自绘甘特图，导出时会忽略。":
+    "Mermaid's gantt syntax has no per-task colours: the four bar colours in the settings only affect the built-in Gantt and are ignored on export.",
+  "Mermaid 预览渲染失败，导出的代码仍可用": "The Mermaid preview failed to render; the exported code still works",
+  "今天线": "Today line",
+  "导出的代码里保留今天的竖线。": "Keep today's vertical line in the exported code.",
+  "导出代码": "Export code",
+  "复制当前预览的 Mermaid 代码": "Copy the Mermaid code behind the current preview",
+  "写入笔记": "Write to note",
+  "替换指定笔记里落点标记之间的内容（标记可在设置里改）":
+    "Replace the block between the markers in a note you pick (the markers are configurable)",
+  "排除周末": "Exclude weekends",
+  "没有可渲染的内容": "Nothing to render",
+  "预览渲染失败：{message}": "Preview failed to render: {message}",
+  "选择要写入 Mermaid 的笔记（其标记块内内容会被替换）":
+    "Pick the note to write into (the block between its markers is replaced)",
+  "Mermaid 导出": "Mermaid export",
+  "图标题": "Diagram title",
+  "导出代码里的 title 行。留空则不输出这一行。": "The title line of the exported code. Leave empty to omit it.",
+  "落点标记": "Markers",
+  "「写入笔记」只替换这两个标记之间的内容，标记之外一个字不动；笔记里还没有标记时，整块追加到文末。":
+    "Write to note replaces only what sits between these two markers and touches nothing else; when the note has no markers yet, the whole block is appended at the end.",
+  "今天线与排除周末": "Today line and weekends",
+  "在甘特模式的「Mermaid 预览」页签上切换，改动会立即重算预览并保存在此。":
+    "Toggled on the Mermaid preview tab in Gantt mode; changes recompute the preview right away and are saved here.",
+
   // ── task editor ──────────────────────────────────────────────────
   "编辑任务": "Edit task",
   "打开笔记": "Open note",
+  "任务在笔记里只占一行，换行会被并成一个空格。标签直接写在描述里（如 #工作），也可以点下面的标签加入。":
+    "A task is a single line in the note, so line breaks are joined into one space. Tags live straight in the description (e.g. #work), or click one below to add it.",
   "标签": "Tags",
-  "多个标签用逗号分隔；也可以点下面的已有标签。":
-    "Separate tags with commas, or click one of the existing tags below.",
-  "多个值用逗号分隔": "Separate values with commas",
-  "点一下追加": "Click to add",
-  "点一下移除": "Click to remove",
-  "任务在笔记里只占一行，换行会被并成一个空格。":
-    "A task is a single line in the note, so line breaks are joined into one space.",
+  "点一下加到描述里": "Click to add it to the description",
+  "点一下从描述里去掉": "Click to remove it from the description",
+  "还没有用过的标签，直接在描述里写 #标签 即可。":
+    "No tags used yet — just type #tag in the description.",
   "描述": "Description",
   "任务描述": "Task description",
   "任务 ID": "Task ID",
@@ -267,11 +364,11 @@ export const EN: Record<string, string> = {
   "自动跟随 Obsidian 的界面语言。": "Follow the Obsidian interface language.",
   "扫描范围": "Scanning",
   "扫描目录": "Scan folders",
-  "用英文逗号分隔多个目录。留空表示扫描整个仓库（大库会很慢）。当前默认：{folders}":
-    "Comma separated folders to scan. Leave empty to scan the whole vault (slow on large vaults). Current default: {folders}",
+  "逗号分隔多个目录，支持多级路径（例如 300 Resources/360 WorkMemos）。留空表示扫描整个仓库（大库会很慢）。当前默认：{folders}":
+    "Comma separated folders; multi-level paths are fine (for example 300 Resources/360 WorkMemos). Leave empty to scan the whole vault (slow on large vaults). Current default: {folders}",
   "排除目录": "Excluded folders",
-  "用英文逗号分隔多个目录，其下的任务不参与统计。":
-    "Comma separated folders whose tasks are left out of every view.",
+  "逗号分隔多个目录，其下的任务不参与统计；同样支持多级路径。":
+    "Comma separated folders whose tasks are left out of every view; multi-level paths work here too.",
 
   // ── settings: markers ────────────────────────────────────────────
   "任务标记": "Task markers",
@@ -296,8 +393,6 @@ export const EN: Record<string, string> = {
   "新标签页": "New tab",
   "面板打开在右侧边栏还是新标签页。": "Open the panel in the right sidebar or a new tab.",
   "紧急天数": "Urgent window",
-  "距今多少天内有截止日的任务算紧急，矩阵据此划入紧急象限。":
-    "How many days ahead counts as urgent. Tasks due within it land in the urgent quadrants.",
   "截止日显示范围": "Due date range",
   "只铺出这么多月内到期的任务，逾期与已完成的始终显示。0 表示不限制。":
     "Only show tasks due within this many months. Overdue and completed tasks always show. 0 means no limit.",
@@ -323,11 +418,43 @@ export const EN: Record<string, string> = {
   "列表视图": "List view",
   "按文件夹分组": "Group by folder",
   "按笔记分组": "Group by note",
-  "关闭时一条笔记一个容器；开启时改为一个文件夹一个容器。任务都以清单行列出。":
-    "Off: one container per note. On: one container per folder. Either way the tasks are listed as compact rows.",
-  "分组层级": "Folder depth",
-  "取文件路径的前几层作为分区名。": "How many leading folders to use as the section name.",
+  "关闭时一条笔记一个容器；开启时笔记容器归入可折叠的文件夹分区。":
+    "Off: one container per note. On: those containers sit under collapsible folder sections.",
+  "分区名": "Section names",
+  "用扫描目录里的完整路径作为分区名（例如 300 Resources/360 WorkMemos）；未配置扫描目录时用笔记自己的文件夹路径。":
+    "Sections are named after the full path of the scan folder (for example 300 Resources/360 WorkMemos); without scan folders, each note's own folder is used.",
   "归档, 模板": "Archive, Templates",
+
+  // ── settings: GTD and matrix ─────────────────────────────────────
+  "GTD 与矩阵": "GTD and matrix",
+  "分开两块：分类依据决定任务落在哪一列，拖拽决定拖过去往笔记里写什么。":
+    "Two parts: classification decides which column a task belongs to, dragging decides what a drop writes into the note.",
+  "分类依据": "Classification",
+  "这两份标签清单与紧急窗口是唯二可调的；判定顺序在下面写着。":
+    "These two tag lists and the urgent window are the only settings here; the order of the rules is spelled out below.",
+  "等待中标签": "Waiting tags",
+  "带这些标签的任务落在「等待中」。逗号分隔，# 可省略。":
+    "Tasks carrying these tags fall in Waiting. Comma separated; the # is optional.",
+  "进行中标签": "In-progress tags",
+  "带这些标签的任务落在「进行中」。": "Tasks carrying these tags fall in In progress.",
+  "距今多少天内有截止日的任务算紧急，矩阵据此划到紧急那一侧。":
+    "How many days ahead counts as urgent; the matrix uses this to pick the urgent side.",
+  "判定顺序": "Order of the rules",
+  "依赖未完成或带等待中标签 → 等待中；带进行中标签 → 进行中；截止日已过 → 逾期；开始日已过 → 进行中；开始日在未来 → 待开始（并入收件箱）；其余 → 收件箱。":
+    "Blocked by a dependency or carrying a waiting tag → Waiting; an in-progress tag → In progress; due date in the past → Overdue; start date in the past → In progress; start date in the future → To be started (folded into Inbox); anything else → Inbox.",
+  "拖拽": "Dragging",
+  "关掉后下面的项都不生效，也就一并禁用。":
+    "With this off, the settings below have no effect and are disabled.",
+  "启用拖拽": "Enable dragging",
+  "关闭后 GTD/矩阵容器不再接受拖入、卡片也不可拖动；卡片上的快捷移动按钮与甘特右键菜单不受影响。":
+    "Turn this off and the GTD/Matrix containers stop accepting drops and cards can no longer be dragged; the quick-move buttons on cards and the Gantt context menu keep working.",
+  "拖拽写入什么": "What a drop writes",
+  "拖到某一列会写入该列的状态标签（取清单里的第一个）并摘掉另一列的标签，同时把开始日调到与那一列一致 —— 拖到「进行中」补今天的开始日，拖到「收件箱」清掉开始日（开始日留在过去会被判定回进行中）。拖到象限写优先级，并让截止日与紧急那一侧一致：Q1/Q3 补今天的截止日，Q2/Q4 清掉会造成紧急的日期。":
+    "A drop writes the target column's status tag (the first entry of its list) and removes the other column's tags, then adjusts the start date to match the column — In progress gets a start date of today, Inbox has it cleared (a start date left in the past would send the task back to In progress). Dropping into a quadrant writes its priority and brings the due date in line with the urgent side: Q1/Q3 get today's date, Q2/Q4 lose a date that would make them urgent.",
+  "拖到这一象限写入的优先级。重要那一侧只能选高及以上。":
+    "The priority written when a task is dragged into this quadrant. On the important side, only high and above can be picked.",
+  "拖到这一象限写入的优先级。不重要那一侧只能选中及以下（可留空不写标记）。":
+    "The priority written when a task is dragged into this quadrant. On the not-important side, only medium and below can be picked (or nothing at all).",
 
   // ── settings: calendar ───────────────────────────────────────────
   "日历视图": "Calendar view",

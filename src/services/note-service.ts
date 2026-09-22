@@ -84,6 +84,45 @@ function templateCandidates(raw: string): string[] {
   return path.toLowerCase().endsWith(".md") ? [path] : [path, `${path}.md`];
 }
 
+export type MarkedBlockResult = "updated" | "appended" | "missing";
+
+/**
+ * 把一段内容写进笔记的「落点标记之间」。
+ *
+ * - 两个标记都在 → 只替换标记之间的部分，**标记之外一个字不动**：用户在同一篇笔记里
+ *   手写的其他内容不会被覆盖，这是「写入笔记」这个出口敢用的前提；
+ * - 标记缺失（或设置里被清空）→ 整块追加到文末，而不是拒绝写入：用户第一次用时
+ *   笔记里当然还没有标记；
+ * - 走 `vault.process`：从选中目标到落盘之间笔记可能已被别的插件改过，
+ *   拿旧快照整篇覆盖会吃掉别人的改动。
+ */
+export async function upsertMarkedBlock(
+  app: App,
+  file: TFile,
+  options: { start: string; end: string; block: string },
+): Promise<MarkedBlockResult> {
+  const { start, end, block } = options;
+  const target = app.vault.getAbstractFileByPath(file.path);
+  if (!(target instanceof TFile)) return "missing";
+
+  let result: MarkedBlockResult = "missing";
+  await app.vault.process(target, (content) => {
+    result = "appended";
+    const startIndex = start.length > 0 ? content.indexOf(start) : -1;
+    const endIndex = startIndex === -1 ? -1 : content.indexOf(end, startIndex + start.length);
+    if (startIndex !== -1 && endIndex !== -1) {
+      result = "updated";
+      return `${content.slice(0, startIndex)}${block}${content.slice(endIndex + end.length)}`;
+    }
+
+    // 追加：补够空行但不无限堆叠。空笔记不补前导换行，否则文首凭空多一个空行
+    const prefix =
+      content.length === 0 ? "" : content.endsWith("\n\n") ? "" : content.endsWith("\n") ? "\n" : "\n\n";
+    return `${content}${prefix}${block}\n`;
+  });
+  return result;
+}
+
 export function findTemplate(app: App, raw: string): TFile | null {
   for (const candidate of templateCandidates(raw)) {
     const file = app.vault.getAbstractFileByPath(candidate);

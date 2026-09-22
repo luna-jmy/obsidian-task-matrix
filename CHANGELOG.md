@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0
+- New: **Hide filters** in the toolbar collapses the filter area so more tasks fit on screen (expanded by default, and it is session state — reopening the view shows it again; the filters themselves are never reset)
+- Fix: The days label on Gantt bars looked doubled — its halo was drawn in `--background-primary`, which is white in a light theme, so white text got a white outline that smeared the strokes. It now uses a translucent black halo and a semibold weight, the same combination Project Master uses
+- Fix: The exported Mermaid wrote `excludes weekends` on a line of its own, which mermaid silently drops as soon as another `excludes` line follows (last one wins) — weekend marking and public holidays now share a single `excludes weekends,<dates>` line
+- New: **Jump to today** in the Gantt toolbar scrolls the timeline back to today after panning or zooming, without re-rendering (it also works from the Mermaid preview tab)
+- New: **Days on bars** setting with three modes — do not show, calendar days (inclusive), or workdays, where workdays reuse the same calendar as the shaded columns and the exported `excludes` / `includes` (weekends when enabled, public holidays, make-up workdays)
+- Fix: The Gantt timeline could open at the earliest date and refuse to scroll — the tab shell allowed the wide canvas to stretch the whole main area, so the scroll container's visible width equalled its content. It now shrinks properly, lands on today as soon as its width is known, and the timeline can be panned by dragging it
+- New: Tag chips under the description — click one to write the tag into the description, click it again to take it out. Candidates come from the tags actually used in your vault (most used first, plus this task's own), so tags rarely need typing
+- New: **Export SVG** and **Export JPG** on the Mermaid preview tab save the diagram itself (vector, or a 2x bitmap with a theme-aware background) into your Obsidian attachment folder, with a timestamped name, so overlapping exports never overwrite each other; the path is copied to the clipboard
+- New: **Public holiday schedule** settings page — keep holidays and make-up workdays per year (`10-01~10-07`, ranges may cross into the next year). Whatever the Gantt spans is applied automatically, and the shaded columns in the timeline and the exported `excludes` / `includes` lines come from the same source, so a working Saturday is never shaded
+- New: The Mermaid preview adds two date fields for one-off holidays and make-up workdays, and the settings tab shows where they live
+- Change: Tags are edited right in the description, where they already live in the note — the separate tags field (and its suggestion list) is gone. The tag set is still pulled out of the text on save and rewritten only when it changed
+- New: The Gantt's task column is resizable — drag the divider, use the arrow keys on it, or set the width in the settings; the width is remembered and never squeezes the timeline out of view
+- New: Every Gantt task row has a `✎` button, so editing does not require right-clicking a bar (which still works, along with keyboard access to the button)
+- New: The Gantt area has a **Mermaid preview** tab next to the timeline. The diagram is generated from the current Gantt state (filters, grouping and collapsed sections included), so it cannot drift from what you see: there is no code box to edit, and collapsed sections are excluded
+- New: **Export code** copies the Mermaid to the clipboard; **Write to note** replaces the block between the markers in a note you pick (configurable, `%% task-matrix:start %%` / `%% task-matrix:end %%` by default), appending it when the note has no markers yet. Today line and weekend marking are toggled on the preview tab and saved with the settings
+- New: Mermaid export settings — diagram title and the two markers used by **Write to note**
+- Fix: The complete and cancel buttons on a task card did nothing — the checkbox writer looked for the checkbox after already consuming it, so the line came back unchanged
+- Fix: Dragging a task to Inbox could leave it in In progress: a start date in the past still counts as "started", so the drop clears it (configurable)
+- Fix: Dragging to Q2/Q4 deleted any due date; now only a date that would make the task land in an urgent quadrant is cleared
+- Fix: Scan folders accept multi-level paths (`300 Resources/360 WorkMemos`), full-width commas or semicolons between entries, and are matched case-insensitively
+- Fix: Tag matching is whole-token, so `#waiting` no longer matches `#waiting-for-review`
+- New: **GTD and matrix** settings page, split into classification (which column or quadrant a task falls in) and dragging (what a drop writes): the tag lists, the start-date rules, urgent days, and each quadrant's importance and urgency
+- New: One master switch for dragging — turning it off stops containers accepting drops and cards being draggable, without touching the quick-move buttons or the Gantt context menu
+- Change: Urgent days moved from View preferences to the GTD and matrix page, next to the quadrant rules it feeds
+- Change: The GTD/matrix start-date switches and the quadrant date dropdown are gone — they were rules, not parameters. Dragging to In progress always adds a start date of today, dragging to Inbox always clears it, and the settings page states both rules instead of offering combinations that break classification or dragging
+- Change: Quadrant importance dropdowns only offer their own side's levels (high and above for Q1/Q2, medium and below for Q3/Q4), so a drop can never push a task into the other half
+- Change: Drag-related settings are disabled while dragging is switched off
+- Change: Folder grouping (the Note list's sections and the Gantt's folder sections) is named after the full path of your scan folders instead of a truncated top-level folder; the folder-depth setting is gone, and everything below a scan folder stays in its section
+
 ## 1.0.0
 - New: Interface rebuilt to match the Project Master layout — one toolbar row, one filter and search row, then the panel grid
 - New: List, GTD and Matrix views render as equally sized containers holding task cards

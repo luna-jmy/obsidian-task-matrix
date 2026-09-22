@@ -1,4 +1,5 @@
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
+import { GtdRules } from "../parser/task-parser";
 import { t } from "../i18n";
 import { gtdColumnOf, gtdStateLabel, noteNameOf } from "../services/grouping-service";
 import { priorityLabel, statusLabel } from "../services/filter-service";
@@ -17,6 +18,10 @@ export interface TaskCardContext {
   /** 卡片内联 Markdown 的宿主组件，随容器重建一起卸载 */
   markdownComponent: Component;
   mode: ViewMode;
+  /** 当前生效的 GTD 判定规则（设置里的标签清单）—— 快捷移动要知道「现在在哪一列」 */
+  gtdRules: GtdRules;
+  /** 是否允许拖动卡片（设置里的总开关） */
+  dragEnabled: boolean;
   /**
    * 底部元信息行里笔记的显示方式。
    *
@@ -58,11 +63,11 @@ export async function renderTaskCard(
 ): Promise<HTMLElement> {
   const card = host.createDiv({ cls: `tm-card${task.blocked ? " tm-card--blocked" : ""}` });
   /*
-   * 拖拽换容器只在有投放目标的视图里成立（GTD/矩阵）。
+   * 拖拽换容器只在有投放目标的视图里成立（GTD/矩阵），并且设置里的总开关得开着。
    * 列表容器的落点是「笔记/文件夹」，把任务拖去另一篇笔记不是移动，是改写来源 ——
    * 那是编辑的事，不该靠拖拽顺手指一下就发生。
    */
-  card.draggable = context.mode !== "list";
+  card.draggable = context.mode !== "list" && context.dragEnabled;
   card.dataset.taskId = task.id;
 
   card.addEventListener("dragstart", (event) => {
@@ -160,7 +165,7 @@ function renderActions(
   addAction(actions, "🗑", t("删除"), () => callbacks.onDelete(task));
 
   // 快捷移动：只列「当前不在的那几个」
-  const quick = quickMovesFor(task, context.mode, callbacks);
+  const quick = quickMovesFor(task, context.mode, context.gtdRules, callbacks);
   if (quick.length === 0) return;
 
   actions.createSpan({ cls: "tm-card__actions-sep", text: "|" });
@@ -179,6 +184,7 @@ interface QuickMove {
 function quickMovesFor(
   task: ParsedTask,
   mode: ViewMode,
+  rules: GtdRules,
   callbacks: TaskCardCallbacks,
 ): QuickMove[] {
   if (mode === "eisenhower") {
@@ -190,7 +196,7 @@ function quickMovesFor(
   }
 
   if (mode === "gtd") {
-    const current = gtdColumnOf(task, todayIso());
+    const current = gtdColumnOf(task, todayIso(), rules);
     return GTD_QUICK_TARGETS.filter((target) => target.state !== current).map((target) => ({
       text: target.short,
       title: t("移动到「{state}」", { state: target.label }),

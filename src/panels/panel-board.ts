@@ -1,5 +1,6 @@
 import { App, Component } from "obsidian";
 import { t } from "../i18n";
+import { GtdRules } from "../parser/task-parser";
 import { PanelDropTarget, PanelSection, PanelSpec } from "../types";
 import { GroupingResult } from "../services/grouping-service";
 import { renderTaskCard, TASK_DRAG_MIME, TaskCardCallbacks } from "./task-card";
@@ -31,6 +32,10 @@ export interface PanelBoardCallbacks extends TaskCardCallbacks {
 export interface PanelBoardOptions {
   collapsedKeys: ReadonlySet<string>;
   markdownComponent: Component;
+  /** 当前生效的 GTD 规则（卡片快捷移动要用它判断「现在在哪一列」） */
+  gtdRules: GtdRules;
+  /** 设置里的拖拽总开关：关掉后容器不接受拖入、卡片也不可拖动 */
+  dragEnabled: boolean;
   /** 首次索引尚未完成时给一句说明，而不是直接说「没有任务」 */
   loaded: boolean;
 }
@@ -133,7 +138,8 @@ export class PanelBoard {
     const el = grid.createDiv({ cls: `tm-panel${collapsed ? " is-collapsed" : ""}` });
     el.dataset.panelKey = panel.key;
 
-    if (panel.dropTarget !== undefined) {
+    // 拖拽总开关关掉时连落点都不注册：容器不该长得像能接收东西
+    if (panel.dropTarget !== undefined && options.dragEnabled) {
       this.registerDropTarget(el, panel.dropTarget);
     }
 
@@ -172,6 +178,8 @@ export class PanelBoard {
           : panel.dropTarget?.kind === "gtd"
             ? "gtd"
             : "list",
+        gtdRules: options.gtdRules,
+        dragEnabled: options.dragEnabled,
         noteMeta: panel.noteMeta,
       }, this.callbacks);
     }

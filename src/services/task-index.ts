@@ -30,10 +30,34 @@ export function isTrackedMarkdownPath(path: string, settings: TaskMatrixSettings
     && isPathInScope(path, settings);
 }
 
+/**
+ * 这一路径属于设置里的哪一个（扫描）目录，按设置里的**原文**返回。
+ *
+ * 分组标题要用它而不是截断的一级目录名：用户是按「300 Resources/360 WorkMemos」
+ * 这样的目录组织资料的，标题就该长这样。都不匹配（没配扫描目录）时返回 null，
+ * 由调用方决定退回什么。
+ */
+export function scanFolderOf(path: string, folders: readonly string[]): string | null {
+  return folders.find((folder) => isInside(path, folder)) ?? null;
+}
+
+/**
+ * 路径是否落在某个设置目录之下（含多级路径，例如 `300 Resources/360 WorkMemos`）。
+ *
+ * 比较**不区分大小写**：Windows / macOS / iOS 的文件系统都不区分，用户手打目录名时
+ * 大小写经常和真实路径不一致，按字符严格比会变成「填了目录却没生效」。
+ * 顺带把粘贴来的反斜杠、首尾斜杠都归一化掉。
+ */
 function isInside(path: string, folderSetting: string): boolean {
-  const folder = folderSetting.trim().replace(/^\/+|\/+$/gu, "");
+  const folder = folderSetting
+    .trim()
+    .replace(/\\/gu, "/")
+    .replace(/^\/+|\/+$/gu, "")
+    .toLowerCase();
   if (folder.length === 0) return false;
-  return path === folder || path.startsWith(`${folder}/`);
+
+  const target = path.toLowerCase();
+  return target === folder || target.startsWith(`${folder}/`);
 }
 
 export function shouldRescanForVaultChange(

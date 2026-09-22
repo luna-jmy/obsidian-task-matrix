@@ -14,11 +14,13 @@ import { GanttBarColors, GanttGrouping } from "../types";
  */
 export interface GanttBoardCallbacks {
   onOpenTask(task: GanttTask): void;
-  /** 右键任务条 → 编辑任务 */
+  /** 右键任务条 / 点任务列上的 ✎ → 编辑任务 */
   onEditTask(task: GanttTask): void;
   onToggleSection(key: string): void;
   /** Ctrl + 滚轮：direction +1 = 更细 */
   onZoomStep(direction: 1 | -1, anchor: ZoomAnchor | null): void;
+  /** 任务列宽度拖完 → 落盘（拖动过程不回调，见 utils/split-resizer） */
+  onSidebarWidthCommit(width: number): void;
 }
 
 export interface GanttBoardOptions {
@@ -29,6 +31,10 @@ export interface GanttBoardOptions {
   anchor?: ZoomAnchor;
   /** 四类 Mermaid 状态各自的条色（来自设置） */
   colors: GanttBarColors;
+  /** 任务列宽度（px，来自设置） */
+  sidebarWidth: number;
+  /** 非工作日色带（已合并成连续区间；与 Mermaid 导出同源） */
+  offDays: Array<{ start: string; end: string }>;
   /** 首次显示（或换回甘特模式）时把视野落到今天 */
   scrollToToday: boolean;
 }
@@ -50,7 +56,17 @@ export class GanttBoard {
       onEditTask: (task) => callbacks.onEditTask(task),
       onToggleSection: (key) => callbacks.onToggleSection(key),
       onZoom: (direction, anchor) => callbacks.onZoomStep(direction, anchor),
+      onSidebarWidthCommit: (width) => callbacks.onSidebarWidthCommit(width),
     });
+  }
+
+  /**
+   * 复位到「今天」：只挪滚动位置，不重渲染。
+   *
+   * @returns 是否真的滚了（容器量不到宽度时为 false，视图会记下来等宽度就绪再补）
+   */
+  scrollToToday(): boolean {
+    return this.view.scrollToToday();
   }
 
   /** @returns 是否已经把视野落到今天（容器还没显示出来时为 false，调用方下次再试） */
@@ -58,6 +74,8 @@ export class GanttBoard {
     this.view.render(options.model, options.zoom, options.today, {
       anchor: options.anchor,
       colors: options.colors,
+      sidebarWidth: options.sidebarWidth,
+      offDays: options.offDays,
     });
     return options.scrollToToday ? this.view.scrollToToday() : false;
   }

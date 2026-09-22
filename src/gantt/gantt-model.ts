@@ -1,7 +1,8 @@
 import { t } from "../i18n";
 import { GanttTask } from "../parser/gantt-parser";
+import { gtdRulesOf } from "../parser/task-parser";
 import {
-  folderPathOf,
+  groupFolderOf,
   gtdColumnOf,
   gtdStateLabel,
   panelKeyForFolder,
@@ -11,7 +12,15 @@ import {
   panelKeyForQuadrant,
   quadrantSubtitle,
 } from "../services/grouping-service";
-import { EisenhowerQuadrant, GanttGrouping, GTDState, ParsedTask, TaskMatrixSettings } from "../types";
+import { resolveNonWorkingDays } from "../services/holiday-schedule";
+import {
+  BarDurationMode,
+  EisenhowerQuadrant,
+  GanttGrouping,
+  GTDState,
+  ParsedTask,
+  TaskMatrixSettings,
+} from "../types";
 import { addDaysIso, diffDaysIso, maxIso, minIso, monthEndIso, monthStartIso, todayIso } from "../utils/date";
 
 /**
@@ -37,6 +46,10 @@ export interface GanttRow {
   endFallback: boolean;
   /** 自然日跨度，闭区间 */
   calendarDays: number;
+  /** 工作日跨度 = 自然日 − 非工作日（周末 / 法定节假日；补班日仍算工作日） */
+  workdayDays: number;
+  /** 条上要显示的文字；设置为「不显示」时为 null */
+  durationLabel: string | null;
 }
 
 export interface GanttSection {
@@ -121,6 +134,13 @@ export function buildGanttModel(tasks: readonly GanttTask[], options: GanttModel
   const rows = sections.flatMap((section) => section.rows);
   const range = resolveRange(rows, options, today);
 
+  // 天数标注放在范围算出来之后：工作日口径要按「图跨到的年份」取节假日排期
+  applyDurations(
+    rows,
+    resolveNonWorkingDays(range.rangeStart, range.rangeEnd, options.settings),
+    options.settings.ganttBarDuration,
+  );
+
   return {
     sections,
     rows,
@@ -157,14 +177,61 @@ function withSpan(
   startFallback: boolean,
   endFallback: boolean,
 ): GanttRow {
+  const calendarDays = diffDaysIso(start, end) + 1;
   return {
     task,
     start,
     end,
     startFallback,
     endFallback,
-    calendarDays: diffDaysIso(start, end) + 1,
+    calendarDays,
+    // 先按「没有非工作日」填上，随后由 applyDurations 按设置与排期覆盖
+    workdayDays: calendarDays,
+    durationLabel: null,
   };
+}
+
+/**
+ * 算每条的自然日 / 工作日跨度，并按设置生成条上要显示的文字。
+ *
+ * 工作日口径**复用同一份非工作日清单**（`resolveNonWorkingDays`：周末开关 + 节假日排期
+ * − 补班日），也就是图上灰色列与导出 mermaid 用的那一份 —— 「条上写几天」与「导出
+ * excludes 什么」因此不会各说各话。
+ *
+ * 数法上不逐日遍历：非工作日清单是**升序**的，直接在区间内数它的成员即可
+ * （一年也就百来条），任务跨度再大也不会退化成逐日循环。
+ */
+function applyDurations(
+  rows: readonly GanttRow[],
+  nonWorkingDays: readonly string[],
+  mode: BarDurationMode,
+): void {
+  for (const row of rows) {
+    let offDays = 0;
+    for (const day of nonWorkingDays) {
+      if (day < row.start) continue;
+      if (day > row.end) break;
+      offDays += 1;
+    }
+    row.workdayDays = Math.max(0, row.calendarDays - offDays);
+    row.durationLabel = durationLabel(mode, row.calendarDays, row.workdayDays);
+  }
+}
+
+/** 条上的天数文字（纯函数：口径变了只改这一处，测试也只盯这一处） */
+export function durationLabel(
+  mode: BarDurationMode,
+  calendarDays: number,
+  workdayDays: number,
+): string | null {
+  switch (mode) {
+    case "off":
+      return null;
+    case "workday":
+      return t("{count} 工作日", { count: workdayDays });
+    default:
+      return t("{count} 天", { count: calendarDays });
+  }
 }
 
 /** 分节名的人类可读文本 + 稳定的 key（key 与面板视图共用，折叠状态因此共享） */
@@ -175,7 +242,8 @@ function sectionOf(
 ): { key: string; name: string } {
   switch (options.grouping) {
     case "folder": {
-      const folder = folderPathOf(task.filePath, options.settings.listGroupByFolderDepth);
+      // 与笔记列表的分区同一口径：优先用设置里的扫描目录原文（见 groupFolderOf）
+      const folder = groupFolderOf(task.filePath, options.settings);
       return { key: panelKeyForFolder(folder), name: folder === "" ? t("根目录") : folder };
     }
     case "note":
@@ -202,7 +270,7 @@ function sectionOf(
  */
 function gtdColumnFor(task: GanttTask, options: GanttModelOptions, today: string): GTDState {
   const parsed = options.parsedByLine.get(`${task.filePath}:${task.lineNumber}`);
-  if (parsed !== undefined) return gtdColumnOf(parsed, today);
+  if (parsed !== undefined) return gtdColumnOf(parsed, today, gtdRulesOf(options.settings));
   return task.completed ? "Done" : "Inbox";
 }
 

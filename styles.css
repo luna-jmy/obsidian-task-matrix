@@ -282,6 +282,17 @@ button.tm-chip {
 	cursor: pointer;
 }
 
+/* 可点的 chip（预览栏上的开关）：悬停给反馈，点亮 = 这一项开着 */
+button.tm-chip:hover {
+	border-color: var(--text-muted);
+}
+
+button.tm-chip.is-active {
+	border-color: var(--interactive-accent);
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 button.tm-chip:hover {
 	background-color: var(--interactive-hover);
 }
@@ -954,12 +965,56 @@ button.tm-chip.is-active {
 
 /* 左侧任务列：行高与右侧 SVG 严格一一对应 */
 .tm-gantt__sidebar {
-	flex: 0 0 30%;
-	max-width: 320px;
-	min-width: 150px;
+	/*
+	 * 宽度由变量给（拖动分隔条时改它），没拖过时用默认值。
+	 * 上下限都不写死在这儿：下限由 SplitResizer 收敛，上限按容器宽度现算 ——
+	 * 窗口被拖窄后，昨天存的宽度不许把时间轴挤没。
+	 */
+	flex: 0 0 var(--tm-gantt-sidebar-width, 240px);
+	max-width: calc(100% - 220px);
+	min-width: 0;
 	overflow: hidden;
-	border-right: 1px solid var(--background-modifier-border);
 	background: var(--background-primary-alt);
+}
+
+/*
+ * 任务列与时间轴之间的分隔条。
+ *
+ * 触摸目标要够宽（6px），视觉上却只该是一条细线：本体透明，线用伪元素画。
+ * 拖动中/悬停/键盘聚焦时线变粗变色，兼作「这里能拖」的提示。
+ */
+.tm-gantt__resizer {
+	position: relative;
+	flex: 0 0 auto;
+	width: 6px;
+	cursor: col-resize;
+	background: transparent;
+}
+
+.tm-gantt__resizer::before {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 50%;
+	width: 1px;
+	transform: translateX(-50%);
+	background: var(--background-modifier-border);
+}
+
+.tm-gantt__resizer:hover::before,
+.tm-gantt__resizer.is-dragging::before,
+.tm-gantt__resizer:focus-visible::before {
+	width: 2px;
+	background: var(--interactive-accent);
+}
+
+.tm-gantt__resizer:focus-visible {
+	outline: none;
+}
+
+/* 拖动中：整个窗口禁掉选中、保持抓手光标（指针滑出分隔条也不会变回箭头） */
+body.tm-resizing {
+	user-select: none;
+	cursor: col-resize;
 }
 
 /* 44px = 表头两行 22px：两侧顶部必须齐平，否则行就错开了 */
@@ -1058,6 +1113,40 @@ button.tm-chip.is-active {
 	flex-shrink: 0;
 }
 
+/*
+ * 行上的编辑按钮。
+ *
+ * 常驻显示（与任务卡片的操作行同口径：不靠悬停才出现，否则触屏与键盘用户找不到），
+ * 但不套 `.tm-btn` 的边框与内边距 —— 行高只有 30px，带框的按钮会把整列压得喘不上气，
+ * 所以这里只用弱化的颜色表示「可点」，悬停时才给底色。
+ */
+.tm-gantt__row-edit {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	line-height: 1;
+	cursor: pointer;
+}
+
+.tm-gantt__row-edit:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tm-gantt__row-edit:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
 .tm-gantt__tag {
 	padding: 0 var(--size-2-1);
 	border-radius: var(--radius-s);
@@ -1081,6 +1170,13 @@ button.tm-chip.is-active {
 	min-width: 0;
 	overflow: auto;
 	overscroll-behavior: contain;
+	/* 可按住拖动平移（横向滚动条在 Obsidian 里是浮层又细，不好找也不好抓） */
+	cursor: grab;
+}
+
+.tm-gantt__timeline.is-panning {
+	cursor: grabbing;
+	user-select: none;
 }
 
 .tm-gantt__canvas {
@@ -1155,12 +1251,25 @@ button.tm-chip.is-active {
  * 开发者工具里辨认状态，别去这里找颜色。
  */
 
-/* 天数文字：11px 必须与 gantt-view 的 DURATION_FONT_SIZE 一致 */
+/*
+ * 天数文字：11px 必须与 gantt-view 的 DURATION_FONT_SIZE 一致。
+ *
+ * 条内是「条色 + on-accent 文字」，而条色可能是黄/青这类亮色（用户还能自己改），
+ * 白字会糊掉，所以加一圈**半透明深色**描边，并用 `paint-order: stroke` 把描边压在
+ * 文字之后。这里有两处不能省的细节（原来都踩了，表现就是笔画看着像**重影**）：
+ *
+ * 1. 描边色必须是**始终比条色深**的 rgba 黑，不能取 `--background-primary` ——
+ *    浅色主题下那就是白色，白字配白描边，笔画会糊成一团；
+ * 2. 11px 的字配 2px 描边，字形本身要够粗，否则描边会啃掉细笔画（同样像重影），
+ *    所以字重取 semibold。这两条与 Project Master 的口径一致。
+ */
 .tm-gantt__bar-duration {
 	font-size: 11px;
+	font-weight: var(--font-semibold);
 	fill: var(--text-on-accent);
-	stroke: var(--background-primary);
+	stroke: rgba(0, 0, 0, 0.28);
 	stroke-width: 2px;
+	stroke-linejoin: round;
 	paint-order: stroke;
 	dominant-baseline: middle;
 	pointer-events: none;
@@ -1227,6 +1336,143 @@ button.tm-chip.is-active {
 
 .tm-tooltip__line.is-muted {
 	color: var(--text-muted);
+}
+
+/* ───────────────────────────── 甘特：区内页签 ───────────────────────────── */
+
+/*
+ * 甘特这块主区里有两个页签：时间轴 / Mermaid 预览。
+ * 与主工具栏的模式按钮刻意长得不一样（这里是下划线页签）：它们是同一块主区里的
+ * 两种呈现，不是两套数据，混成一组会让人以为「预览」看的是别的东西。
+ */
+.tm-gantt-shell {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	/*
+	 * min-width: 0 是必须的，不是保险：宿主 `.tm-body` 是**行**方向 flex，本元素是它的
+	 * flex item，而 `min-width: auto` 在主轴上等于「内容的 min-content 宽度」——
+	 * 时间轴画布宽达成千上万像素，整块主区于是被撑到 canvas 那么宽，再被 `.tm-body`
+	 * 的 overflow:hidden 裁掉。症状就是「视野停在最早的那天，而且怎么都滚不动」
+	 * （滚动容器自己滚不了，因为它的可视宽度等于内容宽度）。
+	 */
+	min-width: 0;
+	min-height: 0;
+	gap: var(--size-2-2);
+	overflow: hidden;
+}
+
+.tm-gantt-shell__tabs {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--size-2-1);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tm-gantt-shell__tab {
+	padding: var(--size-2-2) var(--size-4-2);
+	border: none;
+	border-bottom: 2px solid transparent;
+	border-radius: var(--radius-s) var(--radius-s) 0 0;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.tm-gantt-shell__tab:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tm-gantt-shell__tab.is-active {
+	border-bottom-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+	font-weight: var(--font-semibold);
+}
+
+.tm-gantt-shell__tab:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+/* ───────────────────────────── Mermaid 预览 ───────────────────────────── */
+
+.tm-mermaid {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	gap: var(--size-2-2);
+}
+
+/* 一行控件：左侧是选项 chips，右侧是出口按钮 */
+.tm-mermaid__bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-2-2);
+	flex: 0 0 auto;
+}
+
+.tm-mermaid__hint {
+	color: var(--text-faint);
+	cursor: help;
+}
+
+/* 日期输入：标签 + 输入框。宽度给够看清一条区间写法（2026-10-01~2026-10-07） */
+.tm-mermaid__field {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+}
+
+.tm-mermaid__field-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.tm-mermaid__input {
+	width: 190px;
+	max-width: 100%;
+	padding: 2px var(--size-2-3);
+	font-size: var(--font-ui-smaller);
+}
+
+.tm-mermaid__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-2);
+	/* 出口靠右：左边是「看什么」，右边是「拿去用」，读起来不打架 */
+	margin-left: auto;
+}
+
+.tm-mermaid__preview {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary-alt);
+}
+
+/* mermaid 自己会撑得很宽，给个上限，免得把整块主区顶出横向滚动 */
+.tm-mermaid__preview svg {
+	max-width: 100%;
+	height: auto;
+}
+
+.tm-mermaid__preview-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.tm-mermaid__preview-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
 }
 
 /* ───────────────────────────── 设置页：分页 ───────────────────────────── */
@@ -1310,14 +1556,16 @@ button.tm-chip.is-active {
 }
 
 /*
- * 多值字段（标签）的候选块。
+ * 标签 chips（挂在描述下方）。
  *
- * 挂在 setting 之后的独立一块，所以要自己补一点左缩进对齐设置项的内容列；
- * 上面的负 margin 抵掉 setting 自带的下间距，免得和输入框之间空一大截。
+ * 是 setting 之后的独立一块，所以要自己补一点左缩进对齐设置项的内容列；
+ * 负 margin 抵掉 setting 自带的下间距，免得和输入框之间空一大截。
+ * 选中态 = 「这个标签已经在正文里」，点一下加/去掉（见 modals/tag-chips.ts）。
  */
-.tm-value-chips {
+.tm-tag-chips {
 	display: flex;
 	flex-wrap: wrap;
+	align-items: center;
 	gap: var(--size-2-2);
 	max-width: 100%;
 	min-width: 0;
@@ -1325,7 +1573,17 @@ button.tm-chip.is-active {
 	padding-left: var(--size-4-2);
 }
 
-.tm-value-chip {
+.tm-tag-chips__label,
+.tm-tag-chips__empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.tm-tag-chips__empty {
+	color: var(--text-faint);
+}
+
+.tm-tag-chips__chip {
 	padding: var(--size-2-1) var(--size-2-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
@@ -1335,15 +1593,20 @@ button.tm-chip.is-active {
 	cursor: pointer;
 }
 
-.tm-value-chip:hover {
+.tm-tag-chips__chip:hover {
 	border-color: var(--text-muted);
 	color: var(--text-normal);
 }
 
-.tm-value-chip.is-active {
+.tm-tag-chips__chip.is-active {
 	border-color: var(--interactive-accent);
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
+}
+
+.tm-tag-chips__chip:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
 }
 
 /*

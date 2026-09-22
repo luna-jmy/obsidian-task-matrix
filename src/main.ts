@@ -107,6 +107,8 @@ export default class TaskMatrixPlugin extends Plugin implements TaskMatrixHost, 
       ...DEFAULT_GANTT_BAR_COLORS,
       ...(saved?.ganttBarColors ?? {}),
     };
+    // 年度排期同理：老 data.json 里可能整块缺失（同样的逐键兜底）
+    this.settings.holidaySchedules = { ...(saved?.holidaySchedules ?? {}) };
   }
 
   /** 界面语言落到运行时；语言变了要重绘已打开的视图 */
