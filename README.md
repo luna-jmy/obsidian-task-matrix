@@ -157,6 +157,10 @@ Split into two halves — what decides the column, and what a drop writes. Only 
 #### Public holiday schedule
 Kept per year, because that is how holidays are actually announced: add a year, then fill in **Holidays** (`10-01~10-07`, `~` or `至`, ranges may cross into the next year) and **Make-up workdays** (working weekends). Ranges are expanded to individual dates when exporting, which mermaid requires. Whatever the Gantt spans is applied automatically; the two date fields on the preview tab are only for one-off additions.
 
+## 🔌 Dependencies
+
+None required. The plugin uses only Obsidian's API and renders all views itself. One optional integration: if your journal template contains Templater `<% … %>` commands, Templater (if installed) expands them when the plugin creates a missing target note; without Templater the template is copied as-is and the `{{title}}` / `{{date}}` variables still work.
+
 ## 📥 Installation
 
 ### Using BRAT (Recommended for Beta Versions)
