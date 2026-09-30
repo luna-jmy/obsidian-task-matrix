@@ -12,7 +12,7 @@
  * 容器对称的数值契约（改一处要连着改，否则容器就不再等大）：
  *   容器网格列 `minmax(280px, 1fr)` / 行 `clamp(280px, 46vh, 520px)` / 间距 --size-4-2
  *   宽屏（≥1100px）例外：网格 height:100% + 行 minmax(280px, 1fr) 一屏装满，
- *   见下方宽屏规则
+ *   见下方宽屏规则；日历月/周视图宽屏同样撑满（见日历段的宽屏规则）
  * ========================================================================== */
 
 /* ───────────────────────────── 骨架 ───────────────────────────── */
@@ -949,6 +949,41 @@ button.tm-chip.is-active {
 	flex-direction: column;
 	gap: var(--size-2-1);
 	padding: 0 var(--size-4-2) var(--size-4-2);
+}
+
+/*
+ * 宽屏（PC）：日历同样一屏装满 —— 与容器网格的宽屏规则同一思路，
+ * 但这里走 flex 撑满（日历的几层包装本来就是 flex 列，比 height: 100%
+ * 少一层「父级必须有明确高度」的前提）。行下限沿用原来的 min-height
+ * （月 6em / 周 10em），内容超出时照旧整页滚动。
+ * 列表视图是一天一条的纵向清单，没有可拉伸的行，维持不变。
+ * 窄屏与手机维持原行高。
+ */
+@media (min-width: 1100px) {
+	/* 月视图：外层拿满剩余高度，日期行 minmax(6em, 1fr) 均分 */
+	.tm-calendar__month {
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.tm-calendar__month .tm-calendar__grid {
+		flex: 1 1 auto;
+		min-height: 0;
+		grid-auto-rows: minmax(6em, 1fr);
+	}
+
+	/* 周视图：工作日行与周末行同样拉满 */
+	.tm-calendar__week {
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.tm-calendar__week-main,
+	.tm-calendar__weekend {
+		flex: 1 1 auto;
+		min-height: 0;
+		grid-auto-rows: minmax(10em, 1fr);
+	}
 }
 
 /* ───────────────────────────── 甘特 ─────────────────────────────
