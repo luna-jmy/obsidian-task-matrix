@@ -245,7 +245,6 @@ export class CalendarBoard {
     const item = host.createEl("a", {
       cls: `tm-calendar__item is-${type} internal-link`,
       text: `${calendarItemLabel(type)} ${task.description}`,
-      attr: { "aria-label": task.description },
     });
     item.setAttribute("href", linkTarget);
     item.setAttribute("data-href", linkTarget);
@@ -255,13 +254,12 @@ export class CalendarBoard {
      * 「页面预览」的悬停延迟决定，插件改不了，鼠标得停住等半天。
      * 这里进入即出现，没有计时器。
      *
-     * 但光自己画拦不住核心那份：条目带着 `internal-link` + `data-href`，
-     * 核心「页面预览」挂在 document 上的 mouseover 监听照样会再弹一层
-     * （一次悬停两层浮窗的来源）。在条目上截断 mouseover 的冒泡，
-     * 核心就收不到了 —— 自己的提示用的是 mouseenter，不走 document，
-     * 不受影响；点击本来就 preventDefault 全接管，链接语义原样保留。
+     * 注意别给条目设 aria-label：Obsidian 在 body 上委托监听 pointerover，
+     * 任何带 aria-label 的元素悬停约 1 秒都会再弹一层原生小 tooltip ——
+     * 「一次悬停两层浮窗」的真正来源（核心页面预览其实轮不到这种自建锚点，
+     * 它只认各渲染器自己挂监听的链接）。条目文字本身就是完整的可读名称，
+     * 去掉 aria-label 不损失任何无障碍信息。
      */
-    item.addEventListener("mouseover", (event) => event.stopPropagation());
     item.addEventListener("mouseenter", () => {
       this.tooltip.show(item, [
         { text: `${calendarItemLabel(type)} · ${task.description}` },
