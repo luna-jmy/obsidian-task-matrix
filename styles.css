@@ -1566,12 +1566,13 @@ body.tm-resizing {
 	resize: vertical;
 }
 
-/* 描述行上下布局：说明文字长，默认左右布局会把文本框挤成一条竖栏 */
-.tm-form .setting-item--stack {
+/* 描述行上下布局：说明文字长，默认左右布局会把文本框挤成一条竖栏。
+   选择器必须与 task-editor-modal.ts 里 addClass 的类名逐字一致 */
+.tm-form .tm-form__row--stack {
 	display: block;
 }
 
-.tm-form .setting-item--stack .setting-item-control {
+.tm-form .tm-form__row--stack .setting-item-control {
 	width: 100%;
 	margin-top: var(--size-2-2);
 }
