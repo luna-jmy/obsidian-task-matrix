@@ -254,7 +254,14 @@ export class CalendarBoard {
      * 悬停提示自己画，不走宿主的 `hover-link` 页面预览：那个的弹出时机由核心
      * 「页面预览」的悬停延迟决定，插件改不了，鼠标得停住等半天。
      * 这里进入即出现，没有计时器。
+     *
+     * 但光自己画拦不住核心那份：条目带着 `internal-link` + `data-href`，
+     * 核心「页面预览」挂在 document 上的 mouseover 监听照样会再弹一层
+     * （一次悬停两层浮窗的来源）。在条目上截断 mouseover 的冒泡，
+     * 核心就收不到了 —— 自己的提示用的是 mouseenter，不走 document，
+     * 不受影响；点击本来就 preventDefault 全接管，链接语义原样保留。
      */
+    item.addEventListener("mouseover", (event) => event.stopPropagation());
     item.addEventListener("mouseenter", () => {
       this.tooltip.show(item, [
         { text: `${calendarItemLabel(type)} · ${task.description}` },
