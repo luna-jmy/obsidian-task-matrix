@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.3
+- Fix: On wide desktop screens (≥1100px) every panel view — note list, GTD and Matrix — now fills the viewport height instead of leaving the lower half of the window blank. 1.1.1 had only raised the height cap for note-list containers, so containers with few cards still shrank to content height, and GTD and Matrix were not covered at all. Narrow windows, mobile, and the grouped-by-folder note list keep the previous heights
+
 ## 1.1.2
 - Fix: The 1.1.1 stacked description row never took effect — the stylesheet addressed one class name while the editor added another, so the text box stayed in the squeezed side-by-side layout. The selector now matches, and the hint sits above a full-width input
 
