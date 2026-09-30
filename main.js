@@ -287,7 +287,7 @@ var EN = {
   // ── task editor ──────────────────────────────────────────────────
   "\u7F16\u8F91\u4EFB\u52A1": "Edit task",
   "\u6253\u5F00\u7B14\u8BB0": "Open note",
-  "\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002\u6807\u7B7E\u76F4\u63A5\u5199\u5728\u63CF\u8FF0\u91CC\uFF08\u5982 #\u5DE5\u4F5C\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u70B9\u4E0B\u9762\u7684\u6807\u7B7E\u52A0\u5165\u3002": "A task is a single line in the note, so line breaks are joined into one space. Tags live straight in the description (e.g. #work), or click one below to add it.",
+  "\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002\u6807\u7B7E\u76F4\u63A5\u5199\u5728\u63CF\u8FF0\u91CC\uFF08\u5982 #\u5DE5\u4F5C\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u70B9\u300C\u6807\u7B7E\u300D\u5C55\u5F00\u5019\u9009\u9009\u62E9\u3002": "A task is a single line in the note, so line breaks are joined into one space. Tags live straight in the description (e.g. #work), or expand the Tags dropdown and pick one.",
   "\u6807\u7B7E": "Tags",
   "\u70B9\u4E00\u4E0B\u52A0\u5230\u63CF\u8FF0\u91CC": "Click to add it to the description",
   "\u70B9\u4E00\u4E0B\u4ECE\u63CF\u8FF0\u91CC\u53BB\u6389": "Click to remove it from the description",
@@ -4135,7 +4135,6 @@ function addTagChips(host, options) {
     host.createSpan({ cls: "tm-tag-chips__empty", text: t("\u8FD8\u6CA1\u6709\u7528\u8FC7\u7684\u6807\u7B7E\uFF0C\u76F4\u63A5\u5728\u63CF\u8FF0\u91CC\u5199 #\u6807\u7B7E \u5373\u53EF\u3002") });
     return { refresh: () => void 0 };
   }
-  host.createSpan({ cls: "tm-tag-chips__label", text: t("\u6807\u7B7E") });
   for (const tag of options.suggestions) {
     const button = host.createEl("button", {
       cls: "tm-tag-chips__chip",
@@ -4326,7 +4325,9 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
     let taskId = this.isCreateMode ? "" : source?.taskId ?? "";
     let dependsOn = this.isCreateMode ? "" : source?.dependsOn ?? "";
     let descriptionArea = null;
-    new import_obsidian11.Setting(form).setName(t("\u63CF\u8FF0")).setDesc(t("\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002\u6807\u7B7E\u76F4\u63A5\u5199\u5728\u63CF\u8FF0\u91CC\uFF08\u5982 #\u5DE5\u4F5C\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u70B9\u4E0B\u9762\u7684\u6807\u7B7E\u52A0\u5165\u3002")).addTextArea((area) => {
+    const descriptionSetting = new import_obsidian11.Setting(form).setName(t("\u63CF\u8FF0")).setDesc(t("\u4EFB\u52A1\u5728\u7B14\u8BB0\u91CC\u53EA\u5360\u4E00\u884C\uFF0C\u6362\u884C\u4F1A\u88AB\u5E76\u6210\u4E00\u4E2A\u7A7A\u683C\u3002\u6807\u7B7E\u76F4\u63A5\u5199\u5728\u63CF\u8FF0\u91CC\uFF08\u5982 #\u5DE5\u4F5C\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u70B9\u300C\u6807\u7B7E\u300D\u5C55\u5F00\u5019\u9009\u9009\u62E9\u3002"));
+    descriptionSetting.settingEl.addClass("tm-form__row--stack");
+    descriptionSetting.addTextArea((area) => {
       descriptionArea = area;
       area.setPlaceholder(t("\u4EFB\u52A1\u63CF\u8FF0"));
       area.setValue(description);
@@ -4337,7 +4338,14 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
         chips?.refresh();
       });
     });
-    const chipsHost = form.createDiv({ cls: "tm-tag-chips" });
+    const tagMenu = form.createDiv({ cls: "tm-tag-menu" });
+    const tagButton = tagMenu.createEl("button", {
+      cls: "tm-btn tm-tag-menu__btn",
+      text: t("\u6807\u7B7E"),
+      attr: { type: "button", "aria-expanded": "false" }
+    });
+    tagButton.createSpan({ cls: "tm-tag-menu__chevron", text: "\u25BE" });
+    const chipsHost = tagMenu.createDiv({ cls: "tm-tag-menu__panel" });
     const chips = addTagChips(chipsHost, {
       suggestions: this.knownTags(source),
       getText: () => descriptionArea?.inputEl.value ?? description,
@@ -4345,6 +4353,11 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
         description = value;
         descriptionArea?.setValue(value);
       }
+    });
+    tagButton.addEventListener("click", () => {
+      const open = !tagMenu.hasClass("is-open");
+      tagMenu.toggleClass("is-open", open);
+      tagButton.setAttribute("aria-expanded", String(open));
     });
     new import_obsidian11.Setting(form).setName(t("\u4F18\u5148\u7EA7")).addDropdown((dropdown) => {
       for (const level of [

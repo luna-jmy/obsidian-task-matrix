@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+- Fix: The task editor's description row now stacks — the hint sits above a full-width input instead of squeezing the text box into a narrow right-hand column
+- Change: Tag candidates are tucked into a **Tags** dropdown under the description instead of laid out flat — with a vault full of tags the chip cloud used to eat half the modal. The chips behave exactly as before (click to write the tag into the description, click again to remove it), and the panel expands in normal document flow
+- Change: On wide desktop screens (≥1100px) list-mode containers grow to fill the viewport height minus the toolbar and filter bar, so a note's checklist fits far more on screen; narrower windows and mobile keep the previous heights
+
 ## 1.1.0
 - New: **Hide filters** in the toolbar collapses the filter area so more tasks fit on screen (expanded by default, and it is session state — reopening the view shows it again; the filters themselves are never reset)
 - Fix: The days label on Gantt bars looked doubled — its halo was drawn in `--background-primary`, which is white in a light theme, so white text got a white outline that smeared the strokes. It now uses a translucent black halo and a semibold weight, the same combination Project Master uses
