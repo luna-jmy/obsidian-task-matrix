@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.4
+- Fix: The calendar fills the viewport on wide desktop screens (≥1100px) too — month-view day rows and week-view day cards stretch to the remaining height instead of stopping a third of the way down, with each cell showing more entries. The old minimum heights still apply when the window is short, and the list view, narrower windows and mobile are unchanged
+
 ## 1.1.3
 - Fix: On wide desktop screens (≥1100px) every panel view — note list, GTD and Matrix — now fills the viewport height instead of leaving the lower half of the window blank. 1.1.1 had only raised the height cap for note-list containers, so containers with few cards still shrank to content height, and GTD and Matrix were not covered at all. Narrow windows, mobile, and the grouped-by-folder note list keep the previous heights
 
