@@ -8,6 +8,9 @@ import { addTagToText, extractTags, removeTagFromText } from "../parser/task-par
  * 这里改的是**描述正文**（标签在笔记里本来就住在正文），而不是某个独立的字段。
  * 于是选中态也不用另存一份 —— 它由正文现算，手打、粘贴、点选三条路进来的标签
  * 看到的都是同一个状态。
+ *
+ * 宿主是编辑弹窗里「标签」按钮下面的下拉面板（见 task-editor-modal.ts），
+ * 这里只负责 chips 本身，不再渲染自己的标题。
  */
 export interface TagChipsOptions {
   /** 候选标签（带 `#`），例如库里出现过的那些 */
@@ -38,7 +41,6 @@ export function addTagChips(host: HTMLElement, options: TagChipsOptions): TagChi
     return { refresh: () => undefined };
   }
 
-  host.createSpan({ cls: "tm-tag-chips__label", text: t("标签") });
   for (const tag of options.suggestions) {
     const button = host.createEl("button", {
       cls: "tm-tag-chips__chip",

@@ -394,6 +394,17 @@ button.tm-chip.is-active {
 }
 
 /*
+ * 宽屏（PC）：列表容器一屏装满 —— 行高上限从固定 400px 放开到
+ * 「视口 − 顶部工具栏/筛选栏」（按 200px 冗余估算，宁可略短也不顶出
+ * 页面滚动条）。窄屏与手机走底部的矮行高，维持不变。
+ */
+@media (min-width: 1100px) {
+	.tm-board__grid--flow {
+		grid-auto-rows: minmax(280px, calc(100vh - 200px));
+	}
+}
+
+/*
  * 分区（笔记列表按文件夹分组）：可折叠的分组标题 + 里面的笔记容器。
  *
  * 分区刻意不做容器（不套边框盒子）：里面已经是容器了，再套一层，
@@ -1555,32 +1566,53 @@ body.tm-resizing {
 	resize: vertical;
 }
 
+/* 描述行上下布局：说明文字长，默认左右布局会把文本框挤成一条竖栏 */
+.tm-form .setting-item--stack {
+	display: block;
+}
+
+.tm-form .setting-item--stack .setting-item-control {
+	width: 100%;
+	margin-top: var(--size-2-2);
+}
+
 /*
- * 标签 chips（挂在描述下方）。
- *
- * 是 setting 之后的独立一块，所以要自己补一点左缩进对齐设置项的内容列；
- * 负 margin 抵掉 setting 自带的下间距，免得和输入框之间空一大截。
- * 选中态 = 「这个标签已经在正文里」，点一下加/去掉（见 modals/tag-chips.ts）。
+ * 标签下拉（描述下方）：候选 chips 收在「标签」按钮的面板里，点开才占空间 ——
+ * 库里标签一多，整排铺出来能吃掉半个弹窗。面板走普通文档流展开（弹窗内容
+ * 被推下去），不需要抬 z-index。选中态 = 「这个标签已经在正文里」，
+ * 点一下加/去掉（见 modals/tag-chips.ts）。
  */
-.tm-tag-chips {
+.tm-tag-menu {
+	margin: 0 0 var(--size-2-2);
+}
+
+.tm-tag-menu__chevron {
+	margin-left: var(--size-2-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	transition: transform 120ms ease;
+}
+
+.tm-tag-menu.is-open .tm-tag-menu__chevron {
+	transform: rotate(180deg);
+}
+
+.tm-tag-menu__panel {
+	display: none;
+}
+
+.tm-tag-menu.is-open .tm-tag-menu__panel {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-2-2);
 	max-width: 100%;
 	min-width: 0;
-	margin: calc(-1 * var(--size-2-2)) 0 var(--size-2-2);
-	padding-left: var(--size-4-2);
-}
-
-.tm-tag-chips__label,
-.tm-tag-chips__empty {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
 }
 
 .tm-tag-chips__empty {
 	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
 }
 
 .tm-tag-chips__chip {

@@ -107,31 +107,41 @@ export class TaskEditorModal extends Modal {
     let dependsOn = this.isCreateMode ? "" : (source?.dependsOn ?? "");
 
     let descriptionArea: TextAreaComponent | null = null;
-    new Setting(form)
+    const descriptionSetting = new Setting(form)
       .setName(t("描述"))
-      .setDesc(t("任务在笔记里只占一行，换行会被并成一个空格。标签直接写在描述里（如 #工作），也可以点下面的标签加入。"))
-      .addTextArea((area) => {
-        descriptionArea = area;
-        area.setPlaceholder(t("任务描述"));
-        area.setValue(description);
-        // 两行：够看清稍长的描述，又不至于把弹窗撑高
-        area.inputEl.rows = 2;
-        area.inputEl.addClass("tm-form__description");
-        area.onChange((value) => {
-          description = value;
-          // chips 的选中态跟着正文走：手打、粘贴、点选都由正文说了算
-          chips?.refresh();
-        });
+      .setDesc(t("任务在笔记里只占一行，换行会被并成一个空格。标签直接写在描述里（如 #工作），也可以点「标签」展开候选选择。"));
+    // 说明文字长：这一行改上下布局（说明在上、输入框占满整行），
+    // 默认的左右布局会把输入框挤成一条竖栏
+    descriptionSetting.settingEl.addClass("tm-form__row--stack");
+    descriptionSetting.addTextArea((area) => {
+      descriptionArea = area;
+      area.setPlaceholder(t("任务描述"));
+      area.setValue(description);
+      // 两行：够看清稍长的描述，又不至于把弹窗撑高
+      area.inputEl.rows = 2;
+      area.inputEl.addClass("tm-form__description");
+      area.onChange((value) => {
+        description = value;
+        // chips 的选中态跟着正文走：手打、粘贴、点选都由正文说了算
+        chips?.refresh();
       });
+    });
 
     /*
-     * 标签 chips：点一下写进描述正文，再点一下从正文里去掉。
-     *
-     * 手打最容易打出「工作」与「工作项」这种并存变体，之后按标签筛就是两拨；
-     * 候选只来自库里**真正出现过的**标签，不预置、不猜。写入的目标是描述本身
-     * （标签本来就住在正文里），所以没有第二个数据源。
+     * 标签候选收进下拉菜单：库里标签一多，整排铺出来能占掉半个弹窗。
+     * 点「标签」才展开候选，chips 的行为不变 —— 点一下写进描述正文，
+     * 再点一下从正文里去掉；候选只来自库里**真正出现过的**标签，不预置、
+     * 不猜（手打最容易打出「工作」与「工作项」这种并存变体，之后按标签
+     * 筛就是两拨）。面板用普通文档流展开，不抬 z-index。
      */
-    const chipsHost = form.createDiv({ cls: "tm-tag-chips" });
+    const tagMenu = form.createDiv({ cls: "tm-tag-menu" });
+    const tagButton = tagMenu.createEl("button", {
+      cls: "tm-btn tm-tag-menu__btn",
+      text: t("标签"),
+      attr: { type: "button", "aria-expanded": "false" },
+    });
+    tagButton.createSpan({ cls: "tm-tag-menu__chevron", text: "▾" });
+    const chipsHost = tagMenu.createDiv({ cls: "tm-tag-menu__panel" });
     const chips = addTagChips(chipsHost, {
       suggestions: this.knownTags(source),
       getText: () => descriptionArea?.inputEl.value ?? description,
@@ -139,6 +149,11 @@ export class TaskEditorModal extends Modal {
         description = value;
         descriptionArea?.setValue(value);
       },
+    });
+    tagButton.addEventListener("click", () => {
+      const open = !tagMenu.hasClass("is-open");
+      tagMenu.toggleClass("is-open", open);
+      tagButton.setAttribute("aria-expanded", String(open));
     });
 
     new Setting(form).setName(t("优先级")).addDropdown((dropdown) => {

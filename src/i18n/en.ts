@@ -317,8 +317,8 @@ export const EN: Record<string, string> = {
   // ── task editor ──────────────────────────────────────────────────
   "编辑任务": "Edit task",
   "打开笔记": "Open note",
-  "任务在笔记里只占一行，换行会被并成一个空格。标签直接写在描述里（如 #工作），也可以点下面的标签加入。":
-    "A task is a single line in the note, so line breaks are joined into one space. Tags live straight in the description (e.g. #work), or click one below to add it.",
+  "任务在笔记里只占一行，换行会被并成一个空格。标签直接写在描述里（如 #工作），也可以点「标签」展开候选选择。":
+    "A task is a single line in the note, so line breaks are joined into one space. Tags live straight in the description (e.g. #work), or expand the Tags dropdown and pick one.",
   "标签": "Tags",
   "点一下加到描述里": "Click to add it to the description",
   "点一下从描述里去掉": "Click to remove it from the description",
