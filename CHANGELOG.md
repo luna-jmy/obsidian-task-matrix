@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2
+- Fix: The 1.1.1 stacked description row never took effect — the stylesheet addressed one class name while the editor added another, so the text box stayed in the squeezed side-by-side layout. The selector now matches, and the hint sits above a full-width input
+
 ## 1.1.1
 - Fix: The task editor's description row now stacks — the hint sits above a full-width input instead of squeezing the text box into a narrow right-hand column
 - Change: Tag candidates are tucked into a **Tags** dropdown under the description instead of laid out flat — with a vault full of tags the chip cloud used to eat half the modal. The chips behave exactly as before (click to write the tag into the description, click again to remove it), and the panel expands in normal document flow
