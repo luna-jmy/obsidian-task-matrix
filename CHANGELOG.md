@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.5
+- Fix: Hovering a calendar entry no longer opens two popovers at once — the entry kept its internal-link markup, so the core page preview fired next to the plugin's instant tooltip. The hover event no longer reaches the core listener; the instant tooltip is the only one that appears
+
 ## 1.1.4
 - Fix: The calendar fills the viewport on wide desktop screens (≥1100px) too — month-view day rows and week-view day cards stretch to the remaining height instead of stopping a third of the way down, with each cell showing more entries. The old minimum heights still apply when the window is short, and the list view, narrower windows and mobile are unchanged
 

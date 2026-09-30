@@ -4999,6 +4999,7 @@ var CalendarBoard = class {
     });
     item.setAttribute("href", linkTarget);
     item.setAttribute("data-href", linkTarget);
+    item.addEventListener("mouseover", (event) => event.stopPropagation());
     item.addEventListener("mouseenter", () => {
       this.tooltip.show(item, [
         { text: `${calendarItemLabel(type)} \xB7 ${task.description}` },
