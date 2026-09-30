@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.6
+- Fix: The second popover on hovering a calendar entry is gone for real. It was not the core page preview (that one never fires on links the plugin builds itself, so the 1.1.5 interception removed nothing) — it was Obsidian's built-in tooltip for elements carrying an `aria-label`, which pops about a second into the hover. The entry no longer sets one; its visible text is already the accessible name, so the instant tooltip is now the only thing that appears
+
 ## 1.1.5
 - Fix: Hovering a calendar entry no longer opens two popovers at once — the entry kept its internal-link markup, so the core page preview fired next to the plugin's instant tooltip. The hover event no longer reaches the core listener; the instant tooltip is the only one that appears
 

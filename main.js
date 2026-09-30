@@ -4994,12 +4994,10 @@ var CalendarBoard = class {
     const linkTarget = task.sectionHeading ? `${task.filePath}#${task.sectionHeading}` : task.filePath;
     const item = host.createEl("a", {
       cls: `tm-calendar__item is-${type} internal-link`,
-      text: `${calendarItemLabel(type)} ${task.description}`,
-      attr: { "aria-label": task.description }
+      text: `${calendarItemLabel(type)} ${task.description}`
     });
     item.setAttribute("href", linkTarget);
     item.setAttribute("data-href", linkTarget);
-    item.addEventListener("mouseover", (event) => event.stopPropagation());
     item.addEventListener("mouseenter", () => {
       this.tooltip.show(item, [
         { text: `${calendarItemLabel(type)} \xB7 ${task.description}` },
