@@ -2,6 +2,8 @@
 
 Visual task dashboards with list, GTD, Eisenhower, and calendar views.
 
+Documentation: <https://luna-jmy.github.io/ob-plugin-docs/en/task-matrix/>
+
 ## ✨ Features
 
 ### 🧭 Interface
