@@ -231,6 +231,11 @@ export class MatrixView extends ItemView {
     this.buildBody(root);
     this.syncToolbar();
     this.render();
+    // 键盘切换工作区页签（Ctrl+Tab 等）不会触发日历条目的 mouseleave，
+    // 提示又挂在 body 上，不收起就会浮到别的页签上面
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this.calendar?.hideHover()),
+    );
     return Promise.resolve();
   }
 
@@ -595,6 +600,10 @@ export class MatrixView extends ItemView {
     const calendarActive = !ganttActive && this.mode === "calendar";
     const showTimeline = ganttActive && this.ganttView === "gantt";
     const showMermaid = ganttActive && this.ganttView === "mermaid";
+
+    // 从日历切走时收起悬停提示：这次重绘不经过 CalendarBoard.render()，
+    // mouseleave 又未必触发（键盘/后台切换），主动收一次
+    if (!calendarActive) this.calendar?.hideHover();
 
     // 四个宿主互斥显隐集中在这里写一次：分散到各分支里迟早会漏掉一个
     this.boardHost?.toggleClass("is-hidden", ganttActive || calendarActive);

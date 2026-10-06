@@ -56,6 +56,14 @@ export class CalendarBoard {
     this.tooltip.destroy();
   }
 
+  /**
+   * 收起悬停提示。切走日历（工作区页签切换、本视图换模式）时鼠标往往
+   * 没离开条目，mouseleave 不会触发，由宿主视图在这些时机显式调用。
+   */
+  hideHover(): void {
+    this.tooltip.hide();
+  }
+
   render(options: CalendarBoardOptions): void {
     this.host.empty();
     // 重绘会把锚点整批换掉，先收起提示，免得它挂在一个已经不存在的日期格上
