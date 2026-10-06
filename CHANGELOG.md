@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.7
+- Fix: The instant tooltip on hovering a calendar entry no longer lingers on screen. Hiding it was a no-op — the element sits on `document.body`, outside the plugin root where the plugin's `is-hidden` rule is scoped, so the hide class matched no rule. It now hides for real, and the view also collapses it when you switch panel/gantt mode or workspace tabs (keyboard tab switches never trigger the mouse-leave that used to be the only way out)
+
 ## 1.1.6
 - Fix: The second popover on hovering a calendar entry is gone for real. It was not the core page preview (that one never fires on links the plugin builds itself, so the 1.1.5 interception removed nothing) — it was Obsidian's built-in tooltip for elements carrying an `aria-label`, which pops about a second into the hover. The entry no longer sets one; its visible text is already the accessible name, so the instant tooltip is now the only thing that appears
 
