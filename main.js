@@ -321,6 +321,7 @@ var EN = {
   // ── settings: interface / scanning ───────────────────────────────
   "\u754C\u9762": "Interface",
   "\u754C\u9762\u8BED\u8A00": "Interface language",
+  "\u547D\u4EE4\u4E0E\u4FA7\u680F\u56FE\u6807\u540D\u79F0\u9700\u91CD\u8F7D\u63D2\u4EF6\uFF08\u7981\u7528\u518D\u542F\u7528\uFF09\u540E\u751F\u6548": "Command and sidebar-icon names take effect after reloading the plugin (disable and re-enable)",
   "\u81EA\u52A8": "Automatic",
   "\u4E2D\u6587": "\u4E2D\u6587",
   "\u81EA\u52A8\u8DDF\u968F Obsidian \u7684\u754C\u9762\u8BED\u8A00\u3002": "Follow the Obsidian interface language.",
@@ -1701,9 +1702,10 @@ var TaskMatrixSettingTab = class extends import_obsidian2.PluginSettingTab {
   }
   renderLanguage(containerEl) {
     new import_obsidian2.Setting(containerEl).setName(t("\u754C\u9762")).setHeading();
-    new import_obsidian2.Setting(containerEl).setName(t("\u754C\u9762\u8BED\u8A00")).setDesc(t("\u81EA\u52A8\u8DDF\u968F Obsidian \u7684\u754C\u9762\u8BED\u8A00\u3002")).addDropdown(
+    new import_obsidian2.Setting(containerEl).setName(t("\u754C\u9762\u8BED\u8A00")).setDesc(`${t("\u81EA\u52A8\u8DDF\u968F Obsidian \u7684\u754C\u9762\u8BED\u8A00\u3002")}<br><span style="color: var(--text-error)">${t("\u547D\u4EE4\u4E0E\u4FA7\u680F\u56FE\u6807\u540D\u79F0\u9700\u91CD\u8F7D\u63D2\u4EF6\uFF08\u7981\u7528\u518D\u542F\u7528\uFF09\u540E\u751F\u6548")}</span>`).addDropdown(
       (dropdown) => dropdown.addOption("auto", t("\u81EA\u52A8")).addOption("zh", t("\u4E2D\u6587")).addOption("en", "English").setValue(this.settings.uiLanguage).onChange((value) => {
         this.settings.uiLanguage = value;
+        this.host.applyUiLanguage();
         this.persist();
         void this.host.refreshViews();
         this.display();

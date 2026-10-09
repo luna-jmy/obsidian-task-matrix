@@ -359,6 +359,7 @@ export const EN: Record<string, string> = {
   // ── settings: interface / scanning ───────────────────────────────
   "界面": "Interface",
   "界面语言": "Interface language",
+  "命令与侧栏图标名称需重载插件（禁用再启用）后生效": "Command and sidebar-icon names take effect after reloading the plugin (disable and re-enable)",
   "自动": "Automatic",
   "中文": "中文",
   "自动跟随 Obsidian 的界面语言。": "Follow the Obsidian interface language.",

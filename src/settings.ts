@@ -60,6 +60,8 @@ export interface SettingsHost {
   persistSettings(rescan: boolean): Promise<void>;
   /** 语言变化后重渲染已打开的视图 */
   refreshViews(): void;
+  /** 把界面语言落到 i18n 运行时（改语言后 t() 立即切到新语言） */
+  applyUiLanguage(): boolean;
 }
 
 /**
@@ -227,7 +229,7 @@ export class TaskMatrixSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("界面语言"))
-      .setDesc(t("自动跟随 Obsidian 的界面语言。"))
+      .setDesc(`${t("自动跟随 Obsidian 的界面语言。")}<br><span style="color: var(--text-error)">${t("命令与侧栏图标名称需重载插件（禁用再启用）后生效")}</span>`)
       .addDropdown((dropdown) =>
         dropdown
           .addOption("auto", t("自动"))
@@ -236,6 +238,8 @@ export class TaskMatrixSettingTab extends PluginSettingTab {
           .setValue(this.settings.uiLanguage)
           .onChange((value) => {
             this.settings.uiLanguage = value as UiLanguage;
+            // 立即落到 i18n 运行时（此前只在 onload 调，改了语言 t() 仍旧语言）
+            this.host.applyUiLanguage();
             this.persist();
             void this.host.refreshViews();
             this.display();
