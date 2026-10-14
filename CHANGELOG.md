@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 - Fix: the folder filter trades its chips for a plain text box — real vaults carry dozens of folders and the chip row swamped the filter bar (27 folders wrapped into 9 lines in practice). Type comma-separated paths; a `-` prefix excludes, an empty include list means only the exclusions apply, and a match still includes its subfolders
 
 ## 1.2.0

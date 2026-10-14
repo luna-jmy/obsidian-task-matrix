@@ -49,10 +49,8 @@ var EN = {
   "\u6807\u8BB0": "Marker",
   "\u65B9\u62EC\u53F7\u5185\u5BB9\u662F {marker} \u7684\u4EFB\u52A1": "Tasks whose brackets contain {marker}",
   "\u76EE\u5F55": "Folder",
-  "\u76EE\u5F55\u7B5B\u9009\u65B9\u5411": "Folder filter direction",
-  "\u5305\u542B": "Include",
-  "\u6392\u9664": "Exclude",
-  "{folder} \u53CA\u5176\u5B50\u76EE\u5F55": "{folder} and its subfolders",
+  "\u6309\u76EE\u5F55\u8DEF\u5F84\u7B5B\u9009": "Filter by folder path",
+  "\u8DEF\u5F84\uFF0C\u9017\u53F7\u5206\u9694\uFF1B- \u5F00\u5934\u6392\u9664": "Paths, comma-separated; a - prefix excludes",
   "\u641C\u7D22": "Search",
   "\u4EFB\u52A1\u63CF\u8FF0\u3001\u6587\u4EF6\u3001ID": "Description, file or ID",
   "\u5F00\u59CB\u65E5\u671F": "Start date",
@@ -929,8 +927,7 @@ function defaultFilterState() {
     search: "",
     statuses: [...TASK_STATUSES],
     markers: [],
-    folders: [],
-    folderMode: "include",
+    folderQuery: "",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange()
   };
@@ -940,8 +937,7 @@ function initialFilterState() {
     search: "",
     statuses: presetToStatuses("hide-cancelled"),
     markers: [],
-    folders: [],
-    folderMode: "include",
+    folderQuery: "",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange()
   };
@@ -959,6 +955,21 @@ function collectMarkers(tasks, settings) {
 function markerLabel(marker) {
   return marker.length === 0 ? "[ ]" : `[${marker}]`;
 }
+function parseFolderQuery(raw) {
+  const includes = [];
+  const excludes = [];
+  for (const piece of raw.split(/[,，;；\n]/)) {
+    const trimmed = piece.trim();
+    if (trimmed === "" || trimmed === "-") continue;
+    if (trimmed.startsWith("-")) {
+      const folder = trimmed.slice(1).trim().replace(/^\/+|\/+$/g, "");
+      if (folder !== "") excludes.push(folder);
+    } else {
+      includes.push(trimmed.replace(/^\/+|\/+$/g, ""));
+    }
+  }
+  return { includes, excludes };
+}
 function directoryOf(filePath) {
   const slash = filePath.lastIndexOf("/");
   return slash === -1 ? "" : filePath.slice(0, slash);
@@ -966,24 +977,17 @@ function directoryOf(filePath) {
 function normalizeFolder(path) {
   return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
 }
-function folderChipLabel(folder) {
-  return folder === "" ? t("\u6839\u76EE\u5F55") : folder;
-}
 function inFolder(filePath, folder) {
   const dir = normalizeFolder(directoryOf(filePath));
   const target = normalizeFolder(folder);
   if (target === "") return dir === "";
   return dir === target || dir.startsWith(`${target}/`);
 }
-function collectFolders(tasks) {
-  const present = new Set(tasks.map((task) => directoryOf(task.filePath)));
-  return [...present].sort((a, b) => a.localeCompare(b));
-}
 function toggle(list, value) {
   return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
 }
 function hasActiveFilter(state) {
-  return state.search.trim().length > 0 || detectStatusPreset(state.statuses) !== "all" || state.markers.length > 0 || state.folders.length > 0 || state.startDate.preset !== "all" || state.dueDate.preset !== "all";
+  return state.search.trim().length > 0 || detectStatusPreset(state.statuses) !== "all" || state.markers.length > 0 || state.folderQuery.trim().length > 0 || state.startDate.preset !== "all" || state.dueDate.preset !== "all";
 }
 function resolveDateRange(range, today) {
   if (range.preset === "custom") return { start: range.start, end: range.end };
@@ -1019,14 +1023,16 @@ function matchesRange(dateIso, range, today) {
 }
 function applyFilters(tasks, state, today = todayIso()) {
   const keyword = state.search.trim().toLowerCase();
+  const folderQuery = parseFolderQuery(state.folderQuery);
   return tasks.filter((task) => {
     if (!state.statuses.includes(task.displayStatus)) return false;
     if (state.markers.length > 0 && !state.markers.includes(task.checkboxStatus.trim())) {
       return false;
     }
-    if (state.folders.length > 0) {
-      const hit = state.folders.some((folder) => inFolder(task.filePath, folder));
-      if (state.folderMode === "include" ? !hit : hit) return false;
+    if (folderQuery.includes.length > 0 || folderQuery.excludes.length > 0) {
+      const included = folderQuery.includes.length === 0 || folderQuery.includes.some((folder) => inFolder(task.filePath, folder));
+      const excluded = folderQuery.excludes.some((folder) => inFolder(task.filePath, folder));
+      if (!included || excluded) return false;
     }
     if (!matchesRange(task.startDate, state.startDate, today)) return false;
     if (!matchesRange(task.dueDate, state.dueDate, today)) return false;
@@ -5073,19 +5079,18 @@ var FilterBar = class {
     this.chipsEl = null;
     this.markerGroupEl = null;
     this.markerChipsEl = null;
-    this.folderGroupEl = null;
-    this.folderChipsEl = null;
-    this.folderModeSelect = null;
+    this.folderInput = null;
     this.searchInput = null;
     this.presetSelect = null;
     this.sortSelect = null;
     this.countEl = null;
     this.clearBtn = null;
-    this.searchTimer = null;
+    this.pendingTimer = null;
+    this.pendingCommit = null;
     this.dateControls = /* @__PURE__ */ new Map();
     this.host.addClass("tm-filter-bar");
     this.build();
-    this.component.register(() => this.clearSearchTimer());
+    this.component.register(() => this.clearPendingCommit());
   }
   build() {
     this.buildStatusGroup();
@@ -5127,26 +5132,25 @@ var FilterBar = class {
     this.markerChipsEl = group.createDiv({ cls: "tm-chips tm-chips--marker" });
   }
   /**
-   * 目录筛选：模式下拉（包含 / 排除）+ 目录 chip。
+   * 目录筛选：一个文本框——逗号分隔多个路径，`-` 前缀表示排除（命中含子目录）。
    *
-   * 与标记组同口径：候选从数据里实际出现过的目录生成，点了必有反应；
-   * 只有一个候选时这组没有筛选价值，直接收起来。
+   * 1.2.0 曾做成「模式下拉 + 目录 chip」：真实 vault 的目录动辄几十个，
+   * chip 行会把筛选区撑爆（实测 27 个目录换行 9 行），故改为文本框——
+   * 与设置页「扫描目录」同一套写法，可包含可排除还能混用。
    */
   buildFolderGroup() {
     const group = this.host.createDiv({ cls: "tm-filter-group tm-filter-group--folder" });
-    this.folderGroupEl = group;
     group.createEl("label", { cls: "tm-filter-label", text: t("\u76EE\u5F55") });
-    const mode = group.createEl("select", {
-      cls: "dropdown tm-filter-select",
-      attr: { "aria-label": t("\u76EE\u5F55\u7B5B\u9009\u65B9\u5411") }
+    const input = group.createEl("input", {
+      cls: "tm-filter-input tm-filter-input--folder",
+      attr: {
+        type: "search",
+        placeholder: t("\u8DEF\u5F84\uFF0C\u9017\u53F7\u5206\u9694\uFF1B- \u5F00\u5934\u6392\u9664"),
+        "aria-label": t("\u6309\u76EE\u5F55\u8DEF\u5F84\u7B5B\u9009")
+      }
     });
-    this.folderModeSelect = mode;
-    mode.createEl("option", { value: "include", text: t("\u5305\u542B") });
-    mode.createEl("option", { value: "exclude", text: t("\u6392\u9664") });
-    this.component.registerDomEvent(mode, "change", () => {
-      this.deps.setFolderMode(mode.value);
-    });
-    this.folderChipsEl = group.createDiv({ cls: "tm-chips tm-chips--folder" });
+    this.folderInput = input;
+    this.bindDebouncedInput(input, (value) => this.deps.setFolderQuery(value));
   }
   buildSearchGroup() {
     const group = this.host.createDiv({ cls: "tm-filter-group tm-filter-group--search" });
@@ -5156,13 +5160,7 @@ var FilterBar = class {
       attr: { type: "search", placeholder: t("\u4EFB\u52A1\u63CF\u8FF0\u3001\u6587\u4EF6\u3001ID") }
     });
     this.searchInput = input;
-    this.component.registerDomEvent(input, "input", () => this.scheduleSearch(input.value));
-    this.component.registerDomEvent(input, "keydown", (evt) => {
-      if (evt.key !== "Enter") return;
-      evt.preventDefault();
-      this.clearSearchTimer();
-      this.deps.setSearch(input.value);
-    });
+    this.bindDebouncedInput(input, (value) => this.deps.setSearch(value));
   }
   /**
    * 日期区间：预设下拉 + **常显**的起止输入框。
@@ -5237,14 +5235,15 @@ var FilterBar = class {
     const state = this.deps.getState();
     this.syncStatusChips(state.statuses);
     this.syncMarkerChips(state.markers);
-    this.syncFolderChips(state.folders);
-    if (this.folderModeSelect !== null) this.folderModeSelect.value = state.folderMode;
     if (this.presetSelect !== null) this.presetSelect.value = detectStatusPreset(state.statuses);
     if (this.sortSelect !== null) this.sortSelect.value = this.deps.getSortMode();
     this.syncDateGroup(this.dateControls.get("start"), state.startDate);
     this.syncDateGroup(this.dateControls.get("due"), state.dueDate);
     if (this.searchInput !== null && this.searchInput.value !== state.search) {
       this.searchInput.value = state.search;
+    }
+    if (this.folderInput !== null && this.folderInput.value !== state.folderQuery && this.folderInput !== this.host.ownerDocument.activeElement) {
+      this.folderInput.value = state.folderQuery;
     }
     const counts = this.deps.getCounts();
     if (this.countEl !== null) {
@@ -5277,20 +5276,6 @@ var FilterBar = class {
         title: t("\u65B9\u62EC\u53F7\u5185\u5BB9\u662F {marker} \u7684\u4EFB\u52A1", { marker: markerLabel(marker) })
       })),
       (value) => this.deps.setMarkers(toggle(this.deps.getState().markers, value))
-    );
-  }
-  syncFolderChips(active) {
-    const folders = this.deps.getAvailableFolders();
-    this.folderGroupEl?.toggleClass("is-hidden", folders.length <= 1);
-    this.renderChips(
-      this.folderChipsEl,
-      folders.map((folder) => ({
-        value: folder,
-        label: folderChipLabel(folder),
-        active: active.includes(folder),
-        title: t("{folder} \u53CA\u5176\u5B50\u76EE\u5F55", { folder: folderChipLabel(folder) })
-      })),
-      (value) => this.deps.setFolders(toggle(this.deps.getState().folders, value))
     );
   }
   /** chips 不是输入框，重建不会丢光标或输入法状态，所以每次都整体重画 */
@@ -5327,19 +5312,33 @@ var FilterBar = class {
       if (input.value !== next) input.value = next;
     }
   }
-  scheduleSearch(raw) {
-    this.clearSearchTimer();
+  /** 输入即筛的通用绑定：防抖提交 + 回车立即提交（搜索 / 目录两个框共用一套） */
+  bindDebouncedInput(input, commit) {
+    this.component.registerDomEvent(input, "input", () => this.scheduleCommit(input, commit));
+    this.component.registerDomEvent(input, "keydown", (evt) => {
+      if (evt.key !== "Enter") return;
+      evt.preventDefault();
+      this.clearPendingCommit();
+      commit(input.value);
+    });
+  }
+  scheduleCommit(input, commit) {
+    this.clearPendingCommit();
     const win = this.host.ownerDocument.defaultView;
     if (win === null) return;
-    this.searchTimer = win.setTimeout(() => {
-      this.searchTimer = null;
-      this.deps.setSearch(raw);
+    this.pendingCommit = commit;
+    this.pendingTimer = win.setTimeout(() => {
+      this.pendingTimer = null;
+      const commitNow = this.pendingCommit;
+      this.pendingCommit = null;
+      commitNow?.(input.value);
     }, SEARCH_DEBOUNCE_MS);
   }
-  clearSearchTimer() {
-    if (this.searchTimer === null) return;
-    this.host.ownerDocument.defaultView?.clearTimeout(this.searchTimer);
-    this.searchTimer = null;
+  clearPendingCommit() {
+    if (this.pendingTimer === null) return;
+    this.host.ownerDocument.defaultView?.clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.pendingCommit = null;
   }
 };
 
@@ -5880,11 +5879,9 @@ var MatrixView = class extends import_obsidian13.ItemView {
       getSortMode: () => this.sortMode,
       getCounts: () => this.counts(),
       getAvailableMarkers: () => collectMarkers(this.host.getTasks(), this.host.settings),
-      getAvailableFolders: () => collectFolders(this.host.getTasks()),
       setStatuses: (statuses) => this.patchFilter({ statuses }),
       setMarkers: (markers) => this.patchFilter({ markers }),
-      setFolders: (folders) => this.patchFilter({ folders }),
-      setFolderMode: (folderMode) => this.patchFilter({ folderMode }),
+      setFolderQuery: (folderQuery) => this.patchFilter({ folderQuery }),
       setSearch: (search) => this.patchFilter({ search }),
       setStartDate: (startDate) => this.patchFilter({ startDate }),
       setDueDate: (dueDate) => this.patchFilter({ dueDate }),
