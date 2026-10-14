@@ -48,6 +48,11 @@ var EN = {
   "\u9690\u85CF\u5DF2\u53D6\u6D88": "Hide cancelled",
   "\u6807\u8BB0": "Marker",
   "\u65B9\u62EC\u53F7\u5185\u5BB9\u662F {marker} \u7684\u4EFB\u52A1": "Tasks whose brackets contain {marker}",
+  "\u76EE\u5F55": "Folder",
+  "\u76EE\u5F55\u7B5B\u9009\u65B9\u5411": "Folder filter direction",
+  "\u5305\u542B": "Include",
+  "\u6392\u9664": "Exclude",
+  "{folder} \u53CA\u5176\u5B50\u76EE\u5F55": "{folder} and its subfolders",
   "\u641C\u7D22": "Search",
   "\u4EFB\u52A1\u63CF\u8FF0\u3001\u6587\u4EF6\u3001ID": "Description, file or ID",
   "\u5F00\u59CB\u65E5\u671F": "Start date",
@@ -156,6 +161,11 @@ var EN = {
   "\u7518\u7279": "Gantt",
   "\u65F6\u95F4\u7C92\u5EA6": "Time scale",
   "\u5206\u7EC4\u4F9D\u636E": "Group by",
+  "\u805A\u7126\u7B14\u8BB0": "Focus note",
+  "\u641C\u7D22\u5E76\u53EA\u770B\u8FD9\u4E00\u7BC7": "Search to view one note only",
+  "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0": "No matching note",
+  "\u9000\u51FA\u5355\u7B14\u8BB0\u6A21\u5F0F": "Leave single-note mode",
+  "\u5728\u7518\u7279\u56FE\u4E2D\u67E5\u770B": "View in Gantt chart",
   "\u65E5": "Day",
   "\u5E74": "Year",
   "\u4E0D\u5206\u7EC4": "No grouping",
@@ -919,6 +929,8 @@ function defaultFilterState() {
     search: "",
     statuses: [...TASK_STATUSES],
     markers: [],
+    folders: [],
+    folderMode: "include",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange()
   };
@@ -928,6 +940,8 @@ function initialFilterState() {
     search: "",
     statuses: presetToStatuses("hide-cancelled"),
     markers: [],
+    folders: [],
+    folderMode: "include",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange()
   };
@@ -945,11 +959,31 @@ function collectMarkers(tasks, settings) {
 function markerLabel(marker) {
   return marker.length === 0 ? "[ ]" : `[${marker}]`;
 }
+function directoryOf(filePath) {
+  const slash = filePath.lastIndexOf("/");
+  return slash === -1 ? "" : filePath.slice(0, slash);
+}
+function normalizeFolder(path) {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+}
+function folderChipLabel(folder) {
+  return folder === "" ? t("\u6839\u76EE\u5F55") : folder;
+}
+function inFolder(filePath, folder) {
+  const dir = normalizeFolder(directoryOf(filePath));
+  const target = normalizeFolder(folder);
+  if (target === "") return dir === "";
+  return dir === target || dir.startsWith(`${target}/`);
+}
+function collectFolders(tasks) {
+  const present = new Set(tasks.map((task) => directoryOf(task.filePath)));
+  return [...present].sort((a, b) => a.localeCompare(b));
+}
 function toggle(list, value) {
   return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
 }
 function hasActiveFilter(state) {
-  return state.search.trim().length > 0 || detectStatusPreset(state.statuses) !== "all" || state.markers.length > 0 || state.startDate.preset !== "all" || state.dueDate.preset !== "all";
+  return state.search.trim().length > 0 || detectStatusPreset(state.statuses) !== "all" || state.markers.length > 0 || state.folders.length > 0 || state.startDate.preset !== "all" || state.dueDate.preset !== "all";
 }
 function resolveDateRange(range, today) {
   if (range.preset === "custom") return { start: range.start, end: range.end };
@@ -989,6 +1023,10 @@ function applyFilters(tasks, state, today = todayIso()) {
     if (!state.statuses.includes(task.displayStatus)) return false;
     if (state.markers.length > 0 && !state.markers.includes(task.checkboxStatus.trim())) {
       return false;
+    }
+    if (state.folders.length > 0) {
+      const hit = state.folders.some((folder) => inFolder(task.filePath, folder));
+      if (state.folderMode === "include" ? !hit : hit) return false;
     }
     if (!matchesRange(task.startDate, state.startDate, today)) return false;
     if (!matchesRange(task.dueDate, state.dueDate, today)) return false;
@@ -1499,6 +1537,8 @@ function buildGtdPanels(tasks, rules) {
       dropTarget: { kind: "gtd", state },
       addDefaults: gtdDefaultsFor(state, today)
     };
+  }).filter((panel) => {
+    return panel.key !== panelKeyForGtd("Done") || panel.tasks.length > 0;
   });
   return { grid: "fixed", panels };
 }
@@ -3170,7 +3210,7 @@ var SplitResizer = class {
   }
   onKeyDown(evt) {
     const step = evt.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
-    let delta = 0;
+    let delta;
     if (evt.key === "ArrowLeft") delta = -step;
     else if (evt.key === "ArrowRight") delta = step;
     else return;
@@ -5033,6 +5073,9 @@ var FilterBar = class {
     this.chipsEl = null;
     this.markerGroupEl = null;
     this.markerChipsEl = null;
+    this.folderGroupEl = null;
+    this.folderChipsEl = null;
+    this.folderModeSelect = null;
     this.searchInput = null;
     this.presetSelect = null;
     this.sortSelect = null;
@@ -5047,6 +5090,7 @@ var FilterBar = class {
   build() {
     this.buildStatusGroup();
     this.buildMarkerGroup();
+    this.buildFolderGroup();
     this.buildSearchGroup();
     this.dateControls.set("start", this.buildDateGroup("start"));
     this.dateControls.set("due", this.buildDateGroup("due"));
@@ -5081,6 +5125,28 @@ var FilterBar = class {
     this.markerGroupEl = group;
     group.createEl("label", { cls: "tm-filter-label", text: t("\u6807\u8BB0") });
     this.markerChipsEl = group.createDiv({ cls: "tm-chips tm-chips--marker" });
+  }
+  /**
+   * 目录筛选：模式下拉（包含 / 排除）+ 目录 chip。
+   *
+   * 与标记组同口径：候选从数据里实际出现过的目录生成，点了必有反应；
+   * 只有一个候选时这组没有筛选价值，直接收起来。
+   */
+  buildFolderGroup() {
+    const group = this.host.createDiv({ cls: "tm-filter-group tm-filter-group--folder" });
+    this.folderGroupEl = group;
+    group.createEl("label", { cls: "tm-filter-label", text: t("\u76EE\u5F55") });
+    const mode = group.createEl("select", {
+      cls: "dropdown tm-filter-select",
+      attr: { "aria-label": t("\u76EE\u5F55\u7B5B\u9009\u65B9\u5411") }
+    });
+    this.folderModeSelect = mode;
+    mode.createEl("option", { value: "include", text: t("\u5305\u542B") });
+    mode.createEl("option", { value: "exclude", text: t("\u6392\u9664") });
+    this.component.registerDomEvent(mode, "change", () => {
+      this.deps.setFolderMode(mode.value);
+    });
+    this.folderChipsEl = group.createDiv({ cls: "tm-chips tm-chips--folder" });
   }
   buildSearchGroup() {
     const group = this.host.createDiv({ cls: "tm-filter-group tm-filter-group--search" });
@@ -5171,6 +5237,8 @@ var FilterBar = class {
     const state = this.deps.getState();
     this.syncStatusChips(state.statuses);
     this.syncMarkerChips(state.markers);
+    this.syncFolderChips(state.folders);
+    if (this.folderModeSelect !== null) this.folderModeSelect.value = state.folderMode;
     if (this.presetSelect !== null) this.presetSelect.value = detectStatusPreset(state.statuses);
     if (this.sortSelect !== null) this.sortSelect.value = this.deps.getSortMode();
     this.syncDateGroup(this.dateControls.get("start"), state.startDate);
@@ -5209,6 +5277,20 @@ var FilterBar = class {
         title: t("\u65B9\u62EC\u53F7\u5185\u5BB9\u662F {marker} \u7684\u4EFB\u52A1", { marker: markerLabel(marker) })
       })),
       (value) => this.deps.setMarkers(toggle(this.deps.getState().markers, value))
+    );
+  }
+  syncFolderChips(active) {
+    const folders = this.deps.getAvailableFolders();
+    this.folderGroupEl?.toggleClass("is-hidden", folders.length <= 1);
+    this.renderChips(
+      this.folderChipsEl,
+      folders.map((folder) => ({
+        value: folder,
+        label: folderChipLabel(folder),
+        active: active.includes(folder),
+        title: t("{folder} \u53CA\u5176\u5B50\u76EE\u5F55", { folder: folderChipLabel(folder) })
+      })),
+      (value) => this.deps.setFolders(toggle(this.deps.getState().folders, value))
     );
   }
   /** chips 不是输入框，重建不会丢光标或输入法状态，所以每次都整体重画 */
@@ -5569,6 +5651,16 @@ var MatrixView = class extends import_obsidian13.ItemView {
     this.ganttZoom = "day";
     this.ganttGrouping = "none";
     this.ganttNeedsScrollToToday = true;
+    /**
+     * 单笔记模式：甘特只画聚焦的这一篇。
+     *
+     * 会话内状态，与筛选栏同口径不持久化；置空即回到全量。
+     */
+    this.ganttNotePath = null;
+    this.ganttNoteInput = null;
+    this.ganttNoteListEl = null;
+    this.ganttFocusChip = null;
+    this.ganttNoteTimer = null;
     this.filterBar = null;
     this.filterHostEl = null;
     /** 筛选区是否收起（会话内状态：默认展开，每次打开视图都回到展开） */
@@ -5719,6 +5811,41 @@ var MatrixView = class extends import_obsidian13.ItemView {
       this.ganttGrouping = grouping.value;
       this.render();
     });
+    const noteField = actions.createDiv({
+      cls: "tm-toolbar__field tm-toolbar__gantt-only tm-note-field"
+    });
+    noteField.createEl("label", { cls: "tm-toolbar__label", text: t("\u805A\u7126\u7B14\u8BB0") });
+    const noteInput = noteField.createEl("input", {
+      cls: "tm-filter-input tm-note-field__input",
+      attr: { type: "search", placeholder: t("\u641C\u7D22\u5E76\u53EA\u770B\u8FD9\u4E00\u7BC7"), "aria-label": t("\u805A\u7126\u7B14\u8BB0") }
+    });
+    this.ganttNoteInput = noteInput;
+    const noteList = noteField.createDiv({ cls: "tm-note-field__list is-hidden" });
+    this.ganttNoteListEl = noteList;
+    this.registerDomEvent(noteInput, "input", () => this.scheduleNoteSuggest(noteInput.value));
+    this.registerDomEvent(noteInput, "keydown", (evt) => {
+      if (evt.key === "Escape") {
+        noteInput.value = "";
+        this.hideNoteSuggest();
+        return;
+      }
+      if (evt.key !== "Enter" || noteInput.value.trim() === "") return;
+      const first = this.noteCandidates(noteInput.value)[0];
+      if (first !== void 0) {
+        evt.preventDefault();
+        this.setGanttNote(first);
+      }
+    });
+    this.registerDomEvent(noteInput, "blur", () => {
+      const win = noteInput.ownerDocument.defaultView;
+      win?.setTimeout(() => this.hideNoteSuggest(), 150);
+    });
+    const focusChip = noteField.createEl("button", {
+      cls: "tm-note-field__chip is-hidden",
+      attr: { type: "button", title: t("\u9000\u51FA\u5355\u7B14\u8BB0\u6A21\u5F0F") }
+    });
+    this.ganttFocusChip = focusChip;
+    this.registerDomEvent(focusChip, "click", () => this.setGanttNote(null));
     const todayButton = this.addButton(
       actions,
       t("\u5B9A\u4F4D\u5230\u4ECA\u5929"),
@@ -5753,8 +5880,11 @@ var MatrixView = class extends import_obsidian13.ItemView {
       getSortMode: () => this.sortMode,
       getCounts: () => this.counts(),
       getAvailableMarkers: () => collectMarkers(this.host.getTasks(), this.host.settings),
+      getAvailableFolders: () => collectFolders(this.host.getTasks()),
       setStatuses: (statuses) => this.patchFilter({ statuses }),
       setMarkers: (markers) => this.patchFilter({ markers }),
+      setFolders: (folders) => this.patchFilter({ folders }),
+      setFolderMode: (folderMode) => this.patchFilter({ folderMode }),
       setSearch: (search) => this.patchFilter({ search }),
       setStartDate: (startDate) => this.patchFilter({ startDate }),
       setDueDate: (dueDate) => this.patchFilter({ dueDate }),
@@ -5887,6 +6017,71 @@ var MatrixView = class extends import_obsidian13.ItemView {
     this.ganttAnchor = anchor ?? void 0;
     this.render();
   }
+  // ────────────────────────────── 单笔记甘特 ──────────────────────────────
+  /**
+   * 候选：带排期任务的笔记路径（去重排序），按输入串过滤——
+   * 路径与笔记名都参与匹配、不分大小写；最多回 20 条，避免一次铺出长列表。
+   */
+  noteCandidates(query) {
+    const needle = query.trim().toLowerCase();
+    const paths = [...new Set(this.host.getGanttTasks().map((task) => task.filePath))].sort((a, b) => a.localeCompare(b));
+    if (needle === "") return paths.slice(0, 20);
+    return paths.filter(
+      (path) => path.toLowerCase().includes(needle) || noteNameOf(path).toLowerCase().includes(needle)
+    ).slice(0, 20);
+  }
+  scheduleNoteSuggest(raw) {
+    this.clearNoteTimer();
+    const win = this.ganttNoteInput?.ownerDocument.defaultView;
+    if (win === null || win === void 0) return;
+    this.ganttNoteTimer = win.setTimeout(() => {
+      this.ganttNoteTimer = null;
+      this.renderNoteSuggest(raw);
+    }, 200);
+  }
+  renderNoteSuggest(query) {
+    const list = this.ganttNoteListEl;
+    if (list === null) return;
+    list.empty();
+    const candidates = this.noteCandidates(query);
+    if (candidates.length === 0) {
+      list.createDiv({ cls: "tm-note-field__empty", text: t("\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0") });
+    }
+    for (const path of candidates) {
+      const item = list.createEl("button", {
+        cls: "tm-note-field__option",
+        text: path,
+        attr: { type: "button", title: path }
+      });
+      item.addEventListener("click", () => this.setGanttNote(path));
+    }
+    list.removeClass("is-hidden");
+  }
+  hideNoteSuggest() {
+    this.clearNoteTimer();
+    this.ganttNoteListEl?.addClass("is-hidden");
+  }
+  clearNoteTimer() {
+    if (this.ganttNoteTimer === null) return;
+    this.ganttNoteInput?.ownerDocument.defaultView?.clearTimeout(this.ganttNoteTimer);
+    this.ganttNoteTimer = null;
+  }
+  /** 聚焦 / 退出单笔记甘特 */
+  setGanttNote(path) {
+    this.ganttNotePath = path;
+    if (this.ganttNoteInput !== null) this.ganttNoteInput.value = "";
+    this.hideNoteSuggest();
+    this.render();
+  }
+  /** 外部入口（笔记菜单「在甘特图中查看」）：切到甘特并聚焦指定笔记 */
+  focusGanttOnNote(path) {
+    if (this.ganttNotePath === path && this.activeTab === "gantt") return;
+    this.ganttNotePath = path;
+    if (this.ganttNoteInput !== null) this.ganttNoteInput.value = "";
+    this.hideNoteSuggest();
+    if (this.activeTab !== "gantt") this.switchTab("gantt");
+    else this.render();
+  }
   addButton(host, label, onClick, cls = "") {
     const button = host.createEl("button", {
       cls: cls.length > 0 ? `tm-btn ${cls}` : "tm-btn",
@@ -5984,7 +6179,8 @@ var MatrixView = class extends import_obsidian13.ItemView {
       const key = `${task.filePath}:${task.lineNumber}`;
       return visibleKeys.has(key) || !allKeys.has(key);
     });
-    const model = buildGanttModel(ganttTasks, {
+    const scoped = this.ganttNotePath === null ? ganttTasks : ganttTasks.filter((task) => task.filePath === this.ganttNotePath);
+    const model = buildGanttModel(scoped, {
       grouping: this.ganttGrouping,
       collapsedKeys: this.collapsedKeys,
       today,
@@ -6151,6 +6347,11 @@ var MatrixView = class extends import_obsidian13.ItemView {
     }
     if (this.ganttZoomSelect !== null) this.ganttZoomSelect.value = this.ganttZoom;
     if (this.ganttGroupingSelect !== null) this.ganttGroupingSelect.value = this.ganttGrouping;
+    if (this.ganttFocusChip !== null) {
+      const focused = this.ganttNotePath;
+      this.ganttFocusChip.toggleClass("is-hidden", focused === null);
+      if (focused !== null) this.ganttFocusChip.setText(`${noteNameOf(focused)} \xD7`);
+    }
     const hasCollapsibles = this.lastCollapsibleKeys.length > 0;
     if (this.collapseBtn !== null) {
       this.collapseBtn.toggleClass("is-hidden", !hasCollapsibles);
@@ -6322,6 +6523,26 @@ var TaskMatrixPlugin = class extends import_obsidian14.Plugin {
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => this.handleVaultRename(file, oldPath))
     );
+    const addGanttMenuItem = (menu, path) => {
+      menu.addItem(
+        (item) => item.setTitle(t("\u5728\u7518\u7279\u56FE\u4E2D\u67E5\u770B")).setIcon("calendar-range").onClick(() => void this.openGanttForNote(path))
+      );
+    };
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!(file instanceof import_obsidian14.TFile)) return;
+        if (!isTrackedMarkdownPath(file.path, this.settings)) return;
+        addGanttMenuItem(menu, file.path);
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, _editor, info) => {
+        const file = info.file;
+        if (file === null) return;
+        if (!isTrackedMarkdownPath(file.path, this.settings)) return;
+        addGanttMenuItem(menu, file.path);
+      })
+    );
     this.app.workspace.onLayoutReady(() => {
       void this.refreshTasks();
     });
@@ -6450,5 +6671,13 @@ ${ganttSignature(index.ganttTasks)}`;
     if (leaf === null) return;
     await leaf.setViewState({ type: VIEW_TYPE_TASK_MATRIX, active: true });
     await workspace.revealLeaf(leaf);
+  }
+  /** 打开（或聚焦）任务矩阵视图，并把甘特聚焦到指定笔记 */
+  async openGanttForNote(path) {
+    await this.activateView();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)) {
+      const view = leaf.view;
+      if (view instanceof MatrixView) view.focusGanttOnNote(path);
+    }
   }
 };

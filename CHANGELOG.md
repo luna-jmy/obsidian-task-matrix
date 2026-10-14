@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 - Feature: **Filter by folder** — an Include/Exclude dropdown plus a row of folder chips in the filter bar. Candidates are the folders your tasks actually live in (data-driven, like the marker chips), and a match includes its subfolders
 - Feature: **Gantt single-note mode** — the toolbar's *Focus note* search box scopes the timeline to one note; the Mermaid preview and exports share the same model, so the scope never drifts. A note-name chip next to the box exits the mode
 - Feature: The note's more-options menu and the file-explorer context menu gain a **View in Gantt chart** entry that opens Task Matrix focused on that note (only for Markdown the plugin would index)
