@@ -241,6 +241,10 @@
 	max-width: 10em;
 }
 
+.tm-filter-input--folder {
+	min-width: 12em;
+}
+
 .tm-filter-input--date {
 	min-width: 9em;
 }

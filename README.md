@@ -11,7 +11,7 @@ Documentation: <https://luna-jmy.github.io/ob-plugin-docs/en/task-matrix/>
 The view is three rows, top to bottom:
 
 1. **Toolbar** — new task, refresh, the four panel modes (List / GTD / Matrix / Calendar), a **Gantt mode** toggle, **Hide filters** (collapses the filter bar, which is expanded by default), and one expand/collapse button that shows what it will do next (it reads **Collapse all** only when every container is open). Clicking **Gantt mode** swaps the panel buttons for the Gantt's own controls (time scale and grouping); the button then reads **Exit Gantt mode**, and the panel mode you were on is remembered.
-2. **Filter bar** — search, status chips, marker chips, folder chips (include or exclude, subfolders included), start and due date ranges, sorting, a live `shown/total` count, and a clear button.
+2. **Filter bar** — search, status chips, marker chips, a folder-path box (comma-separated, `-` prefix excludes, subfolders included), start and due date ranges, sorting, a live `shown/total` count, and a clear button.
 3. **Main area** — equally sized containers holding task cards, so the grid stays symmetrical at any window width.
 
 The interface ships in Chinese and English and follows the Obsidian language by default (Interface → Interface language).

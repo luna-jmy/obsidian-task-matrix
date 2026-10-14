@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Fix: the folder filter trades its chips for a plain text box — real vaults carry dozens of folders and the chip row swamped the filter bar (27 folders wrapped into 9 lines in practice). Type comma-separated paths; a `-` prefix excludes, an empty include list means only the exclusions apply, and a match still includes its subfolders
+
 ## 1.2.0
 - Feature: **Filter by folder** — an Include/Exclude dropdown plus a row of folder chips in the filter bar. Candidates are the folders your tasks actually live in (data-driven, like the marker chips), and a match includes its subfolders
 - Feature: **Gantt single-note mode** — the toolbar's *Focus note* search box scopes the timeline to one note; the Mermaid preview and exports share the same model, so the scope never drifts. A note-name chip next to the box exits the mode
