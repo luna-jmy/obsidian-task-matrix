@@ -114,7 +114,8 @@ export class SplitResizer {
 
   private onKeyDown(evt: KeyboardEvent): void {
     const step = evt.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
-    let delta = 0;
+    // 不预置 0：else 分支直接 return，初始值永远不会被读到
+    let delta: number;
     if (evt.key === "ArrowLeft") delta = -step;
     else if (evt.key === "ArrowRight") delta = step;
     else return;
