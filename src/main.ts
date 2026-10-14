@@ -1,10 +1,11 @@
-import { getIconIds, moment, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+import { getIconIds, Menu, moment, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { applyLanguageSetting, detectLocale, t } from "./i18n";
 import { TaskMatrixSettingTab, SettingsHost } from "./settings";
 import { GanttTask } from "./parser/gantt-parser";
 import {
   collectIndex,
   ganttSignature,
+  isTrackedMarkdownPath,
   shouldRescanForRename,
   shouldRescanForVaultChange,
   taskSignature,
@@ -79,6 +80,32 @@ export default class TaskMatrixPlugin extends Plugin implements TaskMatrixHost, 
     this.registerEvent(this.app.vault.on("delete", (file) => this.handleVaultChange(file)));
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => this.handleVaultRename(file, oldPath)),
+    );
+
+    // 笔记入口：文件菜单（文件列表 / 页签右键）与编辑器「更多选项」菜单都给一条
+    // 「在甘特图中查看」——范围内会被索引的 Markdown 才出现，范围外点了也只会是空图
+    const addGanttMenuItem = (menu: Menu, path: string): void => {
+      menu.addItem((item) =>
+        item
+          .setTitle(t("在甘特图中查看"))
+          .setIcon("calendar-range")
+          .onClick(() => void this.openGanttForNote(path)),
+      );
+    };
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!(file instanceof TFile)) return;
+        if (!isTrackedMarkdownPath(file.path, this.settings)) return;
+        addGanttMenuItem(menu, file.path);
+      }),
+    );
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, _editor, info) => {
+        const file = info.file;
+        if (file === null) return;
+        if (!isTrackedMarkdownPath(file.path, this.settings)) return;
+        addGanttMenuItem(menu, file.path);
+      }),
     );
 
     // 重活推迟到布局就绪之后，插件加载不被全库扫描拖住
@@ -246,5 +273,14 @@ export default class TaskMatrixPlugin extends Plugin implements TaskMatrixHost, 
 
     await leaf.setViewState({ type: VIEW_TYPE_TASK_MATRIX, active: true });
     await workspace.revealLeaf(leaf);
+  }
+
+  /** 打开（或聚焦）任务矩阵视图，并把甘特聚焦到指定笔记 */
+  private async openGanttForNote(path: string): Promise<void> {
+    await this.activateView();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_MATRIX)) {
+      const view = leaf.view;
+      if (view instanceof MatrixView) view.focusGanttOnNote(path);
+    }
   }
 }

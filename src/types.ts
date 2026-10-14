@@ -166,9 +166,19 @@ export interface FilterState {
    * 空数组 = 不按标记筛。
    */
   markers: string[];
+  /**
+   * 按目录路径筛选：命中目录及其子目录下的任务。空数组 = 不按目录筛。
+   * 候选来自数据里真实出现过的目录（数据驱动，与标记同口径）。
+   */
+  folders: string[];
+  /** 目录筛选的方向：包含 = 只看选中目录；排除 = 隐藏选中目录 */
+  folderMode: FolderFilterMode;
   startDate: DateRangeState;
   dueDate: DateRangeState;
 }
+
+/** 目录筛选的方向 */
+export type FolderFilterMode = "include" | "exclude";
 
 export type SortMode = "due-asc" | "due-desc" | "start-asc" | "priority" | "file";
 

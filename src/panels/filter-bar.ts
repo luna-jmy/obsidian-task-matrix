@@ -4,6 +4,7 @@ import {
   DATE_PRESETS,
   datePresetLabel,
   detectStatusPreset,
+  folderChipLabel,
   hasActiveFilter,
   markerLabel,
   presetToStatuses,
@@ -15,7 +16,14 @@ import {
   TASK_STATUSES,
   toggle,
 } from "../services/filter-service";
-import { DateRangePreset, DateRangeState, FilterState, SortMode, TaskStatusFilter } from "../types";
+import {
+  DateRangePreset,
+  DateRangeState,
+  FilterState,
+  FolderFilterMode,
+  SortMode,
+  TaskStatusFilter,
+} from "../types";
 import { todayIso } from "../utils/date";
 
 /**
@@ -32,8 +40,12 @@ export interface FilterBarHost {
   getCounts(): { shown: number; total: number };
   /** 数据里真实出现过的方括号标记（`- [x]` 的 x 之类），由数据驱动 */
   getAvailableMarkers(): string[];
+  /** 数据里真实出现过的目录路径（根目录为空串），由数据驱动 */
+  getAvailableFolders(): string[];
   setStatuses(statuses: TaskStatusFilter[]): void;
   setMarkers(markers: string[]): void;
+  setFolders(folders: string[]): void;
+  setFolderMode(mode: FolderFilterMode): void;
   setSearch(keyword: string): void;
   setStartDate(range: DateRangeState): void;
   setDueDate(range: DateRangeState): void;
@@ -48,6 +60,9 @@ export class FilterBar {
   private chipsEl: HTMLElement | null = null;
   private markerGroupEl: HTMLElement | null = null;
   private markerChipsEl: HTMLElement | null = null;
+  private folderGroupEl: HTMLElement | null = null;
+  private folderChipsEl: HTMLElement | null = null;
+  private folderModeSelect: HTMLSelectElement | null = null;
   private searchInput: HTMLInputElement | null = null;
   private presetSelect: HTMLSelectElement | null = null;
   private sortSelect: HTMLSelectElement | null = null;
@@ -69,6 +84,7 @@ export class FilterBar {
   private build(): void {
     this.buildStatusGroup();
     this.buildMarkerGroup();
+    this.buildFolderGroup();
     this.buildSearchGroup();
     this.dateControls.set("start", this.buildDateGroup("start"));
     this.dateControls.set("due", this.buildDateGroup("due"));
@@ -107,6 +123,31 @@ export class FilterBar {
     this.markerGroupEl = group;
     group.createEl("label", { cls: "tm-filter-label", text: t("标记") });
     this.markerChipsEl = group.createDiv({ cls: "tm-chips tm-chips--marker" });
+  }
+
+  /**
+   * 目录筛选：模式下拉（包含 / 排除）+ 目录 chip。
+   *
+   * 与标记组同口径：候选从数据里实际出现过的目录生成，点了必有反应；
+   * 只有一个候选时这组没有筛选价值，直接收起来。
+   */
+  private buildFolderGroup(): void {
+    const group = this.host.createDiv({ cls: "tm-filter-group tm-filter-group--folder" });
+    this.folderGroupEl = group;
+    group.createEl("label", { cls: "tm-filter-label", text: t("目录") });
+
+    const mode = group.createEl("select", {
+      cls: "dropdown tm-filter-select",
+      attr: { "aria-label": t("目录筛选方向") },
+    });
+    this.folderModeSelect = mode;
+    mode.createEl("option", { value: "include", text: t("包含") });
+    mode.createEl("option", { value: "exclude", text: t("排除") });
+    this.component.registerDomEvent(mode, "change", () => {
+      this.deps.setFolderMode(mode.value as FolderFilterMode);
+    });
+
+    this.folderChipsEl = group.createDiv({ cls: "tm-chips tm-chips--folder" });
   }
 
   private buildSearchGroup(): void {
@@ -211,6 +252,8 @@ export class FilterBar {
 
     this.syncStatusChips(state.statuses);
     this.syncMarkerChips(state.markers);
+    this.syncFolderChips(state.folders);
+    if (this.folderModeSelect !== null) this.folderModeSelect.value = state.folderMode;
     if (this.presetSelect !== null) this.presetSelect.value = detectStatusPreset(state.statuses);
     if (this.sortSelect !== null) this.sortSelect.value = this.deps.getSortMode();
 
@@ -257,6 +300,24 @@ export class FilterBar {
         title: t("方括号内容是 {marker} 的任务", { marker: markerLabel(marker) }),
       })),
       (value) => this.deps.setMarkers(toggle(this.deps.getState().markers, value)),
+    );
+  }
+
+  private syncFolderChips(active: readonly string[]): void {
+    const folders = this.deps.getAvailableFolders();
+
+    // 只有一个候选（例如全部任务都躺在同一个目录）时这组没有筛选价值，直接收起来
+    this.folderGroupEl?.toggleClass("is-hidden", folders.length <= 1);
+
+    this.renderChips(
+      this.folderChipsEl,
+      folders.map((folder) => ({
+        value: folder,
+        label: folderChipLabel(folder),
+        active: active.includes(folder),
+        title: t("{folder} 及其子目录", { folder: folderChipLabel(folder) }),
+      })),
+      (value) => this.deps.setFolders(toggle(this.deps.getState().folders, value)),
     );
   }
 

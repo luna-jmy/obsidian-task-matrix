@@ -11,7 +11,7 @@ Documentation: <https://luna-jmy.github.io/ob-plugin-docs/en/task-matrix/>
 The view is three rows, top to bottom:
 
 1. **Toolbar** — new task, refresh, the four panel modes (List / GTD / Matrix / Calendar), a **Gantt mode** toggle, **Hide filters** (collapses the filter bar, which is expanded by default), and one expand/collapse button that shows what it will do next (it reads **Collapse all** only when every container is open). Clicking **Gantt mode** swaps the panel buttons for the Gantt's own controls (time scale and grouping); the button then reads **Exit Gantt mode**, and the panel mode you were on is remembered.
-2. **Filter bar** — search, status chips, start and due date ranges, sorting, a live `shown/total` count, and a clear button.
+2. **Filter bar** — search, status chips, marker chips, folder chips (include or exclude, subfolders included), start and due date ranges, sorting, a live `shown/total` count, and a clear button.
 3. **Main area** — equally sized containers holding task cards, so the grid stays symmetrical at any window width.
 
 The interface ships in Chinese and English and follows the Obsidian language by default (Interface → Interface language).
@@ -31,6 +31,8 @@ Hovering an entry in the calendar gives an instant tooltip with the task and the
 ### 📊 The Gantt view
 
 The Gantt is a mode rather than a panel layout: the view opens in panel mode, and **Gantt mode** in the toolbar swaps the main area for the timeline and brings the Gantt's own controls (time scale and grouping) into the toolbar. Leaving it restores the panel mode you were on.
+
+- **Single-note mode**: the **Focus note** search box scopes the timeline (and the Mermaid preview / export, which share the same model) to one note; a note-name chip next to the box exits the mode. The note's more-options menu and the file-explorer context menu carry a **View in Gantt chart** entry that opens Task Matrix focused on that note.
 
 - Bar colours are configurable in the settings, one per Mermaid Gantt state: `active` for open tasks, `done` for completed ones, `crit` for tasks marked `🔺`, and a colour for everything else. Type any CSS colour (`var(--color-blue)`, a colour name) or click a swatch.
 - **Mermaid preview**: the Gantt area has two tabs — the timeline and a **Mermaid preview**. The preview is generated from the current Gantt state (filters, grouping, collapsed sections), so it is never a second source of truth: there is no code box to edit, and collapsed sections are left out just like on screen. Its toolbar carries two toggles (today's line, weekend marking) and two date fields (extra holidays and make-up workdays), which recompute the preview as you type.

@@ -34,13 +34,14 @@ import {
 import {
   applyFilters,
   applyVisibilityRanges,
+  collectFolders,
   collectMarkers,
   defaultFilterState,
   initialFilterState,
   resolveDateRange,
   sortTasks,
 } from "../services/filter-service";
-import { buildPanels, GroupingResult } from "../services/grouping-service";
+import { buildPanels, GroupingResult, noteNameOf } from "../services/grouping-service";
 import {
   cancelTask,
   deleteTask,
@@ -152,6 +153,16 @@ export class MatrixView extends ItemView {
   private ganttGrouping: GanttGrouping = "none";
   private ganttAnchor: ZoomAnchor | undefined;
   private ganttNeedsScrollToToday = true;
+  /**
+   * 单笔记模式：甘特只画聚焦的这一篇。
+   *
+   * 会话内状态，与筛选栏同口径不持久化；置空即回到全量。
+   */
+  private ganttNotePath: string | null = null;
+  private ganttNoteInput: HTMLInputElement | null = null;
+  private ganttNoteListEl: HTMLElement | null = null;
+  private ganttFocusChip: HTMLButtonElement | null = null;
+  private ganttNoteTimer: number | null = null;
 
   private filterBar: FilterBar | null = null;
   private filterHostEl: HTMLElement | null = null;
@@ -337,6 +348,49 @@ export class MatrixView extends ItemView {
     });
 
     /*
+     * 单笔记模式：搜索并聚焦一篇笔记，甘特只画这一篇（Mermaid 预览 / 导出走
+     * 同一份模型，口径不漂移）。建议列表自绘——候选只有「带排期任务的笔记」，
+     * 通常几十条以内，不值得为它引入 AbstractInputSuggest。输入防抖、回车取
+     * 第一条；聚焦中显示 chip，点 chip 退出。
+     */
+    const noteField = actions.createDiv({
+      cls: "tm-toolbar__field tm-toolbar__gantt-only tm-note-field",
+    });
+    noteField.createEl("label", { cls: "tm-toolbar__label", text: t("聚焦笔记") });
+    const noteInput = noteField.createEl("input", {
+      cls: "tm-filter-input tm-note-field__input",
+      attr: { type: "search", placeholder: t("搜索并只看这一篇"), "aria-label": t("聚焦笔记") },
+    });
+    this.ganttNoteInput = noteInput;
+    const noteList = noteField.createDiv({ cls: "tm-note-field__list is-hidden" });
+    this.ganttNoteListEl = noteList;
+    this.registerDomEvent(noteInput, "input", () => this.scheduleNoteSuggest(noteInput.value));
+    this.registerDomEvent(noteInput, "keydown", (evt) => {
+      if (evt.key === "Escape") {
+        noteInput.value = "";
+        this.hideNoteSuggest();
+        return;
+      }
+      if (evt.key !== "Enter" || noteInput.value.trim() === "") return;
+      const first = this.noteCandidates(noteInput.value)[0];
+      if (first !== undefined) {
+        evt.preventDefault();
+        this.setGanttNote(first);
+      }
+    });
+    this.registerDomEvent(noteInput, "blur", () => {
+      // 延迟收起：给「点选一条」留出点击事件的时间窗
+      const win = noteInput.ownerDocument.defaultView;
+      win?.setTimeout(() => this.hideNoteSuggest(), 150);
+    });
+    const focusChip = noteField.createEl("button", {
+      cls: "tm-note-field__chip is-hidden",
+      attr: { type: "button", title: t("退出单笔记模式") },
+    });
+    this.ganttFocusChip = focusChip;
+    this.registerDomEvent(focusChip, "click", () => this.setGanttNote(null));
+
+    /*
      * 复位到「今天」。
      *
      * 只有这一个动作是「把视野挪回去」而不是「改显示口径」，所以它不进那两个下拉，
@@ -402,8 +456,11 @@ export class MatrixView extends ItemView {
       getSortMode: () => this.sortMode,
       getCounts: () => this.counts(),
       getAvailableMarkers: () => collectMarkers(this.host.getTasks(), this.host.settings),
+      getAvailableFolders: () => collectFolders(this.host.getTasks()),
       setStatuses: (statuses) => this.patchFilter({ statuses }),
       setMarkers: (markers) => this.patchFilter({ markers }),
+      setFolders: (folders) => this.patchFilter({ folders }),
+      setFolderMode: (folderMode) => this.patchFilter({ folderMode }),
       setSearch: (search) => this.patchFilter({ search }),
       setStartDate: (startDate) => this.patchFilter({ startDate }),
       setDueDate: (dueDate) => this.patchFilter({ dueDate }),
@@ -559,6 +616,86 @@ export class MatrixView extends ItemView {
     this.render();
   }
 
+  // ────────────────────────────── 单笔记甘特 ──────────────────────────────
+
+  /**
+   * 候选：带排期任务的笔记路径（去重排序），按输入串过滤——
+   * 路径与笔记名都参与匹配、不分大小写；最多回 20 条，避免一次铺出长列表。
+   */
+  private noteCandidates(query: string): string[] {
+    const needle = query.trim().toLowerCase();
+    const paths = [...new Set(this.host.getGanttTasks().map((task) => task.filePath))]
+      .sort((a, b) => a.localeCompare(b));
+    if (needle === "") return paths.slice(0, 20);
+    return paths
+      .filter(
+        (path) =>
+          path.toLowerCase().includes(needle)
+          || noteNameOf(path).toLowerCase().includes(needle),
+      )
+      .slice(0, 20);
+  }
+
+  private scheduleNoteSuggest(raw: string): void {
+    this.clearNoteTimer();
+    const win = this.ganttNoteInput?.ownerDocument.defaultView;
+    if (win === null || win === undefined) return;
+    this.ganttNoteTimer = win.setTimeout(() => {
+      this.ganttNoteTimer = null;
+      this.renderNoteSuggest(raw);
+    }, 200);
+  }
+
+  private renderNoteSuggest(query: string): void {
+    const list = this.ganttNoteListEl;
+    if (list === null) return;
+    list.empty();
+    const candidates = this.noteCandidates(query);
+    if (candidates.length === 0) {
+      list.createDiv({ cls: "tm-note-field__empty", text: t("没有匹配的笔记") });
+    }
+    // 建议项是即用即弃的节点：直接 addEventListener，随节点一起回收——
+    // registerDomEvent 会把清理回调攒在视图上，每敲一次字攒一批
+    for (const path of candidates) {
+      const item = list.createEl("button", {
+        cls: "tm-note-field__option",
+        text: path,
+        attr: { type: "button", title: path },
+      });
+      item.addEventListener("click", () => this.setGanttNote(path));
+    }
+    list.removeClass("is-hidden");
+  }
+
+  private hideNoteSuggest(): void {
+    this.clearNoteTimer();
+    this.ganttNoteListEl?.addClass("is-hidden");
+  }
+
+  private clearNoteTimer(): void {
+    if (this.ganttNoteTimer === null) return;
+    this.ganttNoteInput?.ownerDocument.defaultView?.clearTimeout(this.ganttNoteTimer);
+    this.ganttNoteTimer = null;
+  }
+
+  /** 聚焦 / 退出单笔记甘特 */
+  private setGanttNote(path: string | null): void {
+    this.ganttNotePath = path;
+    if (this.ganttNoteInput !== null) this.ganttNoteInput.value = "";
+    this.hideNoteSuggest();
+    this.render();
+  }
+
+  /** 外部入口（笔记菜单「在甘特图中查看」）：切到甘特并聚焦指定笔记 */
+  focusGanttOnNote(path: string): void {
+    if (this.ganttNotePath === path && this.activeTab === "gantt") return;
+    this.ganttNotePath = path;
+    if (this.ganttNoteInput !== null) this.ganttNoteInput.value = "";
+    this.hideNoteSuggest();
+    if (this.activeTab !== "gantt") this.switchTab("gantt");
+    else this.render();
+  }
+
   private addButton(
     host: HTMLElement,
     label: string,
@@ -694,7 +831,13 @@ export class MatrixView extends ItemView {
       return visibleKeys.has(key) || !allKeys.has(key);
     });
 
-    const model: GanttModel = buildGanttModel(ganttTasks, {
+    // 单笔记模式：只画聚焦的这一篇；Mermaid 预览 / 导出共用这份模型，口径不漂移
+    const scoped =
+      this.ganttNotePath === null
+        ? ganttTasks
+        : ganttTasks.filter((task) => task.filePath === this.ganttNotePath);
+
+    const model: GanttModel = buildGanttModel(scoped, {
       grouping: this.ganttGrouping,
       collapsedKeys: this.collapsedKeys,
       today,
@@ -896,6 +1039,13 @@ export class MatrixView extends ItemView {
     // 下拉的取值只在建工具栏时给过一次，缩放/分组改过之后要在这儿对齐
     if (this.ganttZoomSelect !== null) this.ganttZoomSelect.value = this.ganttZoom;
     if (this.ganttGroupingSelect !== null) this.ganttGroupingSelect.value = this.ganttGrouping;
+
+    // 单笔记聚焦 chip：只在聚焦时出现，点它退出（输入框保留给下一次搜索）
+    if (this.ganttFocusChip !== null) {
+      const focused = this.ganttNotePath;
+      this.ganttFocusChip.toggleClass("is-hidden", focused === null);
+      if (focused !== null) this.ganttFocusChip.setText(`${noteNameOf(focused)} ×`);
+    }
 
     // 日历没有可折叠的单元、甘特「不分组」时也没有分节头：按钮留着只会「点了没反应」
     const hasCollapsibles = this.lastCollapsibleKeys.length > 0;

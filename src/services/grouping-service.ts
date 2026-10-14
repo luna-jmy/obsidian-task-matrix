@@ -236,6 +236,10 @@ function buildGtdPanels(tasks: readonly ParsedTask[], rules: GtdRules): Grouping
       dropTarget: { kind: "gtd", state },
       addDefaults: gtdDefaultsFor(state, today),
     };
+  }).filter((panel) => {
+    // 已完成栏被筛空时整列收起：完成项被状态档隐藏是常态，空列只占地方；
+    // 其余栏保留空态（「这列现在没有」本身是有效信息），网格 auto-fit 自动回流
+    return panel.key !== panelKeyForGtd("Done") || panel.tasks.length > 0;
   });
 
   return { grid: "fixed", panels };

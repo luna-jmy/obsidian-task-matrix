@@ -140,6 +140,8 @@ export function defaultFilterState(): FilterState {
     search: "",
     statuses: [...TASK_STATUSES],
     markers: [],
+    folders: [],
+    folderMode: "include",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange(),
   };
@@ -156,6 +158,8 @@ export function initialFilterState(): FilterState {
     search: "",
     statuses: presetToStatuses("hide-cancelled"),
     markers: [],
+    folders: [],
+    folderMode: "include",
     startDate: emptyDateRange(),
     dueDate: emptyDateRange(),
   };
@@ -191,6 +195,38 @@ export function markerLabel(marker: string): string {
   return marker.length === 0 ? "[ ]" : `[${marker}]`;
 }
 
+// ────────────────────────────── 目录 ──────────────────────────────
+
+/** 任务所在笔记的目录路径（根目录下的笔记返回空串） */
+export function directoryOf(filePath: string): string {
+  const slash = filePath.lastIndexOf("/");
+  return slash === -1 ? "" : filePath.slice(0, slash);
+}
+
+/** 目录比较用的归一：反斜杠归正斜杠、去首尾斜杠、统一小写（与 task-index 的 isInside 同口径） */
+function normalizeFolder(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+}
+
+/** 目录 chip 上的显示名：根目录给个名字，其余原样 */
+export function folderChipLabel(folder: string): string {
+  return folder === "" ? t("根目录") : folder;
+}
+
+/** 该任务是否落在目录 folder 及其子目录里（folder 为空串 = 根目录本身，不含子目录） */
+export function inFolder(filePath: string, folder: string): boolean {
+  const dir = normalizeFolder(directoryOf(filePath));
+  const target = normalizeFolder(folder);
+  if (target === "") return dir === "";
+  return dir === target || dir.startsWith(`${target}/`);
+}
+
+/** 数据里真实出现过的目录（去重、按路径排序）——候选由数据决定，不会出现点了没反应的 chip */
+export function collectFolders(tasks: readonly ParsedTask[]): string[] {
+  const present = new Set(tasks.map((task) => directoryOf(task.filePath)));
+  return [...present].sort((a, b) => a.localeCompare(b));
+}
+
 export function toggle<T>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
 }
@@ -200,6 +236,7 @@ export function hasActiveFilter(state: FilterState): boolean {
     state.search.trim().length > 0
     || detectStatusPreset(state.statuses) !== "all"
     || state.markers.length > 0
+    || state.folders.length > 0
     || state.startDate.preset !== "all"
     || state.dueDate.preset !== "all"
   );
@@ -270,6 +307,12 @@ export function applyFilters(
     // 一个自定义标记的任务可能同时被状态判成「未开始」。
     if (state.markers.length > 0 && !state.markers.includes(task.checkboxStatus.trim())) {
       return false;
+    }
+
+    // 目录筛选：包含 = 只看选中目录（含子目录）；排除 = 隐藏选中目录
+    if (state.folders.length > 0) {
+      const hit = state.folders.some((folder) => inFolder(task.filePath, folder));
+      if (state.folderMode === "include" ? !hit : hit) return false;
     }
 
     if (!matchesRange(task.startDate, state.startDate, today)) return false;
