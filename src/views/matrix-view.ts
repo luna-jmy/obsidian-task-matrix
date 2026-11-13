@@ -828,11 +828,28 @@ export class MatrixView extends ItemView {
       return visibleKeys.has(key) || !allKeys.has(key);
     });
 
+    /*
+     * 行序吃筛选栏同一个排序档。甘特解析器没有优先级这些字段面，排序一律以
+     * 面板解析器的结果为参照序——同一档排序在两种视图里才是同一个顺序
+     * （此前只排了面板、甘特一直吃索引序，排序档在甘特模式形同虚设）。
+     * 面板没解析到的行排在最后并保持相对序（sort 稳定）。
+     */
+    const orderOf = new Map(
+      sortTasks(filtered, this.sortMode).map(
+        (task, index) => [`${task.filePath}:${task.lineNumber}`, index] as const,
+      ),
+    );
+    const ordered = [...ganttTasks].sort(
+      (a, b) =>
+        (orderOf.get(`${a.filePath}:${a.lineNumber}`) ?? Number.MAX_SAFE_INTEGER) -
+        (orderOf.get(`${b.filePath}:${b.lineNumber}`) ?? Number.MAX_SAFE_INTEGER),
+    );
+
     // 单笔记模式：只画聚焦的这一篇；Mermaid 预览 / 导出共用这份模型，口径不漂移
     const scoped =
       this.ganttNotePath === null
-        ? ganttTasks
-        : ganttTasks.filter((task) => task.filePath === this.ganttNotePath);
+        ? ordered
+        : ordered.filter((task) => task.filePath === this.ganttNotePath);
 
     const model: GanttModel = buildGanttModel(scoped, {
       grouping: this.ganttGrouping,
