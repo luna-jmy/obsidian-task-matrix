@@ -342,6 +342,8 @@ export class GanttView {
       const rowEl = host.createDiv({ cls: "tm-gantt__sidebar-row" });
       rowEl.dataset.taskId = row.task.id;
       rowEl.dataset.section = entry.sectionKey;
+      // 完成态与条子的淡化是同一个视觉通道的两侧：行划线 + 条淡化，不靠颜色
+      if (row.task.completed) rowEl.addClass("is-done");
 
       const nameEl = rowEl.createDiv({ cls: "tm-gantt__sidebar-name" });
       const link = nameEl.createEl("a", {
@@ -352,6 +354,10 @@ export class GanttView {
       link.dataset.openTask = row.task.id;
 
       const meta = rowEl.createDiv({ cls: "tm-gantt__sidebar-meta" });
+      // 已完成排在最前：它是行上最该先看到的状态，且不依赖颜色就能读出
+      if (row.task.completed) {
+        meta.createSpan({ cls: "tm-gantt__tag", text: t("已完成") });
+      }
       if (row.task.milestone) {
         meta.createSpan({ cls: "tm-gantt__tag", text: t("里程碑") });
       }
@@ -499,19 +505,21 @@ export class GanttView {
 
     // 里程碑是「一个时刻」而不是一段跨度：画菱形，不画条
     const bar = row.task.milestone
-      ? this.buildMilestone(x, width, barY, barHeight, color)
+      ? this.buildMilestone(x, width, barY, barHeight, row, color)
       : this.buildBar(x, width, barY, barHeight, row, fallback, color);
     bar.dataset.taskId = row.task.id;
     bar.setAttribute("tabindex", "0");
     bar.setAttribute("role", "button");
+    const statusPrefix = row.task.completed ? `${t("已完成")}，` : "";
     bar.setAttribute(
       "aria-label",
-      t("{name}：{start} 至 {end}，{days} 天", {
-        name: row.task.name,
-        start: row.start,
-        end: row.end,
-        days: row.calendarDays,
-      }),
+      statusPrefix +
+        t("{name}：{start} 至 {end}，{days} 天", {
+          name: row.task.name,
+          start: row.start,
+          end: row.end,
+          days: row.calendarDays,
+        }),
     );
 
     const title = this.svg("title");
@@ -570,6 +578,7 @@ export class GanttView {
     width: number,
     barY: number,
     barHeight: number,
+    row: GanttRow,
     color: string,
   ): SVGPolygonElement {
     const size = Math.min(barHeight, 14);
@@ -577,7 +586,7 @@ export class GanttView {
     const centerY = barY + barHeight / 2;
     const half = size / 2;
     const diamond = this.svg("polygon");
-    diamond.setAttribute("class", "tm-gantt__bar tm-gantt__bar--milestone");
+    diamond.setAttribute("class", `tm-gantt__bar ${barClass(row)}`);
     diamond.setAttribute(
       "points",
       [

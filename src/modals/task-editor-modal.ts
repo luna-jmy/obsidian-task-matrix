@@ -8,6 +8,7 @@ import {
   editTaskLine,
   insertLineUnderHeading,
   replaceTaskDescription,
+  setCheckboxMarker,
   setDateField,
   setIdentifierField,
   setPriority,
@@ -29,8 +30,26 @@ export interface TaskEditorHost {
   onSaved(): void;
 }
 
-/** 编辑结果。`conflictTag` 不是任务字段，而是「这次保存要不要打冲突标记」的意图 */
-export type TaskEditorUpdates = Partial<ParsedTask> & { conflictTag?: boolean };
+/** 编辑弹窗里的三档状态（未完成 / 已完成 / 已取消），落盘时映射回勾选框字符 */
+export type EditorStatus = "open" | "done" | "cancelled";
+
+/**
+ * 勾选框内容 → 三档状态。标记集来自设置（completionMarkers / cancelledMarkers），
+ * 与面板解析器 `computeDisplayStatus` 同一套词表——弹窗里选的档位和列表里的
+ * 状态徽章不会是两个答案。
+ */
+function statusOfCheckbox(checkboxContent: string, settings: TaskMatrixSettings): EditorStatus {
+  const marker = checkboxContent.trim();
+  if (settings.completionMarkers.includes(marker)) return "done";
+  if (settings.cancelledMarkers.includes(marker)) return "cancelled";
+  return "open";
+}
+
+/** 编辑结果。`conflictTag` 与 `status` 不是任务字段，而是「这次保存的意图」 */
+export type TaskEditorUpdates = Partial<ParsedTask> & {
+  conflictTag?: boolean;
+  status?: EditorStatus;
+};
 
 /**
  * 日期冲突标记。
@@ -98,6 +117,14 @@ export class TaskEditorModal extends Modal {
     let description = this.isCreateMode
       ? (this.defaults.tags ?? []).join(" ")
       : (source?.description ?? "");
+    /*
+     * 状态只在编辑模式出现：新建任务永远是「未完成」起步，提供下拉只会诱导
+     * 「建出来就是已完成」这种少见又难追溯的写法。取消档标记同样来自设置
+     * （cancelledMarkers，默认 `-`），保存时映射回勾选框字符。
+     */
+    let status: EditorStatus = this.isCreateMode
+      ? "open"
+      : statusOfCheckbox(source?.checkboxStatus ?? "", this.host.settings);
     let priority: Priority = this.isCreateMode
       ? (this.defaults.priority ?? Priority.None)
       : (source?.priority ?? Priority.None);
@@ -155,6 +182,17 @@ export class TaskEditorModal extends Modal {
       tagMenu.toggleClass("is-open", open);
       tagButton.setAttribute("aria-expanded", String(open));
     });
+
+    if (!this.isCreateMode) {
+      new Setting(form).setName(t("状态")).addDropdown((dropdown) => {
+        dropdown.addOption("open", t("未完成"));
+        dropdown.addOption("done", t("已完成"));
+        dropdown.addOption("cancelled", t("已取消"));
+        dropdown.setValue(status).onChange((value) => {
+          status = value as EditorStatus;
+        });
+      });
+    }
 
     new Setting(form).setName(t("优先级")).addDropdown((dropdown) => {
       for (const level of [
@@ -229,6 +267,7 @@ export class TaskEditorModal extends Modal {
               dueDate,
               taskId,
               dependsOn,
+              status,
             });
           }),
       );
@@ -444,6 +483,35 @@ export class TaskEditorModal extends Modal {
 
     const result = await editTaskLine(this.host.app, task, (line) => {
       let next = line;
+
+      /*
+       * 状态：以行上**最新的**勾选字符判断（弹窗开着的时候笔记可能被别的插件
+       * 改过），档位真的变了才动它。写入的完成/取消标记取设置清单的第一个，
+       * 与 ✓/↺/✕ 按钮写的是同一个字符。完成日期跟随状态（trackCompletionDate
+       * 开着时）：变成已完成补今天，离开已完成就摘掉——取消的任务留着完成日
+       * 是误导。
+       */
+      if (updates.status !== undefined) {
+        const settings = this.host.settings;
+        const currentMarker = /\[([^\]]*)\]/u.exec(next)?.[1]?.trim() ?? "";
+        const currentStatus = statusOfCheckbox(currentMarker, settings);
+        if (currentStatus !== updates.status) {
+          const marker =
+            updates.status === "done"
+              ? (settings.completionMarkers[0] ?? "x")
+              : updates.status === "cancelled"
+                ? (settings.cancelledMarkers[0] ?? "-")
+                : " ";
+          next = setCheckboxMarker(next, marker);
+          if (settings.trackCompletionDate) {
+            if (updates.status === "done" && !/✅\s*\d{4}-\d{2}-\d{2}/u.test(next)) {
+              next = `${next} ✅ ${todayIso()}`;
+            } else if (currentStatus === "done") {
+              next = next.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
+            }
+          }
+        }
+      }
 
       // 只改用户真的动过的字段，其余 token 连位置都不动 —— 别的任务插件
       // 与 git diff 都会因此保持稳定

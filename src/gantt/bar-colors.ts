@@ -9,8 +9,10 @@ import { GanttRow } from "./gantt-model";
  * 与其造一个新的行内字段，不如让颜色只表达状态 —— 四类颜色在设置里可改，
  * 既满足「想要自己的配色」，又不往用户的笔记里塞插件私有语法。
  *
- * 判定优先级：关键 > 已完成 > 其他 > 进行中。
- * 关键任务排最前是有意的：它同时是已完成时也该一眼看出它是关键任务。
+ * 底色判定优先级：关键 > 已完成 > 其他 > 进行中。
+ * 关键任务排最前是有意的：它同时是已完成时也按关键色画底。完成状态**不靠底色表达**
+ * （那样和关键色打架，`🔺` 已完成的任务会看不出完成）——完成走独立的视觉通道：
+ * 整条淡化 + 任务列划线（见 barClass 的 is-done 与 styles.css），两个通道正交。
  */
 export function barColorKey(row: GanttRow): keyof GanttBarColors {
   const { task } = row;
@@ -23,10 +25,14 @@ export function barColorKey(row: GanttRow): keyof GanttBarColors {
 /**
  * 任务条的状态类名。
  *
- * **它不决定颜色**（颜色由 JS 内联写 `fill`）。留类名是为了在开发者工具里
- * 一眼看出某条是什么状态，别去样式表里找它的颜色。
+ * 颜色**不在这里**决定（由 JS 内联写 `fill`），但**完成态在这里**：
+ * `is-done` 会把整条淡化（styles.css），与底色无关——已完成的 🔺 关键任务
+ * 保持红底、同时淡化可辨。`--active/--done/--crit/--fallback` 四个色类
+ * 仍只用于在开发者工具里辨认状态。
  */
 export function barClass(row: GanttRow): string {
-  if (row.task.milestone) return "tm-gantt__bar--milestone";
-  return `tm-gantt__bar--${barColorKey(row)}`;
+  const base = row.task.milestone
+    ? "tm-gantt__bar--milestone"
+    : `tm-gantt__bar--${barColorKey(row)}`;
+  return row.task.completed ? `${base} tm-gantt__bar--is-done` : base;
 }

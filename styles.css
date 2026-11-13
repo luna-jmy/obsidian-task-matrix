@@ -1169,6 +1169,12 @@ body.tm-resizing {
 	color: var(--text-accent);
 }
 
+/* 完成态：行文字划线弱化——与条子的淡化同一个视觉通道，不依赖条色 */
+.tm-gantt__sidebar-row.is-done .tm-gantt__sidebar-name a {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+
 .tm-gantt__sidebar-meta {
 	display: flex;
 	align-items: center;
@@ -1306,6 +1312,20 @@ body.tm-resizing {
 	stroke: var(--color-orange);
 	stroke-width: 1;
 	stroke-dasharray: 4 3;
+}
+
+/*
+ * 完成态淡化：完成不占用颜色通道（颜色归关键 / 推导 / 进行中），已完成的条
+ * 整体半透明——🔺 关键任务完成后保持关键色底，同时一眼看出「已完成」。
+ * 悬停 / 聚焦时抬高不透明度，想细看时不受影响。
+ */
+.tm-gantt__bar--is-done {
+	opacity: 0.45;
+}
+
+.tm-gantt__bar--is-done:hover,
+.tm-gantt__bar--is-done:focus-visible {
+	opacity: 0.85;
 }
 
 /*

@@ -32,9 +32,11 @@ const DATE = "\\d{4}-\\d{2}-\\d{2}";
 const START_FIELD = `(?:\\u{1F6EB}\\uFE0F?\\s*|\\[start::\\s*)(${DATE})\\]?`;
 const SCHEDULED_FIELD = `(?:\\u{23F3}\\uFE0F?\\s*|\\[scheduled::\\s*)(${DATE})\\]?`;
 const DUE_FIELD = `(?:\\u{1F4C5}\\uFE0F?\\s*|\\[due::\\s*)(${DATE})\\]?`;
-const DONE_FIELD = `(?:\\u{2705}\\uFE0F?|\\[completion::\\s*)(${DATE})\\]?`;
-const CREATED_FIELD = `(?:\\u{2795}\\uFE0F?|\\[created::\\s*)(${DATE})\\]?`;
-const CANCELLED_FIELD = `(?:\\u{274C}\\uFE0F?|\\[cancelled::\\s*)(${DATE})\\]?`;
+// ✅/➕/❌ 的 emoji 分支也要 `\s*`：Tasks 系写法是「✅ 2026-11-13」（带空格），
+// 少了它提取不到完成日，日期还会漏进任务名（🛫/⏳/📅 一直都有）
+const DONE_FIELD = `(?:\\u{2705}\\uFE0F?\\s*|\\[completion::\\s*)(${DATE})\\]?`;
+const CREATED_FIELD = `(?:\\u{2795}\\uFE0F?\\s*|\\[created::\\s*)(${DATE})\\]?`;
+const CANCELLED_FIELD = `(?:\\u{274C}\\uFE0F?\\s*|\\[cancelled::\\s*)(${DATE})\\]?`;
 const ID_FIELD = "(?:\\u{1F194}\\uFE0F?\\s*|\\[id::\\s*)([a-zA-Z0-9_-]+)\\]?";
 const DEPENDENCY_FIELD =
   "(?:\\u{26D4}\\uFE0F?\\s*|\\[(?:dependsOn|depends on|depends)::\\s*)([a-zA-Z0-9_-]+)\\]?";
@@ -43,6 +45,7 @@ const OWNER_FIELD = "\\[owner::\\s*([^\\]]+)\\]";
 const START_RE = new RegExp(START_FIELD, "u");
 const SCHEDULED_RE = new RegExp(SCHEDULED_FIELD, "u");
 const DUE_RE = new RegExp(DUE_FIELD, "u");
+const DONE_RE = new RegExp(DONE_FIELD, "u");
 const ID_RE = new RegExp(ID_FIELD, "u");
 const DEPENDENCY_RE = new RegExp(DEPENDENCY_FIELD, "iu");
 const MILESTONE_RE = new RegExp("#milestone|\\u{1F6A9}\\uFE0F?", "iu");
@@ -83,6 +86,8 @@ export interface GanttTask {
   /** 完整的 `⏳`，用于区分「真的是开工日」还是「拿计划日顶上的」 */
   scheduledDate?: string;
   dueDate?: string;
+  /** `✅` 完成日。已完成任务的条以它为终点（开工 → 完成），见 gantt-model 的 resolveRow */
+  doneDate?: string;
   taskId?: string;
   dependsOn?: string;
   /** `🔺`（唯一的 crit 标记） */
@@ -129,6 +134,7 @@ export function parseGanttTaskLine(
   const start = normalizeIso(START_RE.exec(raw)?.[1]);
   const scheduled = normalizeIso(SCHEDULED_RE.exec(raw)?.[1]);
   const due = normalizeIso(DUE_RE.exec(raw)?.[1]);
+  const done = normalizeIso(DONE_RE.exec(raw)?.[1]);
   const name = stripGanttFields(raw) || t("未命名任务");
 
   return {
@@ -144,6 +150,7 @@ export function parseGanttTaskLine(
     startDate: start ?? scheduled,
     scheduledDate: scheduled,
     dueDate: due,
+    doneDate: done,
     taskId: ID_RE.exec(raw)?.[1]?.trim() || undefined,
     dependsOn: DEPENDENCY_RE.exec(raw)?.[1]?.trim() || undefined,
     critical: CRITICAL_RE.test(raw),

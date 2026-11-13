@@ -154,7 +154,19 @@ export function buildGanttModel(tasks: readonly GanttTask[], options: GanttModel
 // ────────────────────────────── 行 ──────────────────────────────
 
 function resolveRow(task: GanttTask): GanttRow | null {
-  const { startDate, dueDate } = task;
+  const { startDate, dueDate, doneDate, completed } = task;
+
+  /*
+   * 已完成且带 ✅ 完成日：完成日是**实际终点**，条画「开工 → 完成」——
+   * 提前完成不按 📅 拖长、逾期完成也照实画过线。开工日缺时从完成日倒推
+   * （标推导值），不拿截止日凑跨度。仍然要求有 🛫/📅/⏳ 之一才上图：
+   * 只有 ✅ 的任务没有「排期」可言，维持「无起止日期不上图」的口径。
+   */
+  if (completed && doneDate !== undefined && (startDate !== undefined || dueDate !== undefined)) {
+    const start = startDate ?? addDaysIso(doneDate, -FALLBACK_DAYS);
+    const [s, e] = start <= doneDate ? [start, doneDate] : [doneDate, start];
+    return withSpan(task, s, e, startDate === undefined, false);
+  }
 
   if (startDate !== undefined && dueDate !== undefined) {
     // 起止写反了就让它们就位：宁可画成一段正常跨度，也不要一条负宽度的条

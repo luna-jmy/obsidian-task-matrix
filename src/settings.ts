@@ -973,11 +973,14 @@ function barColorCopy(key: keyof GanttBarColors): { label: string; desc: string 
     case "active":
       return { label: t("进行中"), desc: t("未完成、且起止日期完整的任务。") };
     case "done":
-      return { label: t("已完成"), desc: t("已完成的任务（勾选框为 x）。") };
+      return {
+        label: t("已完成"),
+        desc: t("已完成的任务（勾选框为完成标记）。完成条整体淡化、任务列划线，不单靠这一色辨认。"),
+      };
     case "crit":
       return {
         label: t("关键任务"),
-        desc: t("带 🔺 或 #crit 标记的任务；优先级最高，同时已完成也按这一色显示。"),
+        desc: t("带 🔺 标记的任务（#crit 不参与判定）。底色优先于完成色；完成仍以淡化与划线可辨。"),
       };
     default:
       return {

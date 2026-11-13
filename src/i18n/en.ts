@@ -63,6 +63,7 @@ export const EN: Record<string, string> = {
   "进行中": "In progress",
   "已逾期": "Overdue",
   "已完成": "Completed",
+  "未完成": "Open",
   "已取消": "Cancelled",
 
   // ── priority levels ──────────────────────────────────────────────
@@ -232,13 +233,14 @@ export const EN: Record<string, string> = {
   "按 Mermaid 甘特的四种状态配色。颜色可写 var(--color-blue) 或颜色名；点下面的色块即改。":
     "One colour per Mermaid Gantt state. Values can be var(--color-blue) or a colour name; click a swatch to change one.",
   "关键任务": "Critical tasks",
-  "带 🔺 或 #crit 标记的任务；优先级最高，同时已完成也按这一色显示。":
-    "Tasks marked 🔺 or #crit. Takes precedence, so a critical task keeps this colour even when completed.",
+  "带 🔺 标记的任务（#crit 不参与判定）。底色优先于完成色；完成仍以淡化与划线可辨。":
+    "Tasks marked 🔺 (#crit is not part of the rule). The fill wins over the done colour, but completion stays readable via the fade and strikethrough.",
   "其他状态": "Other states",
   "既非关键也非已完成、且起止日期不完整（图上那一段是推导值）的任务。":
     "Tasks that are neither critical nor completed and are missing a date, so the span shown is inferred.",
   "未完成、且起止日期完整的任务。": "Tasks that are still open and have both dates.",
-  "已完成的任务（勾选框为 x）。": "Tasks whose checkbox is ticked.",
+  "已完成的任务（勾选框为完成标记）。完成条整体淡化、任务列划线，不单靠这一色辨认。":
+    "Tasks whose checkbox is a completion marker. Completed bars also fade and their rows get struck through, so this colour is not the only signal.",
   "默认：{value}": "Default: {value}",
   "红": "Red",
   "橙": "Orange",
