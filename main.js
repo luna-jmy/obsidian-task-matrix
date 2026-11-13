@@ -81,6 +81,7 @@ var EN = {
   "\u8FDB\u884C\u4E2D": "In progress",
   "\u5DF2\u903E\u671F": "Overdue",
   "\u5DF2\u5B8C\u6210": "Completed",
+  "\u672A\u5B8C\u6210": "Open",
   "\u5DF2\u53D6\u6D88": "Cancelled",
   // ── priority levels ──────────────────────────────────────────────
   "\u7D27\u6025": "Critical",
@@ -223,11 +224,11 @@ var EN = {
   "\u7518\u7279\u6761\u914D\u8272": "Bar colours",
   "\u6309 Mermaid \u7518\u7279\u7684\u56DB\u79CD\u72B6\u6001\u914D\u8272\u3002\u989C\u8272\u53EF\u5199 var(--color-blue) \u6216\u989C\u8272\u540D\uFF1B\u70B9\u4E0B\u9762\u7684\u8272\u5757\u5373\u6539\u3002": "One colour per Mermaid Gantt state. Values can be var(--color-blue) or a colour name; click a swatch to change one.",
   "\u5173\u952E\u4EFB\u52A1": "Critical tasks",
-  "\u5E26 \u{1F53A} \u6216 #crit \u6807\u8BB0\u7684\u4EFB\u52A1\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u540C\u65F6\u5DF2\u5B8C\u6210\u4E5F\u6309\u8FD9\u4E00\u8272\u663E\u793A\u3002": "Tasks marked \u{1F53A} or #crit. Takes precedence, so a critical task keeps this colour even when completed.",
+  "\u5E26 \u{1F53A} \u6807\u8BB0\u7684\u4EFB\u52A1\uFF08#crit \u4E0D\u53C2\u4E0E\u5224\u5B9A\uFF09\u3002\u5E95\u8272\u4F18\u5148\u4E8E\u5B8C\u6210\u8272\uFF1B\u5B8C\u6210\u4ECD\u4EE5\u6DE1\u5316\u4E0E\u5212\u7EBF\u53EF\u8FA8\u3002": "Tasks marked \u{1F53A} (#crit is not part of the rule). The fill wins over the done colour, but completion stays readable via the fade and strikethrough.",
   "\u5176\u4ED6\u72B6\u6001": "Other states",
   "\u65E2\u975E\u5173\u952E\u4E5F\u975E\u5DF2\u5B8C\u6210\u3001\u4E14\u8D77\u6B62\u65E5\u671F\u4E0D\u5B8C\u6574\uFF08\u56FE\u4E0A\u90A3\u4E00\u6BB5\u662F\u63A8\u5BFC\u503C\uFF09\u7684\u4EFB\u52A1\u3002": "Tasks that are neither critical nor completed and are missing a date, so the span shown is inferred.",
   "\u672A\u5B8C\u6210\u3001\u4E14\u8D77\u6B62\u65E5\u671F\u5B8C\u6574\u7684\u4EFB\u52A1\u3002": "Tasks that are still open and have both dates.",
-  "\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\uFF08\u52FE\u9009\u6846\u4E3A x\uFF09\u3002": "Tasks whose checkbox is ticked.",
+  "\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\uFF08\u52FE\u9009\u6846\u4E3A\u5B8C\u6210\u6807\u8BB0\uFF09\u3002\u5B8C\u6210\u6761\u6574\u4F53\u6DE1\u5316\u3001\u4EFB\u52A1\u5217\u5212\u7EBF\uFF0C\u4E0D\u5355\u9760\u8FD9\u4E00\u8272\u8FA8\u8BA4\u3002": "Tasks whose checkbox is a completion marker. Completed bars also fade and their rows get struck through, so this colour is not the only signal.",
   "\u9ED8\u8BA4\uFF1A{value}": "Default: {value}",
   "\u7EA2": "Red",
   "\u6A59": "Orange",
@@ -1240,15 +1241,16 @@ var DATE = "\\d{4}-\\d{2}-\\d{2}";
 var START_FIELD = `(?:\\u{1F6EB}\\uFE0F?\\s*|\\[start::\\s*)(${DATE})\\]?`;
 var SCHEDULED_FIELD = `(?:\\u{23F3}\\uFE0F?\\s*|\\[scheduled::\\s*)(${DATE})\\]?`;
 var DUE_FIELD = `(?:\\u{1F4C5}\\uFE0F?\\s*|\\[due::\\s*)(${DATE})\\]?`;
-var DONE_FIELD = `(?:\\u{2705}\\uFE0F?|\\[completion::\\s*)(${DATE})\\]?`;
-var CREATED_FIELD = `(?:\\u{2795}\\uFE0F?|\\[created::\\s*)(${DATE})\\]?`;
-var CANCELLED_FIELD = `(?:\\u{274C}\\uFE0F?|\\[cancelled::\\s*)(${DATE})\\]?`;
+var DONE_FIELD = `(?:\\u{2705}\\uFE0F?\\s*|\\[completion::\\s*)(${DATE})\\]?`;
+var CREATED_FIELD = `(?:\\u{2795}\\uFE0F?\\s*|\\[created::\\s*)(${DATE})\\]?`;
+var CANCELLED_FIELD = `(?:\\u{274C}\\uFE0F?\\s*|\\[cancelled::\\s*)(${DATE})\\]?`;
 var ID_FIELD = "(?:\\u{1F194}\\uFE0F?\\s*|\\[id::\\s*)([a-zA-Z0-9_-]+)\\]?";
 var DEPENDENCY_FIELD = "(?:\\u{26D4}\\uFE0F?\\s*|\\[(?:dependsOn|depends on|depends)::\\s*)([a-zA-Z0-9_-]+)\\]?";
 var OWNER_FIELD = "\\[owner::\\s*([^\\]]+)\\]";
 var START_RE = new RegExp(START_FIELD, "u");
 var SCHEDULED_RE = new RegExp(SCHEDULED_FIELD, "u");
 var DUE_RE = new RegExp(DUE_FIELD, "u");
+var DONE_RE = new RegExp(DONE_FIELD, "u");
 var ID_RE = new RegExp(ID_FIELD, "u");
 var DEPENDENCY_RE = new RegExp(DEPENDENCY_FIELD, "iu");
 var MILESTONE_RE = new RegExp("#milestone|\\u{1F6A9}\\uFE0F?", "iu");
@@ -1286,6 +1288,7 @@ function parseGanttTaskLine(line, filePath, lineNumber, headings) {
   const start = normalizeIso(START_RE.exec(raw)?.[1]);
   const scheduled = normalizeIso(SCHEDULED_RE.exec(raw)?.[1]);
   const due = normalizeIso(DUE_RE.exec(raw)?.[1]);
+  const done = normalizeIso(DONE_RE.exec(raw)?.[1]);
   const name = stripGanttFields(raw) || t("\u672A\u547D\u540D\u4EFB\u52A1");
   return {
     id: `${filePath}:${lineNumber}:${name}`,
@@ -1300,6 +1303,7 @@ function parseGanttTaskLine(line, filePath, lineNumber, headings) {
     startDate: start ?? scheduled,
     scheduledDate: scheduled,
     dueDate: due,
+    doneDate: done,
     taskId: ID_RE.exec(raw)?.[1]?.trim() || void 0,
     dependsOn: DEPENDENCY_RE.exec(raw)?.[1]?.trim() || void 0,
     critical: CRITICAL_RE.test(raw),
@@ -2185,11 +2189,14 @@ function barColorCopy(key) {
     case "active":
       return { label: t("\u8FDB\u884C\u4E2D"), desc: t("\u672A\u5B8C\u6210\u3001\u4E14\u8D77\u6B62\u65E5\u671F\u5B8C\u6574\u7684\u4EFB\u52A1\u3002") };
     case "done":
-      return { label: t("\u5DF2\u5B8C\u6210"), desc: t("\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\uFF08\u52FE\u9009\u6846\u4E3A x\uFF09\u3002") };
+      return {
+        label: t("\u5DF2\u5B8C\u6210"),
+        desc: t("\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\uFF08\u52FE\u9009\u6846\u4E3A\u5B8C\u6210\u6807\u8BB0\uFF09\u3002\u5B8C\u6210\u6761\u6574\u4F53\u6DE1\u5316\u3001\u4EFB\u52A1\u5217\u5212\u7EBF\uFF0C\u4E0D\u5355\u9760\u8FD9\u4E00\u8272\u8FA8\u8BA4\u3002")
+      };
     case "crit":
       return {
         label: t("\u5173\u952E\u4EFB\u52A1"),
-        desc: t("\u5E26 \u{1F53A} \u6216 #crit \u6807\u8BB0\u7684\u4EFB\u52A1\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u540C\u65F6\u5DF2\u5B8C\u6210\u4E5F\u6309\u8FD9\u4E00\u8272\u663E\u793A\u3002")
+        desc: t("\u5E26 \u{1F53A} \u6807\u8BB0\u7684\u4EFB\u52A1\uFF08#crit \u4E0D\u53C2\u4E0E\u5224\u5B9A\uFF09\u3002\u5E95\u8272\u4F18\u5148\u4E8E\u5B8C\u6210\u8272\uFF1B\u5B8C\u6210\u4ECD\u4EE5\u6DE1\u5316\u4E0E\u5212\u7EBF\u53EF\u8FA8\u3002")
       };
     default:
       return {
@@ -2304,7 +2311,12 @@ function buildGanttModel(tasks, options) {
   };
 }
 function resolveRow(task) {
-  const { startDate, dueDate } = task;
+  const { startDate, dueDate, doneDate, completed } = task;
+  if (completed && doneDate !== void 0 && (startDate !== void 0 || dueDate !== void 0)) {
+    const start = startDate ?? addDaysIso(doneDate, -FALLBACK_DAYS);
+    const [s, e] = start <= doneDate ? [start, doneDate] : [doneDate, start];
+    return withSpan(task, s, e, startDate === void 0, false);
+  }
   if (startDate !== void 0 && dueDate !== void 0) {
     const [start, end] = startDate <= dueDate ? [startDate, dueDate] : [dueDate, startDate];
     return withSpan(task, start, end, false, false);
@@ -3242,8 +3254,8 @@ function barColorKey(row) {
   return "active";
 }
 function barClass(row) {
-  if (row.task.milestone) return "tm-gantt__bar--milestone";
-  return `tm-gantt__bar--${barColorKey(row)}`;
+  const base = row.task.milestone ? "tm-gantt__bar--milestone" : `tm-gantt__bar--${barColorKey(row)}`;
+  return row.task.completed ? `${base} tm-gantt__bar--is-done` : base;
 }
 
 // src/gantt/gantt-view.ts
@@ -3451,6 +3463,7 @@ var GanttView = class {
       const rowEl = host.createDiv({ cls: "tm-gantt__sidebar-row" });
       rowEl.dataset.taskId = row.task.id;
       rowEl.dataset.section = entry.sectionKey;
+      if (row.task.completed) rowEl.addClass("is-done");
       const nameEl = rowEl.createDiv({ cls: "tm-gantt__sidebar-name" });
       const link = nameEl.createEl("a", {
         cls: "internal-link",
@@ -3459,6 +3472,9 @@ var GanttView = class {
       });
       link.dataset.openTask = row.task.id;
       const meta = rowEl.createDiv({ cls: "tm-gantt__sidebar-meta" });
+      if (row.task.completed) {
+        meta.createSpan({ cls: "tm-gantt__tag", text: t("\u5DF2\u5B8C\u6210") });
+      }
       if (row.task.milestone) {
         meta.createSpan({ cls: "tm-gantt__tag", text: t("\u91CC\u7A0B\u7891") });
       }
@@ -3577,13 +3593,14 @@ var GanttView = class {
     const barHeight = ROW_HEIGHT - 10;
     const fallback = row.startFallback || row.endFallback;
     const color = this.colors[barColorKey(row)];
-    const bar = row.task.milestone ? this.buildMilestone(x, width, barY, barHeight, color) : this.buildBar(x, width, barY, barHeight, row, fallback, color);
+    const bar = row.task.milestone ? this.buildMilestone(x, width, barY, barHeight, row, color) : this.buildBar(x, width, barY, barHeight, row, fallback, color);
     bar.dataset.taskId = row.task.id;
     bar.setAttribute("tabindex", "0");
     bar.setAttribute("role", "button");
+    const statusPrefix = row.task.completed ? `${t("\u5DF2\u5B8C\u6210")}\uFF0C` : "";
     bar.setAttribute(
       "aria-label",
-      t("{name}\uFF1A{start} \u81F3 {end}\uFF0C{days} \u5929", {
+      statusPrefix + t("{name}\uFF1A{start} \u81F3 {end}\uFF0C{days} \u5929", {
         name: row.task.name,
         start: row.start,
         end: row.end,
@@ -3617,13 +3634,13 @@ ${row.start} \u2192 ${row.end}
     return bar;
   }
   /** 里程碑：以结束日为尖点的菱形，宽度固定一个日宽；颜色沿用状态色，形状负责区分 */
-  buildMilestone(x, width, barY, barHeight, color) {
+  buildMilestone(x, width, barY, barHeight, row, color) {
     const size = Math.min(barHeight, 14);
     const centerX = x + width;
     const centerY = barY + barHeight / 2;
     const half = size / 2;
     const diamond = this.svg("polygon");
-    diamond.setAttribute("class", "tm-gantt__bar tm-gantt__bar--milestone");
+    diamond.setAttribute("class", `tm-gantt__bar ${barClass(row)}`);
     diamond.setAttribute(
       "points",
       [
@@ -4345,6 +4362,12 @@ async function moveTaskToQuadrant(app, settings, task, newQuadrant) {
 }
 
 // src/modals/task-editor-modal.ts
+function statusOfCheckbox(checkboxContent, settings) {
+  const marker = checkboxContent.trim();
+  if (settings.completionMarkers.includes(marker)) return "done";
+  if (settings.cancelledMarkers.includes(marker)) return "cancelled";
+  return "open";
+}
 var CONFLICT_TAG = "#due-date-conflict";
 function sameTags(a, b) {
   const normalize = (list) => list.map((tag) => tag.replace(/^#+/u, "").toLowerCase()).sort().join("\n");
@@ -4367,6 +4390,7 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
     const form = this.contentEl.createDiv({ cls: "tm-form" });
     const source = this.task;
     let description = this.isCreateMode ? (this.defaults.tags ?? []).join(" ") : source?.description ?? "";
+    let status = this.isCreateMode ? "open" : statusOfCheckbox(source?.checkboxStatus ?? "", this.host.settings);
     let priority = this.isCreateMode ? this.defaults.priority ?? "none" /* None */ : source?.priority ?? "none" /* None */;
     let startDate = this.isCreateMode ? this.defaults.startDate ?? "" : source?.startDate ?? "";
     let dueDate = this.isCreateMode ? this.defaults.dueDate ?? "" : source?.dueDate ?? "";
@@ -4407,6 +4431,16 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
       tagMenu.toggleClass("is-open", open);
       tagButton.setAttribute("aria-expanded", String(open));
     });
+    if (!this.isCreateMode) {
+      new import_obsidian11.Setting(form).setName(t("\u72B6\u6001")).addDropdown((dropdown) => {
+        dropdown.addOption("open", t("\u672A\u5B8C\u6210"));
+        dropdown.addOption("done", t("\u5DF2\u5B8C\u6210"));
+        dropdown.addOption("cancelled", t("\u5DF2\u53D6\u6D88"));
+        dropdown.setValue(status).onChange((value) => {
+          status = value;
+        });
+      });
+    }
     new import_obsidian11.Setting(form).setName(t("\u4F18\u5148\u7EA7")).addDropdown((dropdown) => {
       for (const level of [
         "none" /* None */,
@@ -4465,7 +4499,8 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
           startDate,
           dueDate,
           taskId,
-          dependsOn
+          dependsOn,
+          status
         });
       })
     );
@@ -4616,6 +4651,22 @@ var TaskEditorModal = class extends import_obsidian11.Modal {
     const currentName = stripTags(task.description);
     const result = await editTaskLine(this.host.app, task, (line) => {
       let next = line;
+      if (updates.status !== void 0) {
+        const settings = this.host.settings;
+        const currentMarker = /\[([^\]]*)\]/u.exec(next)?.[1]?.trim() ?? "";
+        const currentStatus = statusOfCheckbox(currentMarker, settings);
+        if (currentStatus !== updates.status) {
+          const marker = updates.status === "done" ? settings.completionMarkers[0] ?? "x" : updates.status === "cancelled" ? settings.cancelledMarkers[0] ?? "-" : " ";
+          next = setCheckboxMarker(next, marker);
+          if (settings.trackCompletionDate) {
+            if (updates.status === "done" && !/✅\s*\d{4}-\d{2}-\d{2}/u.test(next)) {
+              next = `${next} \u2705 ${todayIso()}`;
+            } else if (currentStatus === "done") {
+              next = next.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, "");
+            }
+          }
+        }
+      }
       if (name !== currentName) next = replaceTaskDescription(next, name);
       if (!sameTags(tags, task.tags)) {
         const keepConflict = new RegExp(`${CONFLICT_TAG}\\b`, "iu").test(next);

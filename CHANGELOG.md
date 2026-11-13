@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+- Fix: completed tasks are recognisable at a glance again — completion no longer rides on the bar colour (a 🔺 critical task painted the bar red, hiding the done-green entirely). Completed bars now fade to semi-transparent, their sidebar rows are struck through with a "done" chip, and the bar's accessible label says so. Colour keeps expressing critical / inferred / open, so a finished critical task stays red *and* visibly done
+- Fix: a completed task with a `✅ date` now spans *start → completion* on the timeline — finishing early no longer stretches the bar to the due date, and finishing late is drawn as it happened; a missing start date is inferred one day before the completion date. On the way this fixes a latent parser bug: the `✅` field regex lacked `\s*`, so `✅ 2026-11-13` with the usual space was never read and the date leaked into the task name. Tasks with only `✅` and no scheduled dates still stay off the timeline
+- Feature: the task editor gains a **status** dropdown (open / completed / cancelled) — the checkbox could previously only be changed from the card buttons, not in the editor. It writes the same markers as the ✓/↺/✕ buttons, and the completion date follows the *track completion date* setting
+- Chore: settings copy and docs no longer claim `#crit` marks a task critical — the parser only ever recognised 🔺
+
 ## 1.2.1
 - Fix: the folder filter trades its chips for a plain text box — real vaults carry dozens of folders and the chip row swamped the filter bar (27 folders wrapped into 9 lines in practice). Type comma-separated paths; a `-` prefix excludes, an empty include list means only the exclusions apply, and a match still includes its subfolders
 
