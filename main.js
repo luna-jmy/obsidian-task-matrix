@@ -6227,7 +6227,15 @@ var MatrixView = class extends import_obsidian13.ItemView {
       const key = `${task.filePath}:${task.lineNumber}`;
       return visibleKeys.has(key) || !allKeys.has(key);
     });
-    const scoped = this.ganttNotePath === null ? ganttTasks : ganttTasks.filter((task) => task.filePath === this.ganttNotePath);
+    const orderOf = new Map(
+      sortTasks(filtered, this.sortMode).map(
+        (task, index) => [`${task.filePath}:${task.lineNumber}`, index]
+      )
+    );
+    const ordered = [...ganttTasks].sort(
+      (a, b) => (orderOf.get(`${a.filePath}:${a.lineNumber}`) ?? Number.MAX_SAFE_INTEGER) - (orderOf.get(`${b.filePath}:${b.lineNumber}`) ?? Number.MAX_SAFE_INTEGER)
+    );
+    const scoped = this.ganttNotePath === null ? ordered : ordered.filter((task) => task.filePath === this.ganttNotePath);
     const model = buildGanttModel(scoped, {
       grouping: this.ganttGrouping,
       collapsedKeys: this.collapsedKeys,

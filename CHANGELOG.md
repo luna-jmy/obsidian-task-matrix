@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.3
+- Fix: the sort dropdown now takes effect in Gantt mode — the sorted order only ever reached the panel views, so the Gantt kept drawing rows in index order and picking a sort option changed nothing. Rows within a section now follow the same sort as the list, GTD, and matrix views; tasks the panel parser doesn't recognise keep their relative order at the end
+
 ## 1.2.2
 - Fix: completed tasks are recognisable at a glance again — completion no longer rides on the bar colour (a 🔺 critical task painted the bar red, hiding the done-green entirely). Completed bars now fade to semi-transparent, their sidebar rows are struck through with a "done" chip, and the bar's accessible label says so. Colour keeps expressing critical / inferred / open, so a finished critical task stays red *and* visibly done
 - Fix: a completed task with a `✅ date` now spans *start → completion* on the timeline — finishing early no longer stretches the bar to the due date, and finishing late is drawn as it happened; a missing start date is inferred one day before the completion date. On the way this fixes a latent parser bug: the `✅` field regex lacked `\s*`, so `✅ 2026-11-13` with the usual space was never read and the date leaked into the task name. Tasks with only `✅` and no scheduled dates still stay off the timeline
